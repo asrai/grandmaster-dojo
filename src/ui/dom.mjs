@@ -13,7 +13,7 @@ export function el(tag, attrs = {}, children = []) {
     if (k === 'class') node.className = v;
     else if (k === 'text') node.textContent = v;
     else if (k === 'style') node.setAttribute('style', v);
-    else if (k === 'disabled') node.disabled = true;
+    else if (k === 'disabled') node.disabled = Boolean(v);
     else if (k.startsWith('on')) node.addEventListener(k.slice(2).toLowerCase(), v);
     else node.setAttribute(k, v === true ? '' : String(v));
   }

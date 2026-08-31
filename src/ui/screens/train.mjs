@@ -11,7 +11,7 @@ import { logEvent, masteryOf, recordEffectiveSuccess } from '../session.mjs';
 export function startTrain(ctx) {
   const { session, root, params } = ctx;
   const style = styleById(params.styleId);
-  const windowMs = responseWindowMs(style.seq.length);
+  const windowMs = responseWindowMs(style.seq.length, { accessibility: session.accessibility });
   clear(root);
 
   const statusEl = el('div', { class: 'grade' });
@@ -46,6 +46,7 @@ export function startTrain(ctx) {
   let startedAt = 0;
   let settled = false;
   let raf = 0;
+  let rearm = 0;
 
   const showProgress = () => {
     const hits = Math.min(session.progress.styles[style.id].trainHits, BALANCE.trainGraduateHits);
@@ -71,7 +72,7 @@ export function startTrain(ctx) {
         statusEl.style.color = '#43c98a';
         showProgress();
         ctx.refreshTop();
-        setTimeout(arm, BALANCE.resolveMs);
+        rearm = setTimeout(arm, BALANCE.resolveMs);
       },
     });
     statusEl.textContent = '';
@@ -89,10 +90,11 @@ export function startTrain(ctx) {
     // 수련 실패는 무벌 재시도 — 로그는 실전 창의 완주율 분모와 섞이지 않게 남기지 않는다.
     statusEl.textContent = '창을 넘겼다 — 다시';
     statusEl.style.color = '#e08a4a';
-    setTimeout(arm, BALANCE.resolveMs);
+    rearm = setTimeout(arm, BALANCE.resolveMs);
   }
 
   arm();
   raf = requestAnimationFrame(frame);
-  return () => { cancelAnimationFrame(raf); ctx.pad.detach(); };
+  // 재무장 타이머가 살아남으면 도장 화면 위에서 패드가 되살아나 수련 적립이 무한해진다.
+  return () => { cancelAnimationFrame(raf); clearTimeout(rearm); ctx.pad.detach(); };
 }

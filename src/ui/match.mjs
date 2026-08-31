@@ -11,10 +11,11 @@ export const PHASE = { TELEGRAPH: 'telegraph', WINDOW: 'window', RESOLVE: 'resol
  * @param {object} p.challenger  도전자 행 (예고 순환·내공 시드의 출처)
  * @param {number} p.selfHpMax
  * @param {() => number} p.rankOf 그 수 시점의 내 성 — 대련 중에도 오를 수 있다
- * @param {number} p.openLen 상대 빈틈 수의 창 기준 길이
+ * @param {() => number} p.openLen 상대 빈틈 수의 창 기준 길이 — 장착이 바뀌면 따라 바뀐다
+ * @param {() => boolean} p.accessibility 접근성 창 확대 여부
  * @param {object} p.hooks onTelegraph · onWindow · onTick · onTimeout · onVerdict · onEnd
  */
-export function createMatch({ challenger, selfHpMax, rankOf, openLen, hooks = {} }) {
+export function createMatch({ challenger, selfHpMax, rankOf, openLen, accessibility, hooks = {} }) {
   const foePower = BALANCE.challengerPower[challenger.group];
   const foeHpMax = BALANCE.hp[challenger.id];
   const s = {
@@ -63,8 +64,8 @@ export function createMatch({ challenger, selfHpMax, rankOf, openLen, hooks = {}
 
   function enterWindow() {
     // 상대 빈틈에는 예고가 없어 어떤 초식을 낼지 모르므로 가장 긴 시퀀스 기준으로 연다.
-    const len = s.telegraphed ? s.telegraphed.len : openLen;
-    s.windowMs = responseWindowMs(len, { selfOpen: s.selfOpen });
+    const len = s.telegraphed ? s.telegraphed.len : openLen();
+    s.windowMs = responseWindowMs(len, { selfOpen: s.selfOpen, accessibility: accessibility() });
     s.phase = PHASE.WINDOW;
     s.phaseStart = clock();
     hooks.onWindow?.(view());

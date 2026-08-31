@@ -23,6 +23,7 @@ export function createSession() {
     slots: Array.from({ length: BALANCE.slots }, () => null),
     coins: 0,
     stage: 1,
+    accessibility: BALANCE.accessibilityWindow,
     label: '문하생',
     transmitted: false,
   };

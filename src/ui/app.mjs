@@ -43,9 +43,11 @@ function refreshTop() {
 function go(phase, params = {}) {
   if (teardown) teardown();
   teardown = null;
+  const route = ROUTES[phase];
+  if (!route) throw new Error(`알 수 없는 화면: ${phase}`);
   ctx.params = params;
   logEvent(session, 'cycle', { phase });
-  teardown = ROUTES[phase](ctx) ?? null;
+  teardown = route(ctx) ?? null;
   refreshTop();
 }
 
@@ -53,8 +55,8 @@ function go(phase, params = {}) {
 document.documentElement.style.setProperty('--hit', `${BALANCE.buttonHitPx}px`);
 
 $('a11y').addEventListener('change', (event) => {
-  // 접근성 창은 `responseWindowMs` 가 매번 읽는 자리라 토글이 다음 수부터 그대로 반영된다.
-  BALANCE.accessibilityWindow = event.target.checked;
+  // 데이터 테이블은 시드로 두고 런타임 값은 세션이 갖는다 — 다음 창부터 반영된다.
+  session.accessibility = event.target.checked;
 });
 
 // 유닛 3(로그 내보내기·봇 v2)이 세션에 붙는 자리.

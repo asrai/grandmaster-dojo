@@ -5,6 +5,7 @@ import {
   ART_SETS, BALANCE, CHALLENGERS, DISCIPLE, FOE_STYLES, STYLES,
 } from '../src/balance.mjs';
 import { LOG_SCHEMA, TIME_FIELD, createLogBuffer } from '../src/log.mjs';
+import { createSequenceInput } from '../src/ui/sequence-input.mjs';
 import {
   applyEffectiveSuccess, artById, assertCounterIntegrity, assertPrefixFree, canLearn, canTransmit,
   challengerById, createDisciple, createProgress, discipleRankOf, discipleStyles, finisherOf,
@@ -552,6 +553,107 @@ suite('대련 종료 판정 (REQ-201)', () => {
   eq(at(BALANCE.hp.disciple, BALANCE.hp.B, last).win, true, '무피해 종료는 최대 HP 가 큰 쪽 승');
 });
 
+// ------------------------- 10-b. 후보 필터 입력기 (REQ-102~109) — DOM 없이 도는 유일한 UI 층
+
+suite('후보 필터 입력기 (REQ-102·103·105·106·108·109)', () => {
+  const yuunBo = styleById('yuun-bo');
+  const jeokUn = styleById('jeok-un');
+  const haengUn = styleById('haeng-un');
+
+  function harnessInput({ pool, mastery = {}, mode = 'duel' }) {
+    let clock = 0;
+    const events = [];
+    const input = createSequenceInput({
+      pool,
+      masteryOf: (s) => mastery[s.id] ?? 0,
+      hintDelayMs: BALANCE.hintDelayMs[mode],
+      now: () => clock,
+      remainingRatio: () => 0.5,
+      log: (event, fields) => events.push({ event, ...fields }),
+    });
+    input.arm();
+    return { input, events, tick: (ms) => { clock += ms; }, ids: () => input.candidates.map((s) => s.id) };
+  }
+
+  const pool = [yuunBo, jeokUn, haengUn];
+
+  // 정렬 = 숙련 높은 순 → 동률 슬롯 순 (REQ-102)
+  const sorted = harnessInput({ pool, mastery: { 'jeok-un': 100 } });
+  deepEq(sorted.ids(), ['jeok-un', 'yuun-bo', 'haeng-un'], '숙련 높은 초식이 최상단');
+  const tied = harnessInput({ pool });
+  deepEq(tied.ids(), ['yuun-bo', 'jeok-un', 'haeng-un'], '숙련 동률이면 슬롯 순 (결정적)');
+
+  // 접두어 필터 + 갈래 전환 (케이스 2)
+  const branch = harnessInput({ pool });
+  eq(branch.input.press('D', 'keyboard').accepted, true, '↓ 는 세 초식 공통 접두어');
+  deepEq(branch.ids(), ['yuun-bo', 'jeok-un', 'haeng-un'], '↓ 뒤 후보 3');
+  branch.input.press('L', 'keyboard');
+  deepEq(branch.ids(), ['jeok-un'], '← 로 2식 갈래');
+  eq(branch.input.top().attr, 'hard', '최상단 속성이 강으로 갱신 = 진행형 후보 색');
+
+  // 후보 0 이 되는 키는 무시 (REQ-103)
+  const ignored = harnessInput({ pool });
+  ignored.input.press('D', 'button');
+  const beforeBuffer = ignored.input.buffer;
+  const result = ignored.input.press('D', 'button');
+  eq(result.accepted, false, '후보 0 이 되는 키는 수락되지 않는다');
+  deepEq(ignored.input.buffer, beforeBuffer, '버퍼 불변');
+  deepEq(ignored.ids(), ['yuun-bo', 'jeok-un', 'haeng-un'], '후보 불변');
+  eq(ignored.input.ignores, 1, '무시 누적');
+  deepEq(ignored.events.filter((e) => e.event === 'ignore'), [{ event: 'ignore', dir: 'D' }], 'ignore 로깅');
+  eq(ignored.events.at(-2).accepted, false, '무시된 키도 key 로 남아 ignore_rate 분모가 된다');
+
+  // 리셋 (REQ-105)
+  ignored.input.reset();
+  deepEq(ignored.input.buffer, [], '리셋 → 버퍼 비움');
+  deepEq(ignored.ids(), ['yuun-bo', 'jeok-un', 'haeng-un'], '리셋 → 후보 전체 복원');
+  eq(ignored.input.ignores, 0, '리셋 → 무시 누적도 0');
+
+  // 발동 (REQ-106) + 발동 뒤 잠금
+  const firing = harnessInput({ pool });
+  for (const dir of yuunBo.seq.slice(0, -1)) firing.input.press(dir, 'keyboard');
+  eq(firing.input.press('U', 'keyboard').fired.style.id, 'yuun-bo', '후보 1 ∧ 버퍼 == 시퀀스 → 발동');
+  const fireEvent = firing.events.at(-1);
+  deepEq(
+    [fireEvent.event, fireEvent.styleId, fireEvent.len, fireEvent.oneTap, fireEvent.r],
+    ['fire', 'yuun-bo', 3, false, 0.5], 'fire 필드가 스키마 그대로',
+  );
+  eq(firing.input.press('D', 'keyboard').accepted, false, '발동 뒤 입력은 ignore 가 아니라 무반응');
+  eq(firing.events.filter((e) => e.event === 'ignore').length, 0, '발동 뒤 키가 ignore_rate 를 오염시키지 않는다');
+
+  // 딜레이드 힌트 인덱스 경계 (REQ-108)
+  const hint = harnessInput({ pool: [yuunBo] });
+  eq(hint.input.revealed(), 0, '창이 열린 직후에는 점등 없음');
+  hint.tick(BALANCE.hintDelayMs.duel - 1);
+  eq(hint.input.revealed(), 0, `${BALANCE.hintDelayMs.duel}ms 직전까지 점등 없음`);
+  hint.tick(1);
+  eq(hint.input.revealed(), 1, '지연이 지나면 다음 화살표 하나만 점등');
+  hint.input.press('D', 'keyboard');
+  eq(hint.input.revealed(), 1, '키를 받으면 힌트 시계가 다시 시작한다');
+  hint.tick(BALANCE.hintDelayMs.duel);
+  eq(hint.input.revealed(), 2, '입력분 + 점등분');
+  hint.tick(BALANCE.hintDelayMs.duel * 5);
+  eq(hint.input.revealed(), 2, '점등은 키마다 하나씩 — 지연이 쌓여도 앞서 나가지 않는다');
+
+  const trainHint = harnessInput({ pool: [yuunBo], mode: 'train' });
+  eq(trainHint.input.revealed(), 1, '수련은 지연 0 이라 즉시 점등');
+  const fullHint = harnessInput({ pool: [yuunBo], mastery: { 'yuun-bo': BALANCE.masteryFullPct } });
+  eq(fullHint.input.revealed(), yuunBo.seq.length, '숙련 100% 는 지연 없이 전 시퀀스 노출');
+
+  // 원터치 (REQ-109)
+  const oneTap = harnessInput({ pool, mastery: { 'yuun-bo': BALANCE.masteryFullPct } });
+  eq(oneTap.input.tap(jeokUn), null, '숙련 100% 가 아니면 원터치 불가');
+  const tapped = oneTap.input.tap(yuunBo);
+  eq(tapped.oneTap, true, '원터치 발동');
+  eq(oneTap.events.at(-1).r, 0.5, '원터치 r 은 탭 시점 잔여 비율');
+  eq(oneTap.input.tap(yuunBo), null, '발동 뒤 원터치도 잠긴다');
+
+  // arm 이 그 창의 장착을 다시 읽는다
+  const rearm = harnessInput({ pool: [yuunBo] });
+  rearm.input.arm([yuunBo, jeokUn]);
+  deepEq(rearm.ids(), ['yuun-bo', 'jeok-un'], 'arm(pool) 이 후보 집합을 갱신');
+});
+
 // --------------------------------- 11. 케이스 4 — 딜레이드 힌트 페이스 (REQ-108·308)
 
 suite('케이스 4 — 딜레이드 힌트 페이스 (REQ-108·308)', () => {
@@ -581,7 +683,7 @@ suite('BALANCE 파라미터 census (REQ-606)', () => {
     openingWindowPenalty: 0.4, accessibilityWindowMult: 1.3, accessibilityWindow: false,
     resolveMs: 500, maxExchanges: 12, powerBase: 1, powerPerRank: 0.05,
     initiativeBase: 1, initiativePerRatio: 0.3, clashK: 0.5, effectiveSuccessMaxOrder: 2,
-    trainGraduateHits: 3, masteryTrainPct: 30, masteryFullPct: 100,
+    trainGraduateHits: 3, masteryTrainPct: 30, masteryFullPct: 100, ignoreHighlightAt: 3,
     rankStep: 3, rankMax: 12, slots: 3, equipMasteryPct: 30,
     discipleStartRank: 1, discipleRankMax: 10, discipleFireRatio: 0.6,
     winColorHintExchanges: Number.MAX_SAFE_INTEGER, simEfficiency: 0.1, buttonHitPx: 56,

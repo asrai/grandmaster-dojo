@@ -13,10 +13,12 @@ import { BALANCE } from '../balance.mjs';
  * @param {(event: string, fields: object) => void} p.log 통합 로그 싱크
  */
 export function createSequenceInput({
-  pool, masteryOf, hintDelayMs, now, remainingRatio = () => 0, log,
+  pool: initialPool, masteryOf, hintDelayMs, now, remainingRatio = () => 0, log,
 }) {
+  let pool = initialPool;
   let buffer = [];
   let ignores = 0;
+  let locked = false;
   let hintFrom = now();
 
   const keyOf = (dirs) => dirs.join('');
@@ -29,6 +31,8 @@ export function createSequenceInput({
   const top = () => candidates[0] ?? null;
 
   function fire(style, oneTap) {
+    // 발동 뒤에도 창은 한 프레임 더 열려 있다 — 그 사이의 키가 후보 0 이라 `ignore_rate` 를 오염시킨다.
+    locked = true;
     const r = Math.max(0, Math.min(1, remainingRatio()));
     log('fire', { styleId: style.id, len: style.seq.length, oneTap, r });
     return { style, oneTap, r };
@@ -40,10 +44,15 @@ export function createSequenceInput({
     get ignores() { return ignores; },
     top,
 
-    /** 응수 창이 열릴 때마다 버퍼·무시 누적·힌트 시계를 함께 되돌린다 (REQ-104). */
-    arm() {
+    /**
+     * 응수 창이 열릴 때마다 버퍼·무시 누적·힌트 시계를 함께 되돌린다 (REQ-104).
+     * @param {object[]} [nextPool] 그 창의 장착 초식 — 대련 중 자동 장착이 바로 후보에 반영된다.
+     */
+    arm(nextPool) {
+      if (nextPool) pool = nextPool;
       buffer = [];
       ignores = 0;
+      locked = false;
       hintFrom = now();
       candidates = matching(buffer);
     },
@@ -58,6 +67,7 @@ export function createSequenceInput({
 
     /** @returns {{accepted: boolean, fired: ?object}} */
     press(dir, device) {
+      if (locked) return { accepted: false, fired: null };
       const next = [...buffer, dir];
       const nextCandidates = matching(next);
       if (!nextCandidates.length) {
@@ -81,6 +91,7 @@ export function createSequenceInput({
     },
 
     reset() {
+      if (locked) return;
       buffer = [];
       ignores = 0;
       hintFrom = now();
@@ -90,6 +101,7 @@ export function createSequenceInput({
 
     /** 원터치 (REQ-109) — 숙련 100% 초식만, 잔여 시퀀스를 생략하고 그 자리에서 발동한다. */
     tap(style) {
+      if (locked) return null;
       if (masteryOf(style) < BALANCE.masteryFullPct) return null;
       if (!candidates.includes(style)) return null;
       return fire(style, true);

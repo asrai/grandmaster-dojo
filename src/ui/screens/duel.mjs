@@ -34,7 +34,6 @@ function telegraphView(view) {
 export function startDuel(ctx) {
   const { session, root, params } = ctx;
   const challenger = challengerOfStage(params.stage);
-  const pool = equippedStyles(session);
   clear(root);
 
   const foeHpEl = el('div', {});
@@ -68,7 +67,7 @@ export function startDuel(ctx) {
   };
 
   const input = createSequenceInput({
-    pool,
+    pool: equippedStyles(session),
     masteryOf: (style) => masteryOf(session, style.id),
     hintDelayMs: BALANCE.hintDelayMs.duel,
     now: () => performance.now(),
@@ -85,7 +84,8 @@ export function startDuel(ctx) {
     challenger,
     selfHpMax: BALANCE.hp.user,
     rankOf: () => artRank(session),
-    openLen: Math.max(...pool.map((s) => s.seq.length)),
+    openLen: () => Math.max(...equippedStyles(session).map((s) => s.seq.length)),
+    accessibility: () => session.accessibility,
     hooks: {
       onTelegraph(view) {
         clear(telegraphEl).appendChild(telegraphView(view));
@@ -95,7 +95,8 @@ export function startDuel(ctx) {
         ctx.pad.render();
       },
       onWindow() {
-        input.arm();
+        // 대련 중 자동 장착된 초식이 그 창부터 후보에 든다 — 슬롯 로그와 화면이 갈리지 않는다.
+        input.arm(equippedStyles(session));
         ctx.pad.render();
       },
       onTick(view) {

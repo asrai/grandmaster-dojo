@@ -47,6 +47,7 @@ export const BALANCE = {
   masteryTrainPct: 30,
   masteryFullPct: 100,
   hintDelayMs: { duel: 500, train: 0 },
+  ignoreHighlightAt: 3,
   threshold: { 'yuun-bo': 4, 'jeok-un': 4, 'haeng-un': 5, 'pa-un': 5 },
   rankPtsPerStyle: { 'yuun-bo': 1, 'jeok-un': 2, 'haeng-un': 3, 'pa-un': 4 },
   rankStep: 3,

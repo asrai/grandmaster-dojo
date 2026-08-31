@@ -73,7 +73,7 @@ export function startDispatch(ctx) {
   let instructed = null;
   let fired = false;
 
-  function renderIcons(view) {
+  function renderIcons(view, { flash = false } = {}) {
     // 그 수 예고의 파해를 제자가 보유하면 한 번 반짝여 지시를 유도한다 (강제 아님).
     const hintId = view.telegraphed
       ? styles.find((s) => s.counters === view.telegraphed.id)?.id ?? null
@@ -82,7 +82,7 @@ export function startDispatch(ctx) {
     for (const style of styles) {
       const icon = styleIcon(style, [
         style === instructed ? 'picked' : '',
-        style.id === hintId ? 'flash' : '',
+        flash && style.id === hintId ? 'flash' : '',
       ].filter(Boolean).join(' '));
       icon.addEventListener('click', () => {
         if (fired) return;
@@ -102,7 +102,8 @@ export function startDispatch(ctx) {
     challenger,
     selfHpMax: BALANCE.hp.disciple,
     rankOf: () => discipleRankOf(session.disciple, ART_ID),
-    openLen: Math.max(...styles.map((s) => s.seq.length)),
+    openLen: () => Math.max(...styles.map((s) => s.seq.length)),
+    accessibility: () => session.accessibility,
     hooks: {
       onTelegraph(view) {
         instructed = null;
@@ -123,7 +124,8 @@ export function startDispatch(ctx) {
             ]),
           ]));
         renderHp(view);
-        renderIcons(view);
+        // 반짝임은 그 수의 예고에서 한 번뿐 — 지시 탭으로 다시 그릴 때는 재생하지 않는다.
+        renderIcons(view, { flash: true });
       },
       onTick(view) {
         windowFill.style.width = `${view.ratio * 100}%`;
