@@ -5,7 +5,7 @@ import { isEffectiveSuccess } from '../../core.mjs';
 import { attrMark, clear, el, hpBar } from '../dom.mjs';
 import { ATTR_VIEW, GRADE_VIEW, attrLabel, gradeLabel, winAttrOf } from '../theme.mjs';
 import { SFX } from '../audio.mjs';
-import { createMatch } from '../match.mjs';
+import { PHASE, createMatch } from '../match.mjs';
 import { createSequenceInput } from '../sequence-input.mjs';
 import {
   DUEL_STAGES, artRank, challengerOfStage, equippedStyles, logEvent, masteryOf,
@@ -92,15 +92,11 @@ export function startDuel(ctx) {
         clear(verdictEl);
         windowFill.style.width = '100%';
         renderHp(view);
-        ctx.pad.detach();
+        ctx.pad.render();
       },
       onWindow() {
         input.arm();
-        ctx.pad.attach({
-          input,
-          masteryOf: (style) => masteryOf(session, style.id),
-          onFire: (fired) => { SFX.fire(); match.fire(fired); },
-        });
+        ctx.pad.render();
       },
       onTick(view) {
         windowFill.style.width = `${view.ratio * 100}%`;
@@ -114,6 +110,7 @@ export function startDuel(ctx) {
       },
       onVerdict(view) {
         const { verdict, fire } = view;
+        ctx.pad.render();
         // `opening` 이 스키마의 `state` 자리 — grade 만으로는 빈틈 발생률을 역산할 수 없다.
         logEvent(session, 'verdict', {
           grade: verdict.grade,
@@ -122,7 +119,6 @@ export function startDuel(ctx) {
           state: verdict.opening,
           who: 'user',
         });
-        ctx.pad.detach();
         renderHp(view);
         const gv = GRADE_VIEW[verdict.grade];
         clear(verdictEl).appendChild(el('div', {
@@ -151,6 +147,12 @@ export function startDuel(ctx) {
     },
   });
 
+  ctx.pad.attach({
+    input,
+    masteryOf: (style) => masteryOf(session, style.id),
+    accepting: () => match.phase === PHASE.WINDOW,
+    onFire: (fired) => { SFX.fire(); match.fire(fired); },
+  });
   match.start();
   return () => { match.stop(); ctx.pad.detach(); };
 }

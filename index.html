@@ -16,9 +16,11 @@ body {
   overscroll-behavior: none;
 }
 #app { display: flex; flex-direction: column; height: 100%; max-width: 520px; margin: 0 auto; }
+/* 플렉스 자식의 기본 min-width:auto 가 긴 한글 줄을 뷰포트 밖으로 밀어낸다. */
+#app, #screen, .card, .row, .telegraph, .head, .row-foot > * { min-width: 0; }
 
 #top {
-  display: flex; gap: 10px; align-items: center; padding: 10px 14px;
+  display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; padding: 10px 14px;
   border-bottom: 1px solid var(--line); font-size: 13px;
 }
 #top #label { font-weight: 700; color: var(--gold); }
@@ -54,8 +56,7 @@ button.ghost { background: transparent; }
 .row { border: 1px solid var(--line); border-left: 3px solid var(--attr); border-radius: 8px; padding: 8px; }
 .row.locked { opacity: .55; }
 .row-head { display: flex; gap: 6px; align-items: center; }
-.row-foot { display: flex; gap: 8px; justify-content: space-between; }
-.row-foot .dim { flex: 1; }
+.row-foot { display: flex; flex-direction: column; gap: 2px; }
 .row-actions { display: flex; gap: 6px; margin-top: 6px; }
 .meter { height: 5px; background: #0b0e13; border-radius: 3px; margin: 6px 0; overflow: hidden; }
 .meter i { display: block; height: 100%; background: var(--gold); }
@@ -71,7 +72,10 @@ button.ghost { background: transparent; }
 .hpbar { height: 10px; background: #0b0e13; border-radius: 5px; overflow: hidden; margin: 6px 0; }
 .hpbar i { display: block; height: 100%; background: linear-gradient(90deg, #ff5a5a, #ffd166); transition: width .25s; }
 
+/* 대련 화면은 남는 세로를 판정 자리로 채운다 — 등급이 화면 중앙에 떠야 읽힌다. */
+.arena { display: flex; flex-direction: column; flex: 1; }
 .arena .tg-slot { min-height: 74px; }
+.arena .verdict { flex: 1; }
 .telegraph { border: 1px solid var(--attr, var(--line)); border-radius: 8px; padding: 8px; display: flex; gap: 10px; align-items: center; }
 .telegraph.open { border-color: var(--gold); color: var(--gold); justify-content: center; font-weight: 700; }
 .tg-foe { display: flex; gap: 6px; align-items: center; flex: 1; }
@@ -108,6 +112,8 @@ button.ghost { background: transparent; }
 
 #pad { border-top: 1px solid var(--line); padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); background: var(--panel); }
 #pad[hidden] { display: none; }
+#pad.idle { opacity: .4; }
+#pad.idle #dpad button { pointer-events: none; }
 .pad-color { display: flex; gap: 6px; align-items: center; min-height: 28px; font-size: 16px; font-weight: 700; }
 .pad-color.none { color: var(--dim); }
 .pad-name { color: var(--dim); font-size: 12px; font-weight: 400; }
@@ -119,7 +125,7 @@ button.ghost { background: transparent; }
   display: grid; grid-template-columns: repeat(3, var(--hit)) 1fr;
   grid-template-rows: repeat(2, var(--hit)); gap: 6px; align-items: center; margin-top: 6px;
 }
-#dpad button { width: 100%; height: 100%; min-width: var(--hit); min-height: var(--hit); font-size: 22px; }
+#dpad button { width: 100%; height: 100%; min-height: var(--hit); font-size: 22px; }
 #dpad [data-dir="U"] { grid-area: 1 / 2; }
 #dpad [data-dir="L"] { grid-area: 2 / 1; }
 #dpad [data-dir="D"] { grid-area: 2 / 2; }

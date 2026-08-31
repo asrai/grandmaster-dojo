@@ -61,6 +61,7 @@ export function startTrain(ctx) {
     ctx.pad.attach({
       input,
       masteryOf: (s) => masteryOf(session, s.id),
+      accepting: () => !settled,
       onFire: (fired) => {
         if (settled) return;
         settled = true;

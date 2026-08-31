@@ -24,8 +24,11 @@ export function createPad() {
   );
   let active = null;
 
+  /** 응수 창 밖에서는 패드가 자리를 지키되 입력을 받지 않는다 — 사라지면 엄지가 매 수 자리를 잃는다. */
+  const accepting = () => Boolean(active) && (active.accepting ? active.accepting() : true);
+
   function press(dir, device) {
-    if (!active) return;
+    if (!accepting()) return;
     const result = active.input.press(dir, device);
     const button = dirButtons.get(dir);
     if (result.accepted) {
@@ -42,7 +45,7 @@ export function createPad() {
   }
 
   function reset() {
-    if (!active) return;
+    if (!accepting()) return;
     active.input.reset();
     SFX.reset();
     render();
@@ -65,6 +68,7 @@ export function createPad() {
       );
     }
 
+    root.classList.toggle('idle', !accepting());
     clear(candidatesEl).className = solo ? 'candidates solo' : 'candidates';
     for (const style of input.candidates) {
       const full = active.masteryOf(style) >= BALANCE.masteryFullPct;
@@ -73,6 +77,7 @@ export function createPad() {
         style: `--attr:${ATTR_VIEW[style.attr].color}`,
         title: style.gugyeol,
         onclick: () => {
+          if (!accepting()) return;
           const fired = input.tap(style);
           if (!fired) return;
           SFX.fire();
@@ -92,7 +97,7 @@ export function createPad() {
   }
 
   function onKeyDown(event) {
-    if (!active) return;
+    if (!accepting()) return;
     if (RESET_KEYS.has(event.key)) { event.preventDefault(); reset(); return; }
     const dir = KEYMAP[event.key];
     if (!dir) return;
@@ -116,6 +121,7 @@ export function createPad() {
     detach() {
       active = null;
       root.hidden = true;
+      root.classList.remove('idle');
       clear(candidatesEl);
       clear(seqEl);
       clear(colorEl);

@@ -41,8 +41,8 @@ The `gitleaks` binary is required, but the dotfiles `Brewfile` entry `brew "gitl
 
 ## Dev Workflow (HTML5)
 
-- No build step: `index.html` is the shipped artifact, and its runtime logic **must** live in the ESM modules under `src/`, pulled in with `<script type="module">`. ESM is same-origin only, so always serve with `python3 -m http.server 8000`; do not open `file://`. (`index.html` still carries the v0 inline script; the v2 state machine is what moves it onto `src/`, and `README.md`'s run instructions sync with it.)
-- `src/` is DOM-free by contract (`balance.mjs` data · `core.mjs` pure logic · `log.mjs` schema+buffer); that is what lets the Node harness import the same modules the browser runs.
+- No build step: `index.html` is the shipped artifact — markup and styles only, with its runtime logic in the ESM modules under `src/`, entered through `<script type="module" src="src/ui/app.mjs">`. ESM is same-origin only, so always serve with `python3 -m http.server 8000`; do not open `file://`.
+- **`src/` root is DOM-free by contract** (`balance.mjs` data · `core.mjs` pure logic · `log.mjs` schema+buffer); that is what lets the Node harness import the same modules the browser runs. Everything that touches the document lives under `src/ui/` — keep that boundary when adding modules.
 - All tunables live in the `BALANCE` object; the 6단 판정표 + 파라미터 10종 must be **data-driven JSON** (round-2 CTO#2) so balance tuning never touches logic.
 - Verification tiers: headless harness (`node tests/harness.mjs` — 판정 등급 · 피해 정수 · 상태 전이 assertions over the full 6단 × 빈틈 × 선기 matrix) → human-speed bot in Chrome (pace regression, logged to `docs/balance-log.md`) → manual playtest. Bot numbers are reference values, never a substitute for human measurement.
 - No engine workflow variant exists for HTML5 — see `docs/TODO-workflow-variants.md` for the CI job still to be authored.
