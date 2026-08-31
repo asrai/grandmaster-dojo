@@ -3,22 +3,29 @@ name: CI
 # 이 repo 의 유일한 검증 잡. `main protection` ruleset 의 required status check
 # 로 등록되므로 **경로 필터를 두지 않는다** — 필터에 걸린 PR 은 `ci` 를 영원히
 # 보고하지 않아 무음 차단된다 (#6).
+# python3 은 러너 이미지에 딸린 것을 그대로 쓴다 — comment-lint 는 stdlib 전용이라
+# 버전 고정의 이득이 setup-python 한 스텝의 비용을 넘지 않는다.
 
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   # main 푸시는 취소하지 않는다 — 중간 커밋이 완결된 `ci` 없이 남는다
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   ci:
+    # ruleset `main protection` 의 required context 문자열 — 개명하면 이후 모든 PR 이
+    # 없는 검사를 기다리며 무음 차단된다 (ruleset 을 같은 세션에서 함께 고칠 것).
+    name: ci
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -33,8 +40,12 @@ jobs:
 
       - name: 구문 검사 (ESM 모듈 전량)
         run: |
-          echo "대상 .mjs $(git ls-files '*.mjs' | wc -l | tr -d ' ')건"
-          git ls-files -z '*.mjs' | xargs -0 -n1 node --check
+          set -o pipefail
+          count=$(git ls-files '*.mjs' | wc -l | tr -d ' ')
+          echo "대상 .mjs ${count}건"
+          # 대상 0건은 통과가 아니라 검사가 사라진 것이다
+          [ "$count" -gt 0 ] || { echo "::error::.mjs 대상 0건 — 구문 검사가 무음 통과했다"; exit 1; }
+          git ls-files -z '*.mjs' | xargs -0 -r -n1 node --check
 
       - name: 헤드리스 하네스
         # 판정은 파일 존재가 아니라 exit code 다. green 경로의
@@ -44,7 +55,26 @@ jobs:
       - name: comment-lint self-test
         run: python3 scripts/comment-lint.py --self-test
 
+      - name: comment-lint 코퍼스 스캔 (advisory)
+        # ratchet 스텝은 변경 파일만 보므로 `.mjs` 를 안 건드린 PR 에서는 추출기가
+        # 실파일에 한 번도 돌지 않는다. 이 스텝이 매 run 전량을 파싱해 계수를 로그에
+        # 남기고, 위반이 아니라 **추출기 비정상 종료**만 잡의 실패로 올린다.
+        run: |
+          set -o pipefail
+          rc=0
+          python3 scripts/comment-lint.py --root . > lint-full.log 2>&1 || rc=$?
+          cat lint-full.log
+          grep -q '^## comment-lint:' lint-full.log \
+            || { echo "::error::comment-lint 가 코퍼스에서 비정상 종료했다 (rc=$rc)"; exit 1; }
+
       - name: comment-lint (ratchet)
         env:
           BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-        run: python3 scripts/comment-lint.py --root . --changed-only --base "$BASE"
+        run: |
+          # PR 에서는 base 가 반드시 존재한다 — 미해결이면 lint 가 fail-open 으로
+          # 무음 스킵되므로, required check 가 스스로 꺼지는 대신 여기서 죽는다.
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            git rev-parse --verify "$BASE^{commit}" >/dev/null \
+              || { echo "::error::ratchet base $BASE 미해결 — comment-lint 가 무음 스킵된다"; exit 1; }
+          fi
+          python3 scripts/comment-lint.py --root . --changed-only --base "$BASE"

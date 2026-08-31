@@ -566,8 +566,7 @@ def ratchet_filter(current: list[tuple[str, str]],
 def target_files(root: str, excludes: tuple[str, ...]) -> list[str]:
     try:
         out = subprocess.run(
-            ["git", "-C", root, "ls-files", "*.py", "*.gd", "*.cs",
-             "*.mjs", "*.js", "*.cjs"],
+            ["git", "-C", root, "ls-files"] + [f"*{e}" for e in EXTRACTORS],
             capture_output=True, text=True, check=True).stdout
         paths = out.splitlines()
     except (subprocess.CalledProcessError, FileNotFoundError):
@@ -809,6 +808,11 @@ def self_test() -> int:
            "cs: block comment lines counted")
     _, adv = check_file(cs, 15)
     expect(any("A2" in a for a in adv), "cs: A2 value-history flagged")
+
+    # 상류 템플릿 전파가 이 파일을 덮으면 JS 확장자가 조용히 사라진다 — CI 는
+    # 계속 green 이 되므로 등록 자체를 단정으로 잡는다.
+    expect(all(e in EXTRACTORS for e in (".mjs", ".js", ".cjs")),
+           "js: JS-family extractor registered")
 
     js = extract_js("f.mjs", _FIX_JS)
     expect(any(c.is_doc for c in js.comments), "js: /** doc detected")
