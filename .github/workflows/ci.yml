@@ -47,6 +47,12 @@ jobs:
           [ "$count" -gt 0 ] || { echo "::error::.mjs 대상 0건 — 구문 검사가 무음 통과했다"; exit 1; }
           git ls-files -z '*.mjs' | xargs -0 -r -n1 node --check
 
+      - name: import 해석 검사
+        # 위 구문 검사가 못 보는 상대 경로·named export 파손을 잡는다. 별도 잡이 아니라
+        # 이 잡의 스텝인 것은 ruleset `main protection` 의 required context 가 `ci` 하나뿐이라
+        # 잡을 늘리면 그 등록을 다시 손대야 하기 때문이다.
+        run: node scripts/check-imports.mjs
+
       - name: 헤드리스 하네스
         # 판정은 파일 존재가 아니라 exit code 다. green 경로의
         # `단정 N건 · 실패 0건` stdout 이 "안 걸렸다" 와 "안 돌았다" 를 가른다.
