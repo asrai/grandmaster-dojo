@@ -25,26 +25,33 @@ export const LOG_SCHEMA = {
   session:  { fields: ['tester_role', 'device'], enums: { tester_role: ['self', 'friend', 'bot'] } },
 };
 
+function validate(event, fields) {
+  const spec = LOG_SCHEMA[event];
+  if (!spec) throw new Error(`미정의 로그 이벤트: ${event}`);
+  for (const f of spec.fields) {
+    if (!(f in fields)) throw new Error(`${event} 필드 결손: ${f}`);
+  }
+  for (const f of Object.keys(fields)) {
+    if (!spec.fields.includes(f)) throw new Error(`${event} 스키마 밖 필드: ${f}`);
+  }
+  for (const [f, allowed] of Object.entries(spec.enums ?? {})) {
+    if (!allowed.includes(fields[f])) throw new Error(`${event}.${f} 허용 밖 값: ${fields[f]}`);
+  }
+}
+
 /**
- * 세션 로그 버퍼. `now` 를 주입받아 하네스가 결정적으로 돌 수 있게 한다.
- * @param {{now?: () => number}} [opts]
+ * 세션 로그 버퍼.
+ * @param {object} [opts]
+ * @param {() => number} [opts.now] 주입 클럭 — 하네스가 결정적으로 돌기 위한 자리
+ * @param {boolean} [opts.strict] 스키마 위반을 던질지. 플레이 중에는 끄고 적재를 잇는다 —
+ *   판정 하나가 세션 전체 로그를 날리는 것이 스키마 드리프트보다 비싸다 (드리프트는 하네스가 잡는다).
  */
-export function createLogBuffer({ now = () => Date.now() } = {}) {
+export function createLogBuffer({ now = () => Date.now(), strict = true } = {}) {
   const entries = [];
   const t0 = now();
 
   function log(event, fields = {}) {
-    const spec = LOG_SCHEMA[event];
-    if (!spec) throw new Error(`미정의 로그 이벤트: ${event}`);
-    for (const f of spec.fields) {
-      if (!(f in fields)) throw new Error(`${event} 필드 결손: ${f}`);
-    }
-    for (const f of Object.keys(fields)) {
-      if (!spec.fields.includes(f)) throw new Error(`${event} 스키마 밖 필드: ${f}`);
-    }
-    for (const [f, allowed] of Object.entries(spec.enums ?? {})) {
-      if (!allowed.includes(fields[f])) throw new Error(`${event}.${f} 허용 밖 값: ${fields[f]}`);
-    }
+    if (strict) validate(event, fields);
     const entry = { event, [TIME_FIELD]: now() - t0, ...fields };
     entries.push(entry);
     return entry;
@@ -53,7 +60,8 @@ export function createLogBuffer({ now = () => Date.now() } = {}) {
   return {
     entries,
     log,
-    toJSON: () => JSON.stringify(entries),
+    // `toJSON` 이면 JSON.stringify(buffer) 가 이 문자열을 다시 감싸 이중 인코딩된다.
+    serialize: () => JSON.stringify(entries),
     clear: () => { entries.length = 0; },
   };
 }

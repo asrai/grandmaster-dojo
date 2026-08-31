@@ -60,8 +60,9 @@ export const BALANCE = {
   discipleRankMax: 10,
   discipleFireRatio: 0.6,
 
-  // 노출·재화·입력 (REQ-206·604 · REQ-101)
-  winColorHintExchanges: Infinity,
+  // 노출·재화·입력 (REQ-206·604 · REQ-101).
+  // `winColorHintExchanges` 는 프로토 상시(∞) 지만 JSON 왕복에서 Infinity 가 null 이 되므로 유한 상한을 쓴다.
+  winColorHintExchanges: Number.MAX_SAFE_INTEGER,
   simEfficiency: 0.1,
   buttonHitPx: 56,
   reward: { duelWin: 30, dispatchWin: 50 },

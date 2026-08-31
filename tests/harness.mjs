@@ -139,6 +139,10 @@ suite('데이터 무결성 (REQ-501·502·503·505)', () => {
   ], '적 초식 속성·길이·D 시드');
   for (const f of FOE_STYLES) eq(f.d, BALANCE.damageByLen[f.len], `${f.id} D 가 길이별 시드와 일치`);
   deepEq(FOE_STYLES.filter((s) => s.finisher).map((s) => s.id), ['delta'], '절초는 δ 하나');
+  for (const f of FOE_STYLES) {
+    ok(!f.counters || f.finisher, `${f.id} — 파해 대상을 가진 적 초식은 절초여야 역파가 성립한다`);
+  }
+  ok(assertCounterIntegrity(STYLES, [...STYLES, ...FOE_STYLES]), '유저 초식만 떼어 검사해도 green');
 
   deepEq(CHALLENGERS.map((c) => [c.id, ...c.styles]), [
     ['A-1', 'alpha'], ['A-2', 'alpha', 'beta'], ['A-3', 'alpha', 'beta', 'gamma'],
@@ -202,7 +206,11 @@ suite('통합 로그 스키마 (REQ-601)', () => {
   eq(entry[TIME_FIELD], 250, `전 이벤트 공통 ${TIME_FIELD}`);
   buf.log('reset');
   eq(buf.entries.length, 2, '버퍼 적재');
-  eq(JSON.parse(buf.toJSON()).length, 2, 'JSON 내보내기');
+  eq(JSON.parse(buf.serialize()).length, 2, 'JSON 내보내기');
+  eq(JSON.parse(JSON.stringify(buf.entries)).length, 2, '버퍼를 통째로 직렬화해도 이중 인코딩되지 않는다');
+  const loose = createLogBuffer({ now: () => 0, strict: false });
+  loose.log('narrow', {});
+  eq(loose.entries.length, 1, '비엄격 버퍼는 위반에도 적재를 잇는다');
 
   throws(() => buf.log('nope', {}), '미정의 이벤트는 throw', '미정의 로그 이벤트');
   throws(() => buf.log('narrow', {}), '필드 결손은 throw', '필드 결손');
@@ -283,6 +291,10 @@ suite('케이스 5 — 6단 판정 전 조합 (REQ-202·203·204·205)', () => {
     '빈틈이 아닌데 상대 초식이 없으면 throw', '상대 초식이 없다');
   throws(() => judge({ selfStyle: styleById('yuun-bo'), foeStyle: foeStyleById('alpha'), selfRank: 1, r: 1.5 }),
     '선기 잔여 비율 범위 밖은 throw', '0~1 밖');
+  throws(() => judge({ selfStyle: styleById('yuun-bo'), foeStyle: foeStyleById('alpha') }),
+    '성 결손은 NaN 이 아니라 throw', '성이 유한한 수가 아니다');
+  throws(() => judge({ selfStyle: styleById('yuun-bo'), foeStyle: foeStyleById('alpha'), selfRank: 1, foePower: NaN }),
+    '상대 내공 결손은 NaN 이 아니라 throw', '상대 내공이 유한한 수가 아니다');
 
   // 파해와 역파가 동시에 성립하면 완파가 이긴다 — 시드 데이터에는 충돌 쌍이 없어 합성한다.
   const mutualSelf = { id: 'm-self', attr: 'fast', d: 10, counters: 'm-foe' };
@@ -396,6 +408,8 @@ suite('전수 = 복사 (REQ-307·401)', () => {
   let disciple = createDisciple();
   eq(canTransmit(master, 'yuun-geom', disciple), true, '12성 + 슬롯 여유 = 전수 가능');
   eq(canTransmit(createProgress(), 'yuun-geom', disciple), false, '1성은 전수 불가');
+  eq(discipleRankOf(disciple, 'yuun-geom'), null, '전수 전 제자 성은 예외가 아니라 null');
+  deepEq(discipleStyles(disciple, 'yuun-geom'), [], '전수 전 제자 초식은 빈 배열');
 
   disciple = transmit(master, disciple, 'yuun-geom');
   deepEq(disciple.arts['yuun-geom'].styles, ['yuun-bo', 'jeok-un', 'haeng-un'],
@@ -417,7 +431,6 @@ suite('제자 자동 선택 (REQ-403)', () => {
   eq(pick({ foeStyle: foeStyleById('alpha') }).id, 'yuun-bo', 'α(강) 에는 쾌로 우세');
   eq(pick({ foeStyle: foeStyleById('gamma') }).id, 'haeng-un', 'γ(쾌) 에는 정으로 우세');
   eq(pick({ foeStyle: delta }).id, 'jeok-un', 'δ(정) 에는 강으로 우세');
-  eq(pick({ foeStyle: delta }).id !== 'yuun-bo', true, 'δ 예고 수에는 그 파해 대상이 제외된다');
 
   // 역파 회피는 절초가 예고된 수에만 걸린다 — 그 밖의 수에서 완파를 버리지 않는다.
   eq(judge({ selfStyle: pick({ foeStyle: foeStyleById('alpha') }), foeStyle: foeStyleById('alpha'), selfRank: 1 }).grade,
@@ -468,6 +481,7 @@ function simulateDispatch({ challengerId, disciple, setId }) {
     // 빈틈 수에도 예고 순번은 전진한다 — 상대가 그 수를 잃는 것으로 본다.
     const telegraphed = foeOpen ? null : foeStyleById(challenger.styles[i % challenger.styles.length]);
     const selfStyle = selectDiscipleStyle({ styles, foeStyle: telegraphed, rankOf: () => rank });
+    if (!selfStyle) throw new Error(`${challenger.id} ${i + 1}수 — 낼 초식이 없다`);
     const verdict = judge({ selfStyle, foeStyle: telegraphed, selfRank: rank, foePower, r, foeOpen });
     foeHp -= verdict.dmgOut;
     selfHp -= verdict.dmgIn;
@@ -508,7 +522,7 @@ suite('BALANCE 파라미터 census (REQ-606)', () => {
     trainGraduateHits: 3, masteryTrainPct: 30, masteryFullPct: 100,
     rankStep: 3, rankMax: 12, slots: 3, equipMasteryPct: 30,
     discipleStartRank: 1, discipleRankMax: 10, discipleFireRatio: 0.6,
-    winColorHintExchanges: Infinity, simEfficiency: 0.1, buttonHitPx: 56,
+    winColorHintExchanges: Number.MAX_SAFE_INTEGER, simEfficiency: 0.1, buttonHitPx: 56,
   };
   for (const [key, value] of Object.entries(SEEDS)) eq(BALANCE[key], value, `BALANCE.${key}`);
   deepEq(BALANCE.damageByLen, { 3: 10, 4: 14, 5: 20 }, 'BALANCE.damageByLen');
@@ -519,6 +533,9 @@ suite('BALANCE 파라미터 census (REQ-606)', () => {
   deepEq(BALANCE.hp, { user: 100, disciple: 100, 'A-1': 40, 'A-2': 55, 'A-3': 70, B: 80 }, 'BALANCE.hp');
   deepEq(BALANCE.challengerPower, { A: 1, B: 1.1 }, 'BALANCE.challengerPower');
   deepEq(BALANCE.reward, { duelWin: 30, dispatchWin: 50 }, 'BALANCE.reward');
+  deepEq(JSON.parse(JSON.stringify(BALANCE)), JSON.parse(JSON.stringify(BALANCE)), 'BALANCE 는 JSON 직렬화 가능');
+  eq(JSON.parse(JSON.stringify(BALANCE)).winColorHintExchanges, BALANCE.winColorHintExchanges,
+    '상시 힌트 상한이 JSON 왕복에서 보존된다');
   deepEq(Object.entries(BALANCE.grades).map(([id, g]) => [id, g.label, g.order, g.outPct, g.inPct, g.opening]), [
     ['crush', '완파', 0, 1, 0, 'foe'],
     ['advantage', '우세', 1, 0.6, 0.2, null],
@@ -530,6 +547,13 @@ suite('BALANCE 파라미터 census (REQ-606)', () => {
 });
 
 // ------------------------------------------------------------------ 결과
+
+// suite() 가 예외를 삼키므로, 하한이 없으면 스위트가 통째로 건너뛰어도 실패 1건으로만 보인다.
+const MIN_CHECKS = 950;
+if (checks < MIN_CHECKS) {
+  failures += 1;
+  console.error(`  ✗ 단정 수 ${checks} < 하한 ${MIN_CHECKS} — 스위트가 조용히 건너뛰어졌다`);
+}
 
 console.log(`\n단정 ${checks}건 · 실패 ${failures}건`);
 if (failures > 0) {

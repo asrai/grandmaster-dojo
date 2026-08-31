@@ -40,8 +40,8 @@ export function assertPrefixFree(styles) {
 }
 
 /** 파해는 초식 1:1 — 한 초식을 두 초식이 파하면 완파 판정이 비결정적이 된다 (REQ-505). */
-export function assertCounterIntegrity(styles) {
-  const ids = new Set(styles.map((s) => s.id));
+export function assertCounterIntegrity(styles, universe = styles) {
+  const ids = new Set(universe.map((s) => s.id));
   const counteredBy = new Map();
   for (const s of styles) {
     if (!s.counters) continue;
@@ -98,6 +98,8 @@ function gradeOf({ selfStyle, foeStyle, foeOpen }) {
  */
 export function judge({ selfStyle, foeStyle = null, selfRank, foePower = 1, r = 0, foeOpen = false }) {
   if (!(r >= 0 && r <= 1)) throw new Error(`선기 잔여 비율이 0~1 밖: ${r}`);
+  if (!Number.isFinite(selfRank)) throw new Error(`성이 유한한 수가 아니다: ${selfRank}`);
+  if (!Number.isFinite(foePower)) throw new Error(`상대 내공이 유한한 수가 아니다: ${foePower}`);
   const grade = gradeOf({ selfStyle, foeStyle, foeOpen });
   const rule = BALANCE.grades[grade];
   const selfPower = powerOf(selfRank);
@@ -240,9 +242,10 @@ export function applyEffectiveSuccess(progress, styleId, { mode }) {
 export const createDisciple = () => ({ level: DISCIPLE.level, arts: {} });
 
 export const discipleRankOf = (disciple, setId) =>
-  rankForPts(disciple.arts[setId].rankPts, { max: BALANCE.discipleRankMax });
+  (disciple.arts[setId] ? rankForPts(disciple.arts[setId].rankPts, { max: BALANCE.discipleRankMax }) : null);
 
-export const discipleStyles = (disciple, setId) => disciple.arts[setId].styles.map(styleById);
+export const discipleStyles = (disciple, setId) =>
+  (disciple.arts[setId] ? disciple.arts[setId].styles.map(styleById) : []);
 
 /** 전수 조건 (REQ-307) — 무공이 전수 성에 닿고 제자 무공 슬롯에 여유가 있을 것. */
 export function canTransmit(progress, setId, disciple) {
@@ -289,3 +292,7 @@ export function selectDiscipleStyle({ styles, foeStyle = null, rankOf: rankFn = 
   if (same.length) return same.sort(byRank)[0];
   return pool.slice().sort(byRank)[0];
 }
+
+const ALL_STYLES = [...STYLES, ...FOE_STYLES];
+assertPrefixFree(STYLES);
+assertCounterIntegrity(ALL_STYLES);
