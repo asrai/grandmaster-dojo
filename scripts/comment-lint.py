@@ -272,6 +272,7 @@ _JS_REGEX_PREV_WORDS = frozenset((
     "return", "typeof", "instanceof", "in", "of", "case", "delete", "void",
     "do", "else", "yield", "await", "new", "throw",
 ))
+_JS_CONTROL_HEADS = frozenset(("if", "for", "while", "switch", "catch", "with"))
 
 
 def js_regex_at(src: str, i: int) -> bool:
@@ -290,12 +291,36 @@ def js_regex_at(src: str, i: int) -> bool:
         return False
     if ch in _JS_REGEX_PREV_PUNCT:
         return True
+    if ch == ")":
+        return js_closes_control_head(src, j)
     if ch.isalnum() or ch in "_$":
         k = j
         while k >= 0 and (src[k].isalnum() or src[k] in "_$"):
             k -= 1
         return src[k + 1:j + 1] in _JS_REGEX_PREV_WORDS
     return False
+
+
+def js_closes_control_head(src: str, j: int) -> bool:
+    """`src[j] == ')'` — `if (…)` 류 헤드를 닫는가? 그렇다면 뒤따르는 `/` 는 정규식."""
+    depth, k = 0, j
+    while k >= 0:
+        if src[k] == ")":
+            depth += 1
+        elif src[k] == "(":
+            depth -= 1
+            if depth == 0:
+                break
+        k -= 1
+    if k < 0:
+        return False
+    k -= 1
+    while k >= 0 and src[k] in " \t\r\n":
+        k -= 1
+    end = k
+    while k >= 0 and (src[k].isalnum() or src[k] in "_$"):
+        k -= 1
+    return src[k + 1:end + 1] in _JS_CONTROL_HEADS
 
 
 def js_skip_quote(src: str, i: int, n: int) -> int:
@@ -323,51 +348,14 @@ def js_skip_regex(src: str, i: int, n: int) -> int:
     return i + 1  # unterminated on its line — it was a division after all
 
 
-def js_skip_template(src: str, i: int, n: int) -> int:
-    j = i + 1
-    while j < n:
-        c = src[j]
-        if c == "\\":
-            j += 2
-        elif c == "`":
-            return j + 1
-        elif c == "$" and src[j + 1:j + 2] == "{":
-            j = js_skip_interp(src, j + 2, n)
-        else:
-            j += 1
-    return n
-
-
-def js_skip_interp(src: str, i: int, n: int) -> int:
-    """Skip a `${...}` body; comments inside one are given up, not mis-read."""
-    depth = 1
-    while i < n and depth:
-        c = src[i]
-        if c == "{":
-            depth += 1
-            i += 1
-        elif c == "}":
-            depth -= 1
-            i += 1
-        elif c in "\"'":
-            i = js_skip_quote(src, i, n)
-        elif c == "`":
-            i = js_skip_template(src, i, n)
-        elif c == "/" and js_regex_at(src, i):
-            i = js_skip_regex(src, i, n)
-        elif c == "\\":
-            i += 2
-        else:
-            i += 1
-    return i
-
-
 def extract_js(path: str, src: str) -> FileResult:
     r = FileResult(path)
     lines = src.splitlines()
     r.nonblank = sum(1 for l in lines if l.strip())
     i, n = 0, len(src)
     line, col = 1, 0
+    # 열려 있는 템플릿 문맥: "tmpl" = 리터럴 본문, ["interp", depth] = `${…}` 안의 코드
+    stack: list = []
 
     def advance(k: int) -> None:
         nonlocal i, line, col
@@ -385,6 +373,18 @@ def extract_js(path: str, src: str) -> FileResult:
     while i < n:
         ch = src[i]
         nxt = src[i + 1] if i + 1 < n else ""
+        if stack and stack[-1] == "tmpl":
+            if ch == "\\":
+                advance(2)
+            elif ch == "`":
+                stack.pop()
+                advance(1)
+            elif ch == "$" and nxt == "{":
+                stack.append(["interp", 0])
+                advance(2)
+            else:
+                advance(1)
+            continue
         if ch == "/" and nxt == "/":
             start_line, start_col = line, col
             j = src.find("\n", i)
@@ -407,11 +407,21 @@ def extract_js(path: str, src: str) -> FileResult:
                 ))
             advance(j + 2 - i)
         elif ch == "`":
-            advance(js_skip_template(src, i, n) - i)
+            stack.append("tmpl")
+            advance(1)
         elif ch in "\"'":
             advance(js_skip_quote(src, i, n) - i)
         elif ch == "/" and js_regex_at(src, i):
             advance(js_skip_regex(src, i, n) - i)
+        elif ch == "{" and stack:
+            stack[-1][1] += 1
+            advance(1)
+        elif ch == "}" and stack:
+            if stack[-1][1] == 0:
+                stack.pop()  # `${…}` 를 닫고 템플릿 본문으로 돌아간다
+            else:
+                stack[-1][1] -= 1
+            advance(1)
         else:
             advance(1)
     return r
@@ -766,6 +776,8 @@ const t = `template with // no comment and ${x ? "a" : `b`} inside`;
 const re = /https:\\/\\//;  // trailing comment survives the regex
 const n = i++ / 2;  // division keeps its trailing comment
 const s2 = `${t.replace(/[{]/g, "")} tail`;  // interp regex must not desync
+if (ok) /https?:\\/\\//.test("foo.py:123");  // control-head regex is not a comment
+const c1 = `${/* interp block vision.mjs:7 */ v}`;
 // normal comment was 0.29 → 0.38
 // see vision.py:140 and core.mjs:88 for parity
 '''
@@ -828,9 +840,13 @@ def self_test() -> int:
     expect(any(c.text.startswith("interp regex must not desync")
                for c in js.comments),
            "js: a regex inside `${...}` does not break out of the template")
+    expect(not any("foo.py:123" in c.text for c in js.comments),
+           "js: a regex after a control head is not opened as a comment")
+    expect(any("interp block" in c.text for c in js.comments),
+           "js: a comment inside `${...}` is extracted, not skipped")
     js_fails = msgs("f.mjs", _FIX_JS, ".mjs")
-    expect(sum("R2" in f for f in js_fails) == 2,
-           f"js: 2 R2 hits (py + mjs refs), got {js_fails}")
+    expect(sum("R2" in f for f in js_fails) == 3,
+           f"js: 3 R2 hits (py + mjs refs + interp block), got {js_fails}")
     _, js_adv = check_file(js, 15)
     expect(any("A2" in a for a in js_adv), "js: A2 value-history flagged")
 
