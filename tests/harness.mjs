@@ -40,15 +40,25 @@ function eq(actual, expected, message) {
   ok(Object.is(actual, expected), `${message} — 기대 ${JSON.stringify(expected)}, 실제 ${JSON.stringify(actual)}`);
 }
 
+// NaN·Infinity·undefined 는 JSON 에서 전부 null 로 접히므로 별도 토큰으로 남긴다.
+const stable = (value) => JSON.stringify(value, (_key, v) => {
+  if (typeof v === 'number' && !Number.isFinite(v)) return `«${String(v)}»`;
+  return v === undefined ? '«undefined»' : v;
+});
+
 function deepEq(actual, expected, message) {
-  eq(JSON.stringify(actual), JSON.stringify(expected), message);
+  eq(stable(actual), stable(expected), message);
 }
 
-function throws(fn, message) {
+function throws(fn, message, match) {
   checks += 1;
   try {
     fn();
-  } catch {
+  } catch (err) {
+    if (match && !String(err.message).includes(match)) {
+      failures += 1;
+      console.error(`  ✗ [${currentCase}] ${message} — 예외 메시지에 "${match}" 가 없다: ${err.message}`);
+    }
     return;
   }
   failures += 1;
@@ -99,15 +109,15 @@ suite('데이터 무결성 (REQ-501·502·503·505)', () => {
   throws(() => assertPrefixFree([
     { id: 'a', seq: ['D', 'R'] },
     { id: 'b', seq: ['D', 'R', 'U'] },
-  ]), '접두어 쌍은 assertPrefixFree 가 잡는다');
+  ]), '접두어 쌍은 assertPrefixFree 가 잡는다', 'prefix-free 위반');
   throws(() => assertPrefixFree([
     { id: 'a', seq: ['D', 'R'] },
     { id: 'b', seq: ['D', 'R'] },
-  ]), '동일 시퀀스는 assertPrefixFree 가 잡는다');
+  ]), '동일 시퀀스는 assertPrefixFree 가 잡는다', 'prefix-free 위반');
   throws(() => assertCounterIntegrity([
     { id: 'x', counters: 'z' }, { id: 'y', counters: 'z' }, { id: 'z', counters: null },
-  ]), '한 초식을 둘이 파하면 1:1 위반');
-  throws(() => assertCounterIntegrity([{ id: 'x', counters: 'nope' }]), '미존재 파해 대상은 위반');
+  ]), '한 초식을 둘이 파하면 1:1 위반', '파해 1:1 위반');
+  throws(() => assertCounterIntegrity([{ id: 'x', counters: 'nope' }]), '미존재 파해 대상은 위반', '파해 대상 미존재');
 
   eq(STYLES.length, 4, '유운검법 초식 수');
   const columns = ['id', 'set', 'order', 'name', 'hanja', 'attr', 'seq', 'd', 'counters', 'gugyeol'];
@@ -138,6 +148,10 @@ suite('데이터 무결성 (REQ-501·502·503·505)', () => {
     ok(BALANCE.hp[c.id] !== undefined, `${c.id} HP 시드 존재`);
     ok(BALANCE.challengerPower[c.group] !== undefined, `${c.group} 내공 시드 존재`);
     for (const sid of c.styles) ok(foeStyleById(sid), `${c.id} 의 초식 ${sid} 가 테이블에 존재`);
+  }
+  for (const c of CHALLENGERS) {
+    const finishers = c.styles.map(foeStyleById).filter((s) => s.finisher);
+    ok(finishers.length <= 1, `${c.id} 절초 ≤ 1 — finisherOf 가 축약하지 않는다`);
   }
   eq(CHALLENGERS.filter((c) => c.group === 'A').every((c) => finisherOf(c) === null), true, 'A 는 절초 없음');
   eq(finisherOf(challengerById('B')).id, 'delta', 'B 의 절초는 δ');
@@ -190,10 +204,10 @@ suite('통합 로그 스키마 (REQ-601)', () => {
   eq(buf.entries.length, 2, '버퍼 적재');
   eq(JSON.parse(buf.toJSON()).length, 2, 'JSON 내보내기');
 
-  throws(() => buf.log('nope', {}), '미정의 이벤트는 throw');
-  throws(() => buf.log('narrow', {}), '필드 결손은 throw');
-  throws(() => buf.log('narrow', { styleId: 'a', extra: 1 }), '스키마 밖 필드는 throw');
-  throws(() => buf.log('session', { tester_role: 'ghost', device: 'keyboard' }), '열거 밖 값은 throw');
+  throws(() => buf.log('nope', {}), '미정의 이벤트는 throw', '미정의 로그 이벤트');
+  throws(() => buf.log('narrow', {}), '필드 결손은 throw', '필드 결손');
+  throws(() => buf.log('narrow', { styleId: 'a', extra: 1 }), '스키마 밖 필드는 throw', '스키마 밖 필드');
+  throws(() => buf.log('session', { tester_role: 'ghost', device: 'keyboard' }), '열거 밖 값은 throw', '허용 밖 값');
 });
 
 // ------------------------------------------ 3. 응수 창 · 파생 수식 (REQ-201·203·204·210)
@@ -265,6 +279,15 @@ suite('케이스 5 — 6단 판정 전 조합 (REQ-202·203·204·205)', () => {
   eq(chained.dmgIn, 0, '상대 빈틈에는 받는 피해가 없다');
   eq(judge({ selfStyle: null, foeStyle: foeStyleById('alpha'), selfRank: 1, foeOpen: true }).dmgIn, 0,
     '상대 빈틈 중 미완주도 무피해');
+  throws(() => judge({ selfStyle: styleById('yuun-bo'), foeStyle: null, selfRank: 1 }),
+    '빈틈이 아닌데 상대 초식이 없으면 throw', '상대 초식이 없다');
+  throws(() => judge({ selfStyle: styleById('yuun-bo'), foeStyle: foeStyleById('alpha'), selfRank: 1, r: 1.5 }),
+    '선기 잔여 비율 범위 밖은 throw', '0~1 밖');
+
+  // 파해와 역파가 동시에 성립하면 완파가 이긴다 — 시드 데이터에는 충돌 쌍이 없어 합성한다.
+  const mutualSelf = { id: 'm-self', attr: 'fast', d: 10, counters: 'm-foe' };
+  const mutualFoe = { id: 'm-foe', attr: 'fast', d: 10, finisher: true, counters: 'm-self' };
+  eq(judge({ selfStyle: mutualSelf, foeStyle: mutualFoe, selfRank: 1 }).grade, 'crush', '파해가 역파보다 우선');
 });
 
 // ------------------------------------------- 5. 손계산 골든값 (REQ-203 산술 고정)
@@ -361,8 +384,9 @@ suite('케이스 6 — 최소 경로 재현 (REQ-302·304)', () => {
   eq(grad.changes.mastery.to, BALANCE.masteryTrainPct, '수련 3회 = 졸업 숙련 30%');
   eq(BALANCE.masteryTrainPct, BALANCE.equipMasteryPct, '졸업 숙련 = 장착 조건');
 
-  throws(() => learn(createProgress(), 'haeng-un'), '순차 해금 밖 초식 학습은 throw');
-  throws(() => applyEffectiveSuccess(createProgress(), 'yuun-bo', { mode: 'nope' }), '알 수 없는 적립 모드는 throw');
+  throws(() => learn(createProgress(), 'haeng-un'), '순차 해금 밖 초식 학습은 throw', '해금되지 않은 초식');
+  throws(() => applyEffectiveSuccess(createProgress(), 'yuun-bo', { mode: 'nope' }), '알 수 없는 적립 모드는 throw', '알 수 없는 적립 모드');
+  throws(() => applyEffectiveSuccess(createProgress(), 'jeok-un', { mode: 'duel' }), '미학습 초식 적립은 throw', '학습하지 않은 초식');
 });
 
 // ------------------------------------------------- 7. 전수 = 복사 (REQ-307·401)
@@ -380,7 +404,7 @@ suite('전수 = 복사 (REQ-307·401)', () => {
   eq(rankOf(master, 'yuun-geom'), BALANCE.rankMax, '사부는 성을 유지한다');
   eq(masteryPct(master, 'yuun-bo'), BALANCE.masteryFullPct, '사부는 숙련을 유지한다');
   eq(canTransmit(master, 'yuun-geom', disciple), false, '슬롯이 차면 재전수 불가');
-  throws(() => transmit(master, disciple, 'yuun-geom'), '조건 미충족 전수는 throw');
+  throws(() => transmit(master, disciple, 'yuun-geom'), '조건 미충족 전수는 throw', '전수 조건 미충족');
 });
 
 // -------------------------------------- 8. 제자 자동 선택 (REQ-403)
@@ -392,13 +416,16 @@ suite('제자 자동 선택 (REQ-403)', () => {
 
   eq(pick({ foeStyle: foeStyleById('alpha') }).id, 'yuun-bo', 'α(강) 에는 쾌로 우세');
   eq(pick({ foeStyle: foeStyleById('gamma') }).id, 'haeng-un', 'γ(쾌) 에는 정으로 우세');
-  eq(pick({ foeStyle: delta, finisherStyle: delta }).id, 'jeok-un', 'δ(정) 에는 강으로 우세');
+  eq(pick({ foeStyle: delta }).id, 'jeok-un', 'δ(정) 에는 강으로 우세');
+  eq(pick({ foeStyle: delta }).id !== 'yuun-bo', true, 'δ 예고 수에는 그 파해 대상이 제외된다');
 
-  // 역파 회피 — 절초가 파하는 초식은 우세여도 후보에서 빠진다.
+  // 역파 회피는 절초가 예고된 수에만 걸린다 — 그 밖의 수에서 완파를 버리지 않는다.
+  eq(judge({ selfStyle: pick({ foeStyle: foeStyleById('alpha') }), foeStyle: foeStyleById('alpha'), selfRank: 1 }).grade,
+    'crush', 'δ 를 가진 도전자라도 α 예고 수에는 완파가 나온다');
   const fakeFinisher = { id: 'fake', attr: 'fine', d: 20, finisher: true, counters: 'jeok-un' };
-  eq(pick({ foeStyle: fakeFinisher, finisherStyle: fakeFinisher }).id, 'haeng-un',
-    '우세 후보가 절초의 파해 대상이면 상쇄로 내려간다');
-  eq(pick({ foeStyle: delta, finisherStyle: delta }).id !== 'yuun-bo', true, 'δ 의 파해 대상은 제외된다');
+  eq(pick({ foeStyle: fakeFinisher }).id, 'haeng-un', '우세 후보가 예고된 절초의 파해 대상이면 상쇄로 내려간다');
+  const fakePlain = { ...fakeFinisher, id: 'fake-plain', finisher: false };
+  eq(pick({ foeStyle: fakePlain }).id, 'jeok-un', '절초가 아니면 파해 대상이어도 제외하지 않는다');
 
   // 우세 없음 → 상쇄, 상쇄도 없음 → 잔여.
   eq(selectDiscipleStyle({ styles: [styleById('haeng-un')], foeStyle: foeStyleById('beta') }).id,
@@ -406,8 +433,8 @@ suite('제자 자동 선택 (REQ-403)', () => {
   eq(selectDiscipleStyle({ styles: [styleById('yuun-bo')], foeStyle: foeStyleById('beta') }).id,
     'yuun-bo', '우세·상쇄가 모두 없으면 잔여');
 
-  // 상대 빈틈에는 예고가 없어 위력만 남는다.
-  eq(pick({ foeStyle: null, finisherStyle: delta }).id, 'haeng-un', '상대 빈틈에는 최대 위력 초식');
+  // 상대 빈틈에는 예고가 없어 위력만 남고, 역파 위험도 없다.
+  eq(pick({ foeStyle: null }).id, 'haeng-un', '상대 빈틈에는 최대 위력 초식');
 
   // 동률은 성으로, 성도 동률이면 슬롯 순으로 결정된다.
   const twoFast = [styleById('yuun-bo'), { ...styleById('pa-un'), attr: 'fast' }];
@@ -417,8 +444,7 @@ suite('제자 자동 선택 (REQ-403)', () => {
   eq(selectDiscipleStyle({ styles: twoFast, foeStyle: foeStyleById('alpha') }).id, 'yuun-bo',
     '성 동률이면 슬롯 순');
 
-  const onlyAvoided = [styleById('yuun-bo')];
-  eq(selectDiscipleStyle({ styles: onlyAvoided, foeStyle: delta, finisherStyle: delta }).id, 'yuun-bo',
+  eq(selectDiscipleStyle({ styles: [styleById('yuun-bo')], foeStyle: delta }).id, 'yuun-bo',
     '전부 배제되면 역파를 감수한다');
   eq(selectDiscipleStyle({ styles: [] }), null, '보유 초식이 없으면 null');
 });
@@ -427,7 +453,6 @@ suite('제자 자동 선택 (REQ-403)', () => {
 
 function simulateDispatch({ challengerId, disciple, setId }) {
   const challenger = challengerById(challengerId);
-  const finisherStyle = finisherOf(challenger);
   const foePower = BALANCE.challengerPower[challenger.group];
   const rank = discipleRankOf(disciple, setId);
   const styles = discipleStyles(disciple, setId);
@@ -440,15 +465,14 @@ function simulateDispatch({ challengerId, disciple, setId }) {
   const trace = [];
 
   for (let i = 0; i < BALANCE.maxExchanges && foeHp > 0 && selfHp > 0; i += 1) {
-    const foeStyle = foeStyleById(challenger.styles[i % challenger.styles.length]);
-    const selfStyle = selectDiscipleStyle({
-      styles, foeStyle: foeOpen ? null : foeStyle, finisherStyle, rankOf: () => rank,
-    });
-    const verdict = judge({ selfStyle, foeStyle, selfRank: rank, foePower, r, foeOpen });
+    // 빈틈 수에도 예고 순번은 전진한다 — 상대가 그 수를 잃는 것으로 본다.
+    const telegraphed = foeOpen ? null : foeStyleById(challenger.styles[i % challenger.styles.length]);
+    const selfStyle = selectDiscipleStyle({ styles, foeStyle: telegraphed, rankOf: () => rank });
+    const verdict = judge({ selfStyle, foeStyle: telegraphed, selfRank: rank, foePower, r, foeOpen });
     foeHp -= verdict.dmgOut;
     selfHp -= verdict.dmgIn;
     foeOpen = verdict.opening === 'foe';
-    trace.push({ exchange: i + 1, foe: foeStyle.id, self: selfStyle.id, ...verdict, foeHp, selfHp });
+    trace.push({ exchange: i + 1, foe: telegraphed ? telegraphed.id : null, self: selfStyle.id, ...verdict, foeHp, selfHp });
   }
   const win = foeHp <= 0 ? true : selfHp <= 0 ? false : selfHp > foeHp;
   return { win, exchanges: trace.length, foeHp, selfHp, trace, rank };

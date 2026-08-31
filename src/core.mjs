@@ -27,9 +27,10 @@ export function finisherOf(challenger) {
 /** 한 초식의 시퀀스가 다른 초식의 접두어이면 발동 조건이 성립하지 않는다 (REQ-113·505). */
 export function assertPrefixFree(styles) {
   const rows = styles.map((s) => ({ id: s.id, key: s.seq.join('') }));
-  for (const a of rows) {
-    for (const b of rows) {
-      if (a === b) continue;
+  for (let i = 0; i < rows.length; i += 1) {
+    for (let j = 0; j < rows.length; j += 1) {
+      if (i === j) continue;
+      const [a, b] = [rows[i], rows[j]];
       if (b.key.startsWith(a.key)) {
         throw new Error(`prefix-free 위반: ${a.id}(${a.key}) 가 ${b.id}(${b.key}) 의 접두어`);
       }
@@ -75,7 +76,9 @@ export const isEffectiveSuccess = (grade) => BALANCE.grades[grade].order <= BALA
 
 function gradeOf({ selfStyle, foeStyle, foeOpen }) {
   if (!selfStyle) return 'struck';
-  if (foeOpen || !foeStyle) return 'crush';
+  if (foeOpen) return 'crush';
+  // 예고가 없는데 빈틈도 아니면 판정 근거가 없다 — 완파로 접으면 id 오타가 공짜 완파가 된다.
+  if (!foeStyle) throw new Error('상대 빈틈이 아닌 수에 상대 초식이 없다');
   if (selfStyle.counters === foeStyle.id) return 'crush';
   if (foeStyle.finisher && foeStyle.counters === selfStyle.id) return 'reversal';
   if (ATTRS[selfStyle.attr].beats === foeStyle.attr) return 'advantage';
@@ -94,6 +97,7 @@ function gradeOf({ selfStyle, foeStyle, foeOpen }) {
  * @param {boolean} [p.foeOpen] 이 수가 상대 빈틈인가
  */
 export function judge({ selfStyle, foeStyle = null, selfRank, foePower = 1, r = 0, foeOpen = false }) {
+  if (!(r >= 0 && r <= 1)) throw new Error(`선기 잔여 비율이 0~1 밖: ${r}`);
   const grade = gradeOf({ selfStyle, foeStyle, foeOpen });
   const rule = BALANCE.grades[grade];
   const selfPower = powerOf(selfRank);
@@ -193,6 +197,7 @@ export function applyEffectiveSuccess(progress, styleId, { mode }) {
   if (mode !== 'train' && mode !== 'duel') throw new Error(`알 수 없는 적립 모드: ${mode}`);
   const style = styleById(styleId);
   if (!style) throw new Error(`알 수 없는 초식: ${styleId}`);
+  if (!progress.styles[styleId].learned) throw new Error(`학습하지 않은 초식에 적립: ${styleId}`);
 
   const setId = style.set;
   const before = {
@@ -202,6 +207,7 @@ export function applyEffectiveSuccess(progress, styleId, { mode }) {
   };
   const hits = progress.styles[styleId];
   const next = {
+    ...progress,
     styles: {
       ...progress.styles,
       [styleId]: {
@@ -258,16 +264,16 @@ export function transmit(progress, disciple, setId) {
 }
 
 /**
- * 제자 초식 자동 선택 (REQ-403) — 우세 → 상쇄 → 잔여, 상대 절초의 파해 대상은 제외.
+ * 제자 초식 자동 선택 (REQ-403) — 우세 → 상쇄 → 잔여, 예고된 절초의 파해 대상은 제외.
  * @param {object} p
- * @param {object[]} p.styles         제자 보유 초식 (배열 순서 = 슬롯 순)
- * @param {?object} [p.foeStyle]      예고된 상대 초식 (상대 빈틈이면 null)
- * @param {?object} [p.finisherStyle] 도전자 절초
+ * @param {object[]} p.styles    제자 보유 초식 (배열 순서 = 슬롯 순)
+ * @param {?object} [p.foeStyle] 예고된 상대 초식 (상대 빈틈이면 null)
  * @param {(style: object) => number} [p.rankOf]
  */
-export function selectDiscipleStyle({ styles, foeStyle = null, finisherStyle = null, rankOf: rankFn = () => 0 }) {
+export function selectDiscipleStyle({ styles, foeStyle = null, rankOf: rankFn = () => 0 }) {
   if (!styles.length) return null;
-  const avoidId = finisherStyle ? finisherStyle.counters : null;
+  // 역파는 절초가 실제로 예고된 수에만 성립하므로, 다른 수의 배제는 이득 없이 완파만 버린다.
+  const avoidId = foeStyle && foeStyle.finisher ? foeStyle.counters : null;
   const kept = styles.filter((s) => s.id !== avoidId);
   // 전부 배제되면 낼 초식이 없어지므로 역파를 감수한다.
   const pool = kept.length ? kept : styles;

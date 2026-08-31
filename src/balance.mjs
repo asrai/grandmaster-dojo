@@ -71,7 +71,10 @@ export const BALANCE = {
   challengerPower: { A: 1, B: 1.1 },
 };
 
-/** 유운검법 4식 (REQ-501). 첫 키 `↓` 공유 + 2번째 키 분기 = prefix-free. */
+/**
+ * 유운검법 4식 (REQ-501). 첫 키 `↓` 공유 + 2번째 키 분기 = prefix-free.
+ * `counters` = 이 초식이 파하는 상대 초식 — 유저·도전자 양 테이블에서 같은 방향이다.
+ */
 export const STYLES = [
   {
     id: 'yuun-bo', set: 'yuun-geom', order: 1,
@@ -112,7 +115,7 @@ export const DISCIPLE = { level: 1, artSlots: 1 };
 
 /**
  * 도전자 초식 (REQ-503). 유저가 입력하지 않으므로 시퀀스가 없고 `len` 만 갖는다.
- * `counters` = 그 초식이 파하는 유저 초식 — 절초에만 있고 역파의 유일한 발생원이다.
+ * 절초만 `counters` 를 갖고, 그것이 역파의 유일한 발생원이다.
  */
 export const FOE_STYLES = [
   { id: 'alpha', name: '벽산도', hanja: '劈山刀', attr: 'hard', len: 3, d: 10, finisher: false, counters: null },
