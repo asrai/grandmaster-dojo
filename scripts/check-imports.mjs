@@ -140,17 +140,25 @@ function importerHint(cache, message) {
   return importers.length > 0 ? ` (import 한 곳: ${importers.join(', ')})` : '';
 }
 
-const MODULE_SCRIPT = /<script\b[^>]*\btype=["']module["'][^>]*>/gi;
-const SRC_ATTR = /\bsrc=["']([^"']+)["']/i;
+const HTML_COMMENT = /<!--[\s\S]*?-->/g;
+// 속성값 따옴표는 HTML 에서 선택이다 — 강제하면 정상 마크업이 오탐 red 를 맞는다.
+const MODULE_SCRIPT = /<script\b[^>]*\btype\s*=\s*(?:"module"|'module'|module\b)[^>]*>/gi;
+const SRC_ATTR = /\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i;
 
 /** 배포 진입점. 그래프가 온전해도 이 간선이 끊기면 브라우저는 백지이고 CI 는 green 이다. */
 function htmlEntryEdges() {
   const html = 'index.html';
   const path = resolve(ROOT, html);
-  if (!statSync(path, { throwIfNoEntry: false })?.isFile()) return 0;
+  if (!statSync(path, { throwIfNoEntry: false })?.isFile()) {
+    failures.set('html:missing', `${html} 이 없다 — 배포 산출물 자체가 사라졌다`);
+    return 0;
+  }
   let found = 0;
-  for (const tag of readFileSync(path, 'utf8').match(MODULE_SCRIPT) ?? []) {
-    const src = SRC_ATTR.exec(tag)?.[1];
+  // 주석 안의 태그는 브라우저가 실행하지 않는다 — 세면 유일한 진입점이 주석 처리돼도 green 이 된다.
+  const source = readFileSync(path, 'utf8').replace(HTML_COMMENT, '');
+  for (const tag of source.match(MODULE_SCRIPT) ?? []) {
+    const m = SRC_ATTR.exec(tag);
+    const src = m?.[1] ?? m?.[2] ?? m?.[3];
     if (!src || /^[a-z]+:/i.test(src)) continue;
     const file = src.split(/[?#]/, 1)[0];
     const target = resolve(ROOT, file.startsWith('/') ? `.${file}` : file);
