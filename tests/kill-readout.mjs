@@ -106,9 +106,10 @@ export function readout(payload) {
   // 봇이 중간에 멈춘 사이클은 두 손이 한 로그에 섞인다 — 지표는 사람 구간만 세고 그 사실을 남긴다.
   const handRoles = [...new Set(all.filter((e) => HAND_EVENTS.has(e.event)).map((e) => e.role_at))];
   const botEntries = all.filter((e) => HAND_EVENTS.has(e.event) && e.role_at === 'bot').length;
-  // 봇이 손을 놓은 뒤 사람이 화면만 넘겨 완주해도 그 사이클의 소요 시간은 두 손의 것이다.
-  const handedOver = all.some((e, i) => e.event === 'session' && e.tester_role !== 'bot'
-    && all.slice(0, i).some((prev) => prev.event === 'session' && prev.tester_role === 'bot'));
+  // 손을 주고받은 사이클의 소요 시간은 두 손의 것이다 — 손 입력이 없는 구간도 시계를 먹는다.
+  // 최초 메타 선언은 전환이 아니므로 두 번째 `session` 부터 센다.
+  const declared = all.filter((e) => e.event === 'session').map((e) => e.tester_role);
+  const handedOver = declared.slice(1).some((role, i) => role !== declared[i]);
   const mixed = handRoles.length > 1 || handedOver;
   const humanOnly = mixed && handRoles.some((r) => r !== 'bot');
   const tagged = humanOnly ? all.filter((e) => e.role_at !== 'bot') : all;
@@ -209,7 +210,9 @@ function report(result) {
     + ` · 응수 창 ×1.3 ${aux.accessibility === null ? '미상' : aux.accessibility ? 'on' : 'off'}`
     + (aux.accessibility_toggles ? ` (사이클 중 ${aux.accessibility_toggles}회 전환 — (b) 판독 불가)` : '')
     + (aux.mixed_hands
-      ? ` · 손 혼재 — 봇 구간 ${aux.bot_hand_entries}건을 (a)(b)·게이트에서 제외, (d) 는 판독 불가`
+      ? (aux.bot_hand_entries
+        ? ` · 손 혼재 — 봇 구간 ${aux.bot_hand_entries}건을 (a)(b)·게이트에서 제외, (d) 는 판독 불가`
+        : ' · 손 인계 — 손 입력은 한쪽 것뿐이나 사이클 시간이 두 손에 걸쳐 (d) 는 판독 불가')
       : '')
     + (aux.dropped_after_cycle ? ` · 1사이클 이후 ${aux.dropped_after_cycle}건 제외` : ''));
   console.log(`${mark(g)} 선행 게이트  ignore_rate ${pct(gate.ignore_rate)} (임계 ${pct(KILL.ignoreRate)})`

@@ -851,7 +851,21 @@ suite('헤드리스 봇 1사이클 (REQ-601·603·605)', () => {
   const late = createSession();
   settleDispatch(late, { win: true });
   late.accessibilityToggles += 3;
-  eq(exportPayload(late).accessibility_toggles, 0, '사이클 종료 뒤의 전환은 그 사이클에 실리지 않는다');
+  late.accessibility = true;
+  const lateOut = exportPayload(late);
+  eq(lateOut.accessibility_toggles, 0, '사이클 종료 뒤의 전환 횟수는 그 사이클에 실리지 않는다');
+  eq(lateOut.accessibility, false, '창 배율 상태도 종점 값으로 봉인된다');
+
+  // 실제 UI 순서 — 시작 시 self 선언 뒤 사람이 봇에 넘긴다. 첫 선언은 전환이 아니다.
+  const uiOrder = {
+    ...base,
+    entries: [
+      { event: 'session', t_ms: 0, tester_role: 'self', device: 'keyboard' },
+      ...base.entries,
+    ],
+  };
+  eq(readout(uiOrder).aux.mixed_hands, true, 'self→bot 인계도 혼재로 잡는다');
+  eq(pureOut.aux.mixed_hands, false, '선언이 하나뿐인 사이클은 혼재가 아니다');
 
   // 같은 시드는 같은 사이클을 그린다 — 이 성질이 없으면 봇 회귀가 회차마다 흔들린다.
   const twice = SEEDS.slice(0, 1).map(() => runHeadlessCycle({ random: createSeededRandom(SEEDS[0]) }));
