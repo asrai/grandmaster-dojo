@@ -25,7 +25,8 @@ export const LOG_SCHEMA = {
   session:  { fields: ['tester_role', 'device'], enums: { tester_role: ['self', 'friend', 'bot'] } },
 };
 
-function validate(event, fields) {
+/** 스키마 대조 — 위반은 throw 다. 비엄격 버퍼를 쓰는 호출부가 직접 부를 수 있게 열어 둔다. */
+export function validate(event, fields) {
   const spec = LOG_SCHEMA[event];
   if (!spec) throw new Error(`미정의 로그 이벤트: ${event}`);
   for (const f of spec.fields) {

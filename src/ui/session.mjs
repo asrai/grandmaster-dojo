@@ -2,7 +2,7 @@
 // 프로토 판정은 단일 세션이고, 잔존 세이브는 kill (a)·(d) 측정을 진행 중 상태로 오염시킨다.
 
 import { ART_SETS, BALANCE, CHALLENGERS, STYLES } from '../balance.mjs';
-import { createLogBuffer } from '../log.mjs';
+import { createLogBuffer, validate } from '../log.mjs';
 import {
   applyEffectiveSuccess, canTransmit, createDisciple, createProgress, discipleRankOf,
   learn, masteryPct, rankForPts, rankOf, styleById, transmit,
@@ -22,6 +22,8 @@ export function createSession() {
     progress: createProgress(),
     disciple: createDisciple(),
     slots: Array.from({ length: BALANCE.slots }, () => null),
+    // 스키마 위반은 게임을 멈추지 않되 여기 쌓여, 로그 내보내기가 결손을 그대로 실어 나르지 않는다.
+    logViolations: [],
     coins: 0,
     stage: 1,
     accessibility: BALANCE.accessibilityWindow,
@@ -30,7 +32,19 @@ export function createSession() {
   };
 }
 
-export const logEvent = (session, event, fields) => session.log.log(event, fields);
+/**
+ * 통합 로그 싱크. 버퍼는 비엄격이라 어떤 위반도 적재를 끊지 않고(시연 중 정지 방지),
+ * 검증은 여기서 따로 돌려 위반이 무음으로 지나가지 않게 한다.
+ */
+export function logEvent(session, event, fields) {
+  try {
+    validate(event, fields);
+  } catch (err) {
+    session.logViolations.push({ event, reason: err.message });
+    console.warn(`[로그 스키마] ${err.message}`);
+  }
+  return session.log.log(event, fields);
+}
 
 export const masteryOf = (session, styleId) => masteryPct(session.progress, styleId);
 export const artRank = (session) => rankOf(session.progress, ART_ID);

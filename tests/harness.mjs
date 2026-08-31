@@ -4,8 +4,9 @@
 import {
   ART_SETS, BALANCE, CHALLENGERS, DISCIPLE, FOE_STYLES, STYLES,
 } from '../src/balance.mjs';
-import { LOG_SCHEMA, TIME_FIELD, createLogBuffer } from '../src/log.mjs';
+import { LOG_SCHEMA, TIME_FIELD, createLogBuffer, validate } from '../src/log.mjs';
 import { createSequenceInput } from '../src/ui/sequence-input.mjs';
+import { createSession, logEvent } from '../src/ui/session.mjs';
 import {
   applyEffectiveSuccess, artById, assertCounterIntegrity, assertPrefixFree, canLearn, canTransmit,
   challengerById, createDisciple, createProgress, discipleRankOf, discipleStyles, finisherOf,
@@ -551,6 +552,41 @@ suite('대련 종료 판정 (REQ-201)', () => {
   // 제자 100 vs B 80 — 비율 비교였다면 0.40 < 0.44 로 뒤집힌다.
   eq(at(40, 35, last).win, true, '최대 HP 비대칭에서도 절대값으로 비교한다');
   eq(at(BALANCE.hp.disciple, BALANCE.hp.B, last).win, true, '무피해 종료는 최대 HP 가 큰 쪽 승');
+});
+
+// ------------- 10-a. 플레이 경로 로그 검증 (REQ-601·603) — 비엄격 버퍼의 무음 통과를 막는다
+
+suite('플레이 경로 로그 검증 (REQ-601·603)', () => {
+  const session = createSession();
+  eq(session.log.entries.length, 0, '세션은 빈 버퍼로 시작');
+  deepEq(session.logViolations, [], '위반 목록도 빈 상태');
+
+  logEvent(session, 'reset', {});
+  eq(session.log.entries.length, 1, '정상 이벤트는 적재된다');
+  deepEq(session.logViolations, [], '정상 이벤트는 위반으로 세지 않는다');
+
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    // 필드 결손·오타·미정의 이벤트 — 셋 다 적재는 이어지되 관측 가능해야 한다.
+    logEvent(session, 'fire', { styleId: 'yuun-bo', len: 3, oneTap: false });
+    logEvent(session, 'narrow', { style_id: 'yuun-bo' });
+    logEvent(session, 'nope', {});
+    logEvent(session, 'key', {
+      dir: 'D', accepted: true, candidates_n: 1, top_attr: 'fast', device: 'gamepad',
+    });
+  } finally {
+    console.warn = warn;
+  }
+
+  eq(session.log.entries.length, 5, '위반 이벤트도 적재를 끊지 않는다 (시연 중 정지 방지)');
+  eq(session.logViolations.length, 4, '결손·오타·미정의·열거 밖이 전부 위반으로 잡힌다');
+  deepEq(session.logViolations.map((v) => v.event), ['fire', 'narrow', 'nope', 'key'], '위반 이벤트 이름');
+  ok(session.logViolations[0].reason.includes('r'), '결손 필드명이 사유에 남는다');
+
+  // `validate` 가 export 되어 있어야 이 경로가 스키마 정의를 두 벌로 갖지 않는다.
+  eq(typeof validate, 'function', 'log.mjs 가 validate 를 노출한다');
+  eq(validate('reset', {}), undefined, '정상 이벤트는 통과');
 });
 
 // ------------------------- 10-b. 후보 필터 입력기 (REQ-102~109) — DOM 없이 도는 유일한 UI 층
