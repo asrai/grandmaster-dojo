@@ -70,7 +70,10 @@ async function builtinRecord(spec) {
   return mod;
 }
 
-async function jsonRecord(path) {
+async function jsonRecord(path, attributes) {
+  if (attributes?.type !== 'json') {
+    throw new Error(`'${rel(path)}' — JSON 모듈에는 \`with { type: 'json' }\` 가 필요하다 (브라우저가 거부한다)`);
+  }
   // JSON 모듈은 `default` 하나만 내놓는다 — 판정표를 JSON 으로 빼는 것이 repo 계약이라
   // 이 갈래가 없으면 그 첫 커밋에서 required check 가 오탐 red 를 낸다.
   const value = JSON.parse(readFileSync(path, 'utf8'));
@@ -93,7 +96,7 @@ async function linkFrom(entry) {
     return mod;
   };
 
-  const linker = async (spec, referencing) => {
+  const linker = async (spec, referencing, extra) => {
     const from = referencing.identifier;
     // 이 스크립트가 유일하게 실행하는 남의 지정자다 — 도메인을 코어 모듈로 못박는다.
     if (BUILTINS.has(spec.startsWith('node:') ? spec.slice(5) : spec)) {
@@ -104,14 +107,16 @@ async function linkFrom(entry) {
       // 의존성 0 계약이라 bare 지정자는 해석 대상이 아니라 결함이다.
       throw new Error(`bare 지정자 '${spec}' — 이 repo 는 런타임 의존성이 없다`);
     }
-    // `python3 -m http.server` 가 repo 루트를 문서 루트로 서빙하므로 `/`-시작도 합법이다.
-    const target = spec.startsWith('/') ? resolve(ROOT, `.${spec}`) : resolve(dirname(from), spec);
+    // `python3 -m http.server` 가 repo 루트를 문서 루트로 서빙하므로 `/`-시작도 합법이고,
+    // `?v=1`·`#frag` 는 브라우저가 무는 URL 문법이라 파일명에서 떼고 찾는다.
+    const path = spec.split(/[?#]/, 1)[0];
+    const target = path.startsWith('/') ? resolve(ROOT, `.${path}`) : resolve(dirname(from), path);
     // 절대 경로가 메시지에 새면 머신마다 문면이 달라진다 — repo 상대로 다시 던진다.
     if (!statSync(target, { throwIfNoEntry: false })?.isFile()) {
       throw new Error(`'${spec}' 대상 파일 없음 — ${rel(from)} → ${rel(target)}`);
     }
     relEdges.add(`${rel(from)}\t${spec}`);
-    return target.endsWith('.json') ? jsonRecord(target) : load(target);
+    return target.endsWith('.json') ? jsonRecord(target, extra?.attributes) : load(target);
   };
 
   if (!statSync(entry, { throwIfNoEntry: false })?.isFile()) {
@@ -147,9 +152,14 @@ function htmlEntryEdges() {
   for (const tag of readFileSync(path, 'utf8').match(MODULE_SCRIPT) ?? []) {
     const src = SRC_ATTR.exec(tag)?.[1];
     if (!src || /^[a-z]+:/i.test(src)) continue;
-    const target = resolve(ROOT, src.startsWith('/') ? `.${src}` : src);
+    const file = src.split(/[?#]/, 1)[0];
+    const target = resolve(ROOT, file.startsWith('/') ? `.${file}` : file);
     if (statSync(target, { throwIfNoEntry: false })?.isFile()) found += 1;
     else failures.set(`html:${src}`, `'${src}' 대상 파일 없음 — ${html} → ${rel(target)}`);
+  }
+  // 간선이 0건이면 「끊긴 진입점」과 문면이 같다 — 그 상태를 green 으로 접으면 이 검사가 없는 것과 같다.
+  if (found === 0 && failures.size === 0) {
+    failures.set('html:none', `${html} 에 해석 가능한 module script src 가 0건 — 배포 진입점이 사라졌다`);
   }
   return found;
 }
