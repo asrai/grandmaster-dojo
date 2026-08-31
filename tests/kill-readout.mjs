@@ -28,6 +28,13 @@ const DUEL_PHASE = 'duel';
 
 const SELF_TEST_SEED = 20260902;
 
+/**
+ * 판독 산식의 입력 — 이게 없으면 (a)(b)·선행 게이트를 만들 수 없다.
+ * 나머지 이벤트는 **조건부**다 (`ignore`·`reset`·`timeout` 은 깔끔하게 친 사람에게 0건일 수 있다).
+ * 17종 전량 방출은 계측 빌드의 성질(REQ-601)이라 자체 생성 사이클에서만 강제한다.
+ */
+const READOUT_INPUTS = ['key', 'fire', 'cycle'];
+
 // ------------------------------------------------------------------ 로드 · 무결성
 
 function loadPayload(raw) {
@@ -197,6 +204,7 @@ function main(argv) {
   if (argv[0] === '--emit' && !argv[1]) throw new Error('--emit 뒤에 내보낼 경로가 필요하다');
   const emitAt = argv[0] === '--emit' ? argv[1] : null;
   const file = emitAt ? null : argv[0];
+  const selfTest = !file;
   let payload;
 
   if (file) {
@@ -252,6 +260,7 @@ function main(argv) {
   }
 
   const audit = auditEntries(payload.entries);
+  const missingInputs = READOUT_INPUTS.filter((event) => audit.missing.includes(event));
   if (audit.problems.length) {
     console.error(`✗ 필드 결손 ${audit.problems.length}건`);
     for (const p of audit.problems.slice(0, 10)) console.error(`    ${p}`);
@@ -259,12 +268,20 @@ function main(argv) {
   } else {
     console.log(`✓ 필드 결손 0 — ${payload.entries.length}건 전량이 통합 로그 스키마와 일치`);
   }
-  if (audit.missing.length) {
-    console.error(`✗ 미방출 이벤트 ${audit.missing.length}종: ${audit.missing.join(', ')}`
-      + ' — 1사이클을 다 돌지 않았거나, 그 이벤트를 만드는 밸런스 손잡이(BALANCE.bot.*)가 0 이다');
+  if (missingInputs.length) {
+    console.error(`✗ 판독 산식 입력 결손: ${missingInputs.join(', ')} — (a)(b)·선행 게이트를 만들 수 없다`);
+    failures += 1;
+  }
+  if (!audit.missing.length) {
+    console.log(`✓ 통합 로그 스키마 ${Object.keys(LOG_SCHEMA).length}종 전부 최소 1회 emit`);
+  } else if (selfTest) {
+    // 자체 생성 사이클은 계측 빌드 자체의 검증이라, 여기서 빠진 종은 계측 구멍이다 (REQ-601).
+    console.error(`✗ 계측 사이클 미방출 ${audit.missing.length}종: ${audit.missing.join(', ')}`
+      + ' — 그 이벤트를 만드는 밸런스 손잡이(BALANCE.bot.*)가 0 이거나 방출부가 끊겼다');
     failures += 1;
   } else {
-    console.log(`✓ 통합 로그 스키마 ${Object.keys(LOG_SCHEMA).length}종 전부 최소 1회 emit`);
+    console.log(`· 조건부 미방출 ${audit.missing.length}종: ${audit.missing.join(', ')}`
+      + ' — 그 축의 보조 지표만 비고, 판독은 계속한다');
   }
 
   const result = readout(payload);
