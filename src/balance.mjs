@@ -69,8 +69,7 @@ export const BALANCE = {
   buttonHitPx: 56,
   reward: { duelWin: 30, dispatchWin: 50 },
 
-  // 봇 v2 사람 속도 모델 (REQ-605). `misHitRate` 는 spec 미지정분 — 손이 옆 버튼을 스치는
-  // 비율이고, 이것이 없으면 `ignore`·`reset` 이 한 번도 방출되지 않아 선행 게이트가 공허해진다.
+  // 봇 v2 사람 속도 모델 (REQ-605). `misHitRate` 는 spec 미지정분 — 없으면 선행 게이트가 공허해진다.
   bot: {
     reactionMs: [450, 650],
     keyMs: [260, 380],

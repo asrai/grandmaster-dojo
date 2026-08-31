@@ -3,13 +3,13 @@
 
 import { BALANCE } from '../../balance.mjs';
 import { createDiscipleHand } from '../../bot.mjs';
-import { discipleRankOf, discipleStyles, finisherOf, isEffectiveSuccess } from '../../core.mjs';
+import { discipleRankOf, discipleStyles, finisherOf } from '../../core.mjs';
 import { attrMark, clear, el, hpBar } from '../dom.mjs';
 import { ATTR_VIEW, GRADE_VIEW, attrLabel, gradeLabel, winAttrOf } from '../theme.mjs';
 import { SFX } from '../audio.mjs';
 import { createMatch } from '../match.mjs';
 import {
-  ART_ID, ART_NAME, DISPATCH_CHALLENGER, accrueDiscipleRank, logEvent, logVerdict,
+  ART_ID, ART_NAME, DISPATCH_CHALLENGER, logEvent, recordDispatchVerdict,
 } from '../session.mjs';
 
 const styleIcon = (style, extra = '') => el('div', {
@@ -140,7 +140,7 @@ export function startDispatch(ctx) {
         if (disciple.tick(view, instructed)) fired = true;
       },
       onVerdict(view) {
-        logVerdict(session, view.verdict, 'disciple');
+        const ranked = recordDispatchVerdict(session, view);
         renderHp(view);
         const gv = GRADE_VIEW[view.verdict.grade];
         clear(verdictEl).appendChild(el('div', {
@@ -148,9 +148,7 @@ export function startDispatch(ctx) {
           text: `${gv.mark} ${gradeLabel(view.verdict.grade)}`,
         }));
         (view.verdict.grade === 'crush' ? SFX.crush : SFX.hit)();
-        if (view.fire && isEffectiveSuccess(view.verdict.grade)) {
-          if (accrueDiscipleRank(session, view.fire.style.id)) SFX.rank();
-        }
+        if (ranked) SFX.rank();
       },
       onEnd(view) {
         ctx.go('result', {

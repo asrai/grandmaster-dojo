@@ -1,18 +1,19 @@
 // 사람 속도 봇 v2 (REQ-605) — 손 대신 같은 입력 경로를 두드려 1사이클을 자동 완주한다.
-// 화면·시계·난수가 전부 주입이라 브라우저와 헤드리스가 같은 봇·같은 대련 루프를 돌린다.
+// 화면·시계·난수가 주입이라 브라우저와 헤드리스가 지연 모델·입력기·대련 루프를 공유한다
+// (화면 배선은 각자 갖는다 — 브라우저는 폴링, 헤드리스는 프레임이라 페이스가 정확히 같지는 않다).
 // 여기서 나오는 수치는 페이스 회귀 참고치이고 kill 판정 표본이 아니다.
 
 import { BALANCE, STYLES } from './balance.mjs';
 import {
-  canLearn, discipleRankOf, discipleStyles, isEffectiveSuccess, responseWindowMs,
-  selectDiscipleStyle, styleById,
+  canLearn, discipleRankOf, discipleStyles, responseWindowMs, selectDiscipleStyle, styleById,
 } from './core.mjs';
 import { createMatch, createVirtualTimer, pumpToEnd } from './ui/match.mjs';
 import { createSequenceInput } from './ui/sequence-input.mjs';
 import {
-  ART_ID, DISPATCH_CHALLENGER, accrueDiscipleRank, artRank, canTransmitNow, challengerOfStage,
-  createSession, equippedStyles, learnStyle, logEvent, logSessionMeta, logTimeout, logVerdict,
-  masteryOf, recordEffectiveSuccess, runTransmit, settleDispatch, settleDuel, simulateTraining,
+  ART_ID, DISPATCH_CHALLENGER, artRank, canTransmitNow, challengerOfStage, createSession,
+  equippedStyles, learnStyle, logEvent, logSessionMeta, logTimeout, masteryOf,
+  recordDispatchVerdict, recordDuelVerdict, recordEffectiveSuccess, runTransmit,
+  settleDispatch, settleDuel, simulateTraining,
 } from './ui/session.mjs';
 
 const DIRS = ['U', 'D', 'L', 'R'];
@@ -339,12 +340,7 @@ function headlessDuel({ session, stage, pace, timer, random }) {
       onWindow(view) { input.arm(equippedStyles(session)); hand.arm(input, view.telegraphed); },
       onTick() { hand.tick(input); },
       onTimeout() { logTimeout(session, input); },
-      onVerdict(view) {
-        logVerdict(session, view.verdict, 'user');
-        if (view.fire && isEffectiveSuccess(view.verdict.grade)) {
-          recordEffectiveSuccess(session, view.fire.style.id, 'duel');
-        }
-      },
+      onVerdict(view) { recordDuelVerdict(session, view); },
       onEnd(view) { ended = view; },
     },
   });
@@ -371,12 +367,7 @@ function headlessDispatch({ session, timer }) {
       onTelegraph() { disciple.arm(); },
       // 파견 무지시 — 지시 인자를 주지 않는 것이 REQ-605 의 관전 조건이다.
       onTick(view) { disciple.tick(view); },
-      onVerdict(view) {
-        logVerdict(session, view.verdict, 'disciple');
-        if (view.fire && isEffectiveSuccess(view.verdict.grade)) {
-          accrueDiscipleRank(session, view.fire.style.id);
-        }
-      },
+      onVerdict(view) { recordDispatchVerdict(session, view); },
       onEnd(view) { ended = view; },
     },
   });

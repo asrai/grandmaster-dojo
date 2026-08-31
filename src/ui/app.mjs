@@ -78,8 +78,11 @@ function exportLog() {
   const link = document.createElement('a');
   link.href = url;
   link.download = `dojo-log-${payload.exported_at.replace(/[:.]/g, '-')}.json`;
+  // 문서에 붙지 않은 링크는 일부 브라우저에서 클릭이 무시되고, 동기 revoke 는 내려받기 시작 전에 URL 을 끊는다.
+  document.body.appendChild(link);
   link.click();
-  URL.revokeObjectURL(url);
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 const bot = createBot({
@@ -104,8 +107,13 @@ function paintBotButton() {
 
 $('exportBtn').addEventListener('click', exportLog);
 $('botBtn').addEventListener('click', () => {
-  if (bot.running) bot.stop();
-  else bot.start();
+  if (bot.running) {
+    bot.stop();
+    // 손이 돌아왔다는 것도 모집단 변화라, 이후 입력이 봇 표본으로 읽히지 않게 다시 선언한다.
+    logSessionMeta(session, { testerRole: 'self', device: DEVICE });
+  } else {
+    bot.start();
+  }
   paintBotButton();
 });
 paintBotButton();

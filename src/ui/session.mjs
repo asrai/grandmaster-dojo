@@ -5,7 +5,7 @@ import { ART_SETS, BALANCE, CHALLENGERS, STYLES } from '../balance.mjs';
 import { createLogBuffer, validate } from '../log.mjs';
 import {
   applyEffectiveSuccess, canTransmit, createDisciple, createProgress, discipleRankOf,
-  learn, masteryPct, rankForPts, rankOf, styleById, transmit,
+  isEffectiveSuccess, learn, masteryPct, rankForPts, rankOf, styleById, transmit,
 } from '../core.mjs';
 
 /** 내보낸 로그의 판독 계약 이름 — `tests/kill-readout.mjs` 가 이 값으로 파일을 받아들인다. */
@@ -169,6 +169,20 @@ export function logTimeout(session, input) {
   logEvent(session, 'timeout', { styleTop: input.top()?.id ?? null, buffer_len: input.buffer.length });
 }
 
+/** 한 수의 판정을 로그와 성장에 함께 반영한다 — 대련 화면과 헤드리스 봇이 이 한 자리를 공유한다. */
+export function recordDuelVerdict(session, view) {
+  logVerdict(session, view.verdict, 'user');
+  if (!view.fire || !isEffectiveSuccess(view.verdict.grade)) return null;
+  return recordEffectiveSuccess(session, view.fire.style.id, 'duel');
+}
+
+/** 파견 쪽 짝 — 제자는 숙련이 없고 성 포인트만 오른다 (REQ-401). */
+export function recordDispatchVerdict(session, view) {
+  logVerdict(session, view.verdict, 'disciple');
+  if (!view.fire || !isEffectiveSuccess(view.verdict.grade)) return null;
+  return accrueDiscipleRank(session, view.fire.style.id);
+}
+
 /** 대련 결과 정산 (REQ-209·604) — 문구는 화면이 만들고 여기서는 상태만 움직인다. */
 export function settleDuel(session, { win, stage }) {
   if (!win) return { reward: 0, unlocked: null, cleared: false };
@@ -196,6 +210,8 @@ export function exportPayload(session, { exportedAt = new Date().toISOString() }
     schema: EXPORT_SCHEMA,
     exported_at: exportedAt,
     coins: session.coins,
+    // 접근성 창 ×1.3 은 완주율과 `tail_ms` 를 직접 움직이므로, 켠 로그와 끈 로그는 다른 모집단이다.
+    accessibility: session.accessibility,
     log_violations: session.logViolations.map((v) => ({ ...v })),
     entries: session.log.entries.map((e) => ({ ...e })),
   };

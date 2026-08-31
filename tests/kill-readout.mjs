@@ -10,7 +10,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { BALANCE } from '../src/balance.mjs';
-import { responseWindowMs } from '../src/core.mjs';
+import { isEffectiveSuccess, responseWindowMs } from '../src/core.mjs';
 import { LOG_SCHEMA, TIME_FIELD, validate } from '../src/log.mjs';
 import { EXPORT_SCHEMA, exportPayload } from '../src/ui/session.mjs';
 import { createSeededRandom, runHeadlessCycle } from '../src/bot.mjs';
@@ -32,9 +32,15 @@ const SELF_TEST_SEED = 20260902;
 
 function loadPayload(raw) {
   const parsed = JSON.parse(raw);
-  if (Array.isArray(parsed)) return { schema: null, log_violations: [], entries: parsed };
-  if (!Array.isArray(parsed.entries)) throw new Error('entries 배열이 없다 — 내보내기 파일이 아니다');
-  return { log_violations: [], ...parsed };
+  const entries = Array.isArray(parsed) ? parsed : parsed.entries;
+  if (!Array.isArray(entries)) throw new Error('entries 배열이 없다 — 내보내기 파일이 아니다');
+  const wrapper = Array.isArray(parsed) ? {} : parsed;
+  return {
+    ...wrapper,
+    entries,
+    // 손으로 만진 파일이 위반 게이트를 통째로 건너뛰지 않게 배열로 못박는다.
+    log_violations: Array.isArray(wrapper.log_violations) ? wrapper.log_violations : [],
+  };
 }
 
 /** 필드 결손 0 의 기계적 증명 — 스키마 대조 + 17종 전량 방출 확인 (수용 케이스 11). */
@@ -67,11 +73,19 @@ function withPhase(entries) {
   });
 }
 
+/**
+ * 첫 `cycle_done` 까지 자른다 — 결과 화면에서 계속 플레이한 세션을 그대로 세면
+ * (b)·`ignore_rate` 는 2사이클분인데 (d) 만 1사이클분이 되어 지표 구간이 갈린다.
+ */
+function firstCycle(tagged) {
+  const end = tagged.findIndex((e) => e.event === 'cycle' && e.phase === 'cycle_done');
+  return end < 0 ? { cycle: tagged, dropped: 0 } : { cycle: tagged.slice(0, end + 1), dropped: tagged.length - end - 1 };
+}
+
 const rate = (num, den) => (den ? num / den : null);
 
 export function readout(payload) {
-  const entries = payload.entries;
-  const tagged = withPhase(entries);
+  const { cycle: tagged, dropped } = firstCycle(withPhase(payload.entries));
   const at = (event, pred = () => true) => tagged.find((e) => e.event === event && pred(e)) ?? null;
 
   const firstFire = at('fire');
@@ -83,8 +97,9 @@ export function readout(payload) {
   const handFires = duel.filter((e) => e.event === 'fire' && e.oneTap === false).length;
   const timeouts = duel.filter((e) => e.event === 'timeout').length;
 
+  // 전체와 device별이 같은 술어(`key.accepted`)를 쓴다 — 정의가 갈리면 합이 어긋난다.
   const keys = tagged.filter((e) => e.event === 'key');
-  const ignores = tagged.filter((e) => e.event === 'ignore');
+  const ignored = keys.filter((e) => !e.accepted);
   const byDevice = {};
   for (const key of keys) {
     byDevice[key.device] ??= { keys: 0, ignores: 0 };
@@ -94,8 +109,9 @@ export function readout(payload) {
 
   const fires = tagged.filter((e) => e.event === 'fire');
   const selects = tagged.filter((e) => e.event === 'select');
-  // `tail_ms` 는 창 잔여 — 로그에 창 길이가 없으므로 시퀀스 길이에서 되짚는다 (빈틈 창 보정 없음).
-  const tails = fires.map((e) => Math.round(e.r * responseWindowMs(e.len)));
+  // 창 잔여의 정확한 값은 비율 `r` 이다 — 창 길이는 **상대 예고**의 수로 열리는데
+  // 로그에 그 길이가 없어 ms 환산은 내 시퀀스 길이 기준의 하한 대역으로만 낸다 (REQ-208 게이트).
+  const meanRatio = fires.length ? fires.reduce((a, e) => a + e.r, 0) / fires.length : null;
 
   let attrSwitches = 0;
   let lastAttr = null;
@@ -113,7 +129,7 @@ export function readout(payload) {
       d_cycle_done_ms: cycleDone ? cycleDone[TIME_FIELD] : null,
     },
     gate: {
-      ignore_rate: rate(ignores.length, keys.length),
+      ignore_rate: rate(ignored.length, keys.length),
       by_device: Object.fromEntries(Object.entries(byDevice)
         .map(([device, v]) => [device, rate(v.ignores, v.keys)])),
     },
@@ -121,17 +137,22 @@ export function readout(payload) {
       first_transmit_ms: firstTransmit ? firstTransmit[TIME_FIELD] : null,
       select_by_user_rate: rate(selects.filter((e) => e.byUser).length, selects.length),
       one_tap_rate: rate(fires.filter((e) => e.oneTap).length, fires.length),
-      tail_ms_mean: tails.length ? Math.round(tails.reduce((a, b) => a + b, 0) / tails.length) : null,
+      tail_ratio_mean: meanRatio,
+      tail_ms_band: meanRatio === null ? null
+        : [responseWindowMs(BALANCE.windowBaseLen), responseWindowMs(5)].map((w) => Math.round(meanRatio * w)),
       top_attr_switches: attrSwitches,
       verdict_grades: Object.fromEntries(Object.keys(BALANCE.grades).map((grade) => [
         grade, tagged.filter((e) => e.event === 'verdict' && e.grade === grade).length,
       ])),
       effective_success_rate: rate(
+        // 외부 파일의 미지 등급은 유효 성공이 아닌 쪽으로 접는다 — 판독이 스택으로 죽지 않게.
         tagged.filter((e) => e.event === 'verdict' && e.who === 'user'
-          && BALANCE.grades[e.grade].order <= BALANCE.effectiveSuccessMaxOrder).length,
+          && e.grade in BALANCE.grades && isEffectiveSuccess(e.grade)).length,
         tagged.filter((e) => e.event === 'verdict' && e.who === 'user').length,
       ),
-      tester_role: [...tagged].reverse().find((e) => e.event === 'session')?.tester_role ?? null,
+      tester_role: tagged.findLast((e) => e.event === 'session')?.tester_role ?? null,
+      accessibility: payload.accessibility ?? null,
+      dropped_after_cycle: dropped,
     },
   };
 }
@@ -149,17 +170,20 @@ function report(result) {
   const d = kill.d_cycle_done_ms === null ? null : kill.d_cycle_done_ms <= KILL.cycleDoneMs;
   const g = gate.ignore_rate === null ? null : gate.ignore_rate <= KILL.ignoreRate;
 
-  console.log(`\n판독 대상: tester_role=${aux.tester_role ?? '미상'}`);
+  console.log(`\n판독 대상: tester_role=${aux.tester_role ?? '미상'}`
+    + ` · 응수 창 ×1.3 ${aux.accessibility === null ? '미상' : aux.accessibility ? 'on' : 'off'}`
+    + (aux.dropped_after_cycle ? ` · 1사이클 이후 ${aux.dropped_after_cycle}건 제외` : ''));
   console.log(`${mark(g)} 선행 게이트  ignore_rate ${pct(gate.ignore_rate)} (임계 ${pct(KILL.ignoreRate)})`
-    + ` · device별 ${JSON.stringify(gate.by_device)}`);
-  console.log(`${mark(a)} kill (a)  first_fire_t ${secs(kill.a_first_fire_ms)} (임계 ${secs(KILL.firstFireMs)})`);
+    + ` · device별 ${Object.entries(gate.by_device).map(([d, v]) => `${d} ${pct(v)}`).join(' · ') || '—'}`);
+  console.log(`${mark(a)} kill (a)  first_fire_t ${secs(kill.a_first_fire_ms)} (임계 ${secs(KILL.firstFireMs)}, 수련 창 포함)`);
   console.log(`${mark(b)} kill (b)  완주율 ${pct(kill.b_completion_rate)}`
     + ` = fire(oneTap=false) ${kill.b_hand_fires} / (+ timeout ${kill.b_timeouts}) (임계 ${pct(KILL.completionRate)})`);
   console.log('    kill (c)  설문 축 — 로그 외 입력');
   console.log(`${mark(d)} kill (d)  cycle_done_t ${secs(kill.d_cycle_done_ms)} (임계 ${secs(KILL.cycleDoneMs)})`);
   console.log(`    보조  first_transmit ${secs(aux.first_transmit_ms)}`
     + ` · select.byUser ${pct(aux.select_by_user_rate)} · oneTap ${pct(aux.one_tap_rate)}`
-    + ` · tail_ms 평균 ${aux.tail_ms_mean ?? '—'} · top_attr 전환 ${aux.top_attr_switches}회`);
+    + ` · 창 잔여 ${pct(aux.tail_ratio_mean)} (tail_ms ${aux.tail_ms_band?.join('~') ?? '—'})`
+    + ` · top_attr 전환 ${aux.top_attr_switches}회`);
   console.log(`    유효 성공률(유저) ${pct(aux.effective_success_rate)} · 등급 ${JSON.stringify(aux.verdict_grades)}`);
   return { a, b, d, gate: g };
 }
@@ -167,6 +191,7 @@ function report(result) {
 // ------------------------------------------------------------------ 진입점
 
 function main(argv) {
+  if (argv[0] === '--emit' && !argv[1]) throw new Error('--emit 뒤에 내보낼 경로가 필요하다');
   const emitAt = argv[0] === '--emit' ? argv[1] : null;
   const file = emitAt ? null : argv[0];
   let payload;
