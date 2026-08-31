@@ -15,15 +15,38 @@ export const DUEL_STAGES = CHALLENGERS.filter((c) => c.mode === 'duel')
   .slice().sort((a, b) => a.stage - b.stage);
 export const DISPATCH_CHALLENGER = CHALLENGERS.find((c) => c.mode === 'dispatch');
 
-export function createSession() {
+/**
+ * 플레이 경로 로그 싱크. 적재는 비엄격이라 어떤 위반도 게임을 멈추지 않고(필드 오타 하나가
+ * 이벤트 핸들러 안의 throw 가 되면 그 수에서 시연이 정지한다), 검증은 여기서 돌려 위반이
+ * 무음으로 지나가지 않게 한다. 검증되지 않는 쓰기 경로는 노출하지 않는다.
+ */
+function createPlayLog(violations) {
+  const buffer = createLogBuffer({ strict: false });
   return {
-    // 플레이 경로는 비엄격 — 필드 오타 하나가 이벤트 핸들러 안의 throw 로 게임을 멈추게 하면 안 된다.
-    log: createLogBuffer({ strict: false }),
+    entries: buffer.entries,
+    serialize: buffer.serialize,
+    clear: () => { buffer.clear(); violations.length = 0; },
+    log(event, fields = {}) {
+      try {
+        validate(event, fields);
+      } catch (err) {
+        violations.push({ event, reason: err.message });
+        console.warn(`[로그 스키마] ${err.message}`);
+      }
+      return buffer.log(event, fields);
+    },
+  };
+}
+
+export function createSession() {
+  // 위반은 게임을 멈추지 않되 여기 쌓여, 로그 내보내기가 결손을 그대로 실어 나르지 않는다.
+  const logViolations = [];
+  return {
+    log: createPlayLog(logViolations),
+    logViolations,
     progress: createProgress(),
     disciple: createDisciple(),
     slots: Array.from({ length: BALANCE.slots }, () => null),
-    // 스키마 위반은 게임을 멈추지 않되 여기 쌓여, 로그 내보내기가 결손을 그대로 실어 나르지 않는다.
-    logViolations: [],
     coins: 0,
     stage: 1,
     accessibility: BALANCE.accessibilityWindow,
@@ -32,19 +55,7 @@ export function createSession() {
   };
 }
 
-/**
- * 통합 로그 싱크. 버퍼는 비엄격이라 어떤 위반도 적재를 끊지 않고(시연 중 정지 방지),
- * 검증은 여기서 따로 돌려 위반이 무음으로 지나가지 않게 한다.
- */
-export function logEvent(session, event, fields) {
-  try {
-    validate(event, fields);
-  } catch (err) {
-    session.logViolations.push({ event, reason: err.message });
-    console.warn(`[로그 스키마] ${err.message}`);
-  }
-  return session.log.log(event, fields);
-}
+export const logEvent = (session, event, fields) => session.log.log(event, fields);
 
 export const masteryOf = (session, styleId) => masteryPct(session.progress, styleId);
 export const artRank = (session) => rankOf(session.progress, ART_ID);

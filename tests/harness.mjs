@@ -584,6 +584,14 @@ suite('플레이 경로 로그 검증 (REQ-601·603)', () => {
   deepEq(session.logViolations.map((v) => v.event), ['fire', 'narrow', 'nope', 'key'], '위반 이벤트 이름');
   ok(session.logViolations[0].reason.includes('r'), '결손 필드명이 사유에 남는다');
 
+  // 검증은 관례가 아니라 싱크의 성질이어야 한다 — 원시 버퍼를 우회할 쓰기 경로가 없다.
+  const warn2 = console.warn;
+  console.warn = () => {};
+  try { session.log.log('unlock', {}); } finally { console.warn = warn2; }
+  eq(session.logViolations.length, 5, 'session.log.log 직접 호출도 검증을 거친다');
+  deepEq(Object.keys(session.log).sort(), ['clear', 'entries', 'log', 'serialize'],
+    '세션 로그에 검증 없는 쓰기 API 가 없다');
+
   // `validate` 가 export 되어 있어야 이 경로가 스키마 정의를 두 벌로 갖지 않는다.
   eq(typeof validate, 'function', 'log.mjs 가 validate 를 노출한다');
   eq(validate('reset', {}), undefined, '정상 이벤트는 통과');
