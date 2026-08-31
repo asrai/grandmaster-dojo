@@ -830,10 +830,28 @@ suite('헤드리스 봇 1사이클 (REQ-601·603·605)', () => {
   ok(mixedOut.kill.a_first_fire_ms > pureOut.kill.a_first_fire_ms, '(a) 는 사람의 첫 발동으로 다시 잡힌다');
   eq(mixedOut.kill.d_cycle_done_ms, pureOut.kill.d_cycle_done_ms, '(d) 종점은 사이클의 성질이라 그대로다');
 
-  // 창 배율을 사이클 중에 바꾼 로그는 (b) 의 분모가 두 난이도에서 온 것이라 판독 불가다.
+  // 봇이 손을 놓은 뒤 사람이 화면만 넘겨 완주한 로그 — 손 입력이 없어도 (d) 는 두 손의 시간이다.
+  const doneAt = base.entries.findLastIndex((e) => e.event === 'cycle' && e.phase === 'cycle_done');
+  const handover = {
+    ...base,
+    entries: [
+      ...base.entries.slice(0, doneAt),
+      { event: 'session', t_ms: base.entries[doneAt].t_ms, tester_role: 'self', device: 'keyboard' },
+      ...base.entries.slice(doneAt),
+    ],
+  };
+  const handoverOut = readout(handover);
+  eq(handoverOut.aux.mixed_hands, true, '손 입력 없는 역할 인계도 혼재로 잡는다');
+  eq(handoverOut.aux.bot_hand_entries, 0, '사람 구간에 손 입력이 없으면 제외분도 0');
+
+  // 창 배율 전환은 첫 사이클 종점에서 봉인된다 — 이후 화면의 전환이 그 사이클의 (b) 를 막지 않는다.
   eq(readout({ ...base, accessibility_toggles: 2 }).aux.accessibility_toggles, 2,
-    '접근성 전환 횟수가 판독기까지 전달된다');
+    '사이클 안의 전환은 판독기까지 전달된다');
   eq(pureOut.aux.accessibility_toggles, 0, '전환이 없으면 0');
+  const late = createSession();
+  settleDispatch(late, { win: true });
+  late.accessibilityToggles += 3;
+  eq(exportPayload(late).accessibility_toggles, 0, '사이클 종료 뒤의 전환은 그 사이클에 실리지 않는다');
 
   // 같은 시드는 같은 사이클을 그린다 — 이 성질이 없으면 봇 회귀가 회차마다 흔들린다.
   const twice = SEEDS.slice(0, 1).map(() => runHeadlessCycle({ random: createSeededRandom(SEEDS[0]) }));

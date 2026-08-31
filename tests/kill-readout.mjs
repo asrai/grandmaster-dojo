@@ -106,7 +106,10 @@ export function readout(payload) {
   // 봇이 중간에 멈춘 사이클은 두 손이 한 로그에 섞인다 — 지표는 사람 구간만 세고 그 사실을 남긴다.
   const handRoles = [...new Set(all.filter((e) => HAND_EVENTS.has(e.event)).map((e) => e.role_at))];
   const botEntries = all.filter((e) => HAND_EVENTS.has(e.event) && e.role_at === 'bot').length;
-  const mixed = handRoles.length > 1;
+  // 봇이 손을 놓은 뒤 사람이 화면만 넘겨 완주해도 그 사이클의 소요 시간은 두 손의 것이다.
+  const handedOver = all.some((e, i) => e.event === 'session' && e.tester_role !== 'bot'
+    && all.slice(0, i).some((prev) => prev.event === 'session' && prev.tester_role === 'bot'));
+  const mixed = handRoles.length > 1 || handedOver;
   const humanOnly = mixed && handRoles.some((r) => r !== 'bot');
   const tagged = humanOnly ? all.filter((e) => e.role_at !== 'bot') : all;
 

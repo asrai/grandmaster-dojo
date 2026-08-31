@@ -67,6 +67,7 @@ export function createSession({ now } = {}) {
     stage: 1,
     accessibility: BALANCE.accessibilityWindow,
     accessibilityToggles: 0,
+    accessibilityTogglesAtDone: null,
     label: '문하생',
     transmitted: false,
   };
@@ -211,6 +212,8 @@ export function settleDuel(session, { win, stage }) {
 export function settleDispatch(session, { win }) {
   if (win) addCoins(session, BALANCE.reward.dispatchWin, 'dispatch_win');
   logEvent(session, 'cycle', { phase: 'cycle_done' });
+  // 판독기는 첫 사이클만 세므로 그 종점의 값을 붙잡는다 — 이후 화면의 전환은 그 사이클을 오염시키지 않는다.
+  session.accessibilityTogglesAtDone ??= session.accessibilityToggles;
   return { reward: win ? BALANCE.reward.dispatchWin : 0 };
 }
 
@@ -225,7 +228,7 @@ export function exportPayload(session, { exportedAt = new Date().toISOString() }
     coins: session.coins,
     // 접근성 창 ×1.3 은 완주율과 `tail_ms` 를 직접 움직이므로, 켠 로그와 끈 로그는 다른 모집단이다.
     accessibility: session.accessibility,
-    accessibility_toggles: session.accessibilityToggles,
+    accessibility_toggles: session.accessibilityTogglesAtDone ?? session.accessibilityToggles,
     balance: balanceDigest(),
     log_violations: session.logViolations.map((v) => ({ ...v })),
     entries: session.log.entries.map((e) => ({ ...e })),
