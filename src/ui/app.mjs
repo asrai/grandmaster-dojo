@@ -26,7 +26,8 @@ const ROUTES = {
 // 손가락 입력 기기와 키보드는 `ignore_rate` 가 다른 모집단이라 세션 메타에 그대로 실린다 (REQ-603).
 const DEVICE = window.matchMedia?.('(pointer: coarse)').matches ? 'button' : 'keyboard';
 
-const session = createSession();
+// `t_ms` 는 kill (a)·(d) 의 경과 시간이라 게임 루프와 같은 단조 시계를 써야 한다 (REQ-603).
+const session = createSession({ now: () => performance.now() });
 const ctx = {
   session,
   root: $('screen'),

@@ -32,10 +32,22 @@ python3 -m http.server 8000
 ## 검증
 
 ```bash
-node tests/harness.mjs   # 헤드리스 회귀 — 판정 등급·피해 정수·상태 전이·밸런스 게이트
+node tests/harness.mjs        # 헤드리스 회귀 — 판정 등급·피해 정수·상태 전이·밸런스 게이트·봇 1사이클
+node tests/kill-readout.mjs   # kill 판독 — 봇 1사이클을 만들어 (a)(b)(d)·ignore_rate 를 산출
 ```
 
-`src/balance.mjs`(데이터) · `src/core.mjs`(순수 로직) · `src/log.mjs`(로그 스키마)는 DOM 을 모르므로 브라우저와 하네스가 같은 모듈을 쓴다. DOM 을 아는 코드는 `src/ui/` 아래에 있고, 그중 입력기 `src/ui/sequence-input.mjs` 만은 DOM-free 라 하네스가 함께 회귀한다.
+`src/balance.mjs`(데이터) · `src/core.mjs`(순수 로직) · `src/log.mjs`(로그 스키마) · `src/bot.mjs`(봇·헤드리스 사이클)는 DOM 을 모르므로 브라우저와 하네스가 같은 모듈을 쓴다. DOM 을 아는 코드는 `src/ui/` 아래에 있고, 그중 입력기 `src/ui/sequence-input.mjs` 와 대련 루프 `src/ui/match.mjs` 는 DOM-free 라 하네스가 함께 회귀한다 — 파견 밸런스 게이트도 사본이 아니라 이 대련 루프를 가상 시계로 돌려 검증한다.
+
+### 로그 내보내기 · kill 판독
+
+1. 로컬 서버로 열고 1사이클을 플레이한다 (도장 → 수련 → 사부 대련 → 전수 → 파견 → 결과).
+2. 헤더의 **로그 내보내기** 를 누르면 세션 버퍼가 `dojo-log-<시각>.json` 으로 내려온다. 스키마 위반이 있으면 위반 목록이 같은 파일에 실리고 경고가 뜬다.
+3. `node tests/kill-readout.mjs <내려받은 파일>` 로 판독한다 — 필드 결손과 17종 이벤트 방출을 먼저 검사한 뒤 kill (a) `first_fire_t` · (b) 완주율 · (d) `cycle_done_t` 와 선행 게이트 `ignore_rate` 를 pass/fail 로 찍는다. (c) 는 설문 축이라 로그 밖이다.
+4. 종료 코드는 **판독 가능성**이다 — kill 미달은 red 가 아니고, 필드 결손·스키마 위반·이벤트 미방출만 red 다.
+
+**봇 v2** (헤더의 «봇 v2 실행») — 사람 속도(반응 0.45~0.65s · 키당 0.26~0.38s · 15% 미입력)로 손과 **같은 입력 경로**를 두드려 1사이클을 자동 완주한다(파견 무지시). 봇 수치는 페이스 회귀 참고치이고 kill 판정 표본이 아니다.
+
+**1시간 수련 시뮬** (도장 버튼) — 방치 축을 재화로 압축해 보여 준다. 재화는 획득·표시만 하고 소비처가 없다 (M2+).
 
 ## 문서
 
