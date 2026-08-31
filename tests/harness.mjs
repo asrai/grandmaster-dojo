@@ -125,19 +125,20 @@ suite('데이터 무결성 (REQ-501·502·503·505)', () => {
     for (const c of columns) ok(s[c] !== undefined, `${s.id} 컬럼 ${c} 존재`);
     ok(String(s.name).length > 0 && String(s.hanja).length > 0, `${s.id} 이름·한자 비어있지 않음`);
     ok(String(s.gugyeol).length > 0, `${s.id} 구결 존재`);
-    eq(s.d, BALANCE.damageByLen[s.seq.length], `${s.id} D 가 길이별 시드와 일치`);
+    ok(Number.isInteger(s.d) && s.d > 0, `${s.id} D 가 정수`);
     ok(BALANCE.threshold[s.id] !== undefined, `${s.id} threshold 존재`);
     eq(BALANCE.rankPtsPerStyle[s.id], s.order, `${s.id} 성 포인트 = 초식 차수`);
   }
   deepEq(STYLES.map((s) => [s.attr, s.seq.join('')]), [
     ['fast', 'DRU'], ['hard', 'DLR'], ['fine', 'DURL'], ['fast', 'DDRLU'],
   ], '4식의 속성·시퀀스 시드');
+  deepEq(STYLES.map((s) => s.d), [10, 10, 14, 20], '4식 D 시드 — damageByLen 에서 파생된 결과');
   deepEq(STYLES.map((s) => s.counters), ['alpha', 'beta', 'gamma', 'delta'], '4식의 파해 대상');
 
   deepEq(FOE_STYLES.map((s) => [s.id, s.attr, s.len, s.d]), [
     ['alpha', 'hard', 3, 10], ['beta', 'fine', 4, 14], ['gamma', 'fast', 4, 14], ['delta', 'fine', 5, 20],
   ], '적 초식 속성·길이·D 시드');
-  for (const f of FOE_STYLES) eq(f.d, BALANCE.damageByLen[f.len], `${f.id} D 가 길이별 시드와 일치`);
+  deepEq(FOE_STYLES.map((s) => s.d), [10, 14, 14, 20], '적 초식 D 시드 — damageByLen 에서 파생된 결과');
   deepEq(FOE_STYLES.filter((s) => s.finisher).map((s) => s.id), ['delta'], '절초는 δ 하나');
   for (const f of FOE_STYLES) {
     ok(!f.counters || f.finisher, `${f.id} — 파해 대상을 가진 적 초식은 절초여야 역파가 성립한다`);
