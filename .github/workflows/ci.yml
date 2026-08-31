@@ -14,7 +14,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # main 푸시는 취소하지 않는다 — 중간 커밋이 완결된 `ci` 없이 남는다
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   ci:

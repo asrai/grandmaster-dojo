@@ -766,7 +766,7 @@ const url = "https://host/src/foo.mjs:123 inside a string";
 const t = `template with // no comment and ${x ? "a" : `b`} inside`;
 const re = /https:\\/\\//;  // trailing comment survives the regex
 const n = i++ / 2;  // division keeps its trailing comment
-const s2 = `${t.replace(/[}]/g, "")} tail`;  // interp regex must not desync
+const s2 = `${t.replace(/[{]/g, "")} tail`;  // interp regex must not desync
 // normal comment was 0.29 → 0.38
 // see vision.py:140 and core.mjs:88 for parity
 '''
