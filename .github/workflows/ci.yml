@@ -88,4 +88,13 @@ jobs:
             BASE=$(git rev-parse --verify HEAD^ 2>/dev/null || git rev-parse HEAD)
             echo "::notice::$GITHUB_EVENT_NAME 에는 base 필드가 없다 — $BASE 로 대체"
           fi
-          python3 scripts/comment-lint.py --root . --changed-only --base "$BASE"
+          # lint 는 base/diff 실패를 fail-open(rc 0)으로 접는다 — 공유 스크립트의
+          # 계약이라 여기서 바꾸지 않고, required check 쪽에서 리포트 헤더 부재를
+          # 실패로 승격해 "아무것도 검사하지 않고 green" 을 막는다.
+          rc=0
+          python3 scripts/comment-lint.py --root . --changed-only --base "$BASE" \
+            > lint-ratchet.log 2>&1 || rc=$?
+          cat lint-ratchet.log
+          [ "$rc" -eq 0 ] || exit "$rc"
+          grep -q '^## comment-lint:' lint-ratchet.log \
+            || { echo "::error::ratchet 이 무음 스킵됐다 (fail-open) — 검사 0건으로 green 이 될 뻔했다"; exit 1; }
