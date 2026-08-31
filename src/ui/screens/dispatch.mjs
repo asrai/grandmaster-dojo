@@ -2,14 +2,15 @@
 // 유저의 유일한 개입 수단은 그 수 한정의 지시 탭이다.
 
 import { BALANCE } from '../../balance.mjs';
-import {
-  discipleRankOf, discipleStyles, finisherOf, isEffectiveSuccess, selectDiscipleStyle,
-} from '../../core.mjs';
+import { createDiscipleHand } from '../../bot.mjs';
+import { discipleRankOf, discipleStyles, finisherOf } from '../../core.mjs';
 import { attrMark, clear, el, hpBar } from '../dom.mjs';
 import { ATTR_VIEW, GRADE_VIEW, attrLabel, gradeLabel, winAttrOf } from '../theme.mjs';
 import { SFX } from '../audio.mjs';
 import { createMatch } from '../match.mjs';
-import { ART_ID, ART_NAME, DISPATCH_CHALLENGER, accrueDiscipleRank, logEvent } from '../session.mjs';
+import {
+  ART_ID, ART_NAME, DISPATCH_CHALLENGER, logEvent, recordDispatchVerdict,
+} from '../session.mjs';
 
 const styleIcon = (style, extra = '') => el('div', {
   class: `cand${extra ? ` ${extra}` : ''}`, style: `--attr:${ATTR_VIEW[style.attr].color}`,
@@ -77,6 +78,7 @@ export function startDispatch(ctx) {
 
   let instructed = null;
   let fired = false;
+  const disciple = createDiscipleHand({ session, styles, fire: (shot) => match.fire(shot) });
 
   function renderIcons(view, { flash = false } = {}) {
     // 그 수 예고의 파해를 제자가 보유하면 한 번 반짝여 지시를 유도한다 (강제 아님).
@@ -113,6 +115,7 @@ export function startDispatch(ctx) {
       onTelegraph(view) {
         instructed = null;
         fired = false;
+        disciple.arm();
         clear(verdictEl);
         windowFill.style.width = '100%';
         clear(telegraphEl).appendChild(view.foeOpen
@@ -134,25 +137,10 @@ export function startDispatch(ctx) {
       },
       onTick(view) {
         windowFill.style.width = `${view.ratio * 100}%`;
-        if (fired || view.ratio > 1 - BALANCE.discipleFireRatio) return;
-        fired = true;
-        const style = instructed ?? selectDiscipleStyle({
-          styles,
-          foeStyle: view.telegraphed,
-          rankOf: () => discipleRankOf(session.disciple, ART_ID),
-        });
-        logEvent(session, 'select', { styleId: style.id, byUser: Boolean(instructed) });
-        // 제자는 창의 60% 시점에 반드시 실행하므로 선기 잔여는 상수다 (하네스 시뮬과 같은 값).
-        match.fire({ style, oneTap: false, r: 1 - BALANCE.discipleFireRatio });
+        if (disciple.tick(view, instructed)) fired = true;
       },
       onVerdict(view) {
-        logEvent(session, 'verdict', {
-          grade: view.verdict.grade,
-          dmg_out: view.verdict.dmgOut,
-          dmg_in: view.verdict.dmgIn,
-          state: view.verdict.opening,
-          who: 'disciple',
-        });
+        const ranked = recordDispatchVerdict(session, view);
         renderHp(view);
         const gv = GRADE_VIEW[view.verdict.grade];
         clear(verdictEl).appendChild(el('div', {
@@ -160,9 +148,7 @@ export function startDispatch(ctx) {
           text: `${gv.mark} ${gradeLabel(view.verdict.grade)}`,
         }));
         (view.verdict.grade === 'crush' ? SFX.crush : SFX.hit)();
-        if (view.fire && isEffectiveSuccess(view.verdict.grade)) {
-          if (accrueDiscipleRank(session, view.fire.style.id)) SFX.rank();
-        }
+        if (ranked) SFX.rank();
       },
       onEnd(view) {
         ctx.go('result', {

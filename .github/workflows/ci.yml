@@ -52,6 +52,15 @@ jobs:
         # `단정 N건 · 실패 0건` stdout 이 "안 걸렸다" 와 "안 돌았다" 를 가른다.
         run: node tests/harness.mjs
 
+      - name: kill 판독기
+        # 자체 생성 → 파일 판독의 두 형태를 모두 태운다. 종료 코드는 **판독 가능성**이라
+        # kill 미달은 red 가 아니고, 필드 결손·스키마 위반·17종 미방출만 잡의 실패다.
+        run: |
+          # RUNNER_TEMP 는 GitHub 러너에만 있다 — act·커스텀 러너에서 빈 값이면 `/cycle-log.json` 이 된다
+          OUT="${RUNNER_TEMP:-.}/cycle-log.json"
+          node tests/kill-readout.mjs --emit "$OUT"
+          node tests/kill-readout.mjs "$OUT"
+
       - name: comment-lint self-test
         run: python3 scripts/comment-lint.py --self-test
 

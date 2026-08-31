@@ -24,12 +24,16 @@ export function createPad() {
   let active = null;
   let structureSig = null;
   let arrowsFor = null;
+  let botOwned = false;
+  let fromBot = false;
 
   /** 응수 창 밖에서는 패드가 자리를 지키되 입력을 받지 않는다 — 사라지면 엄지가 매 수 자리를 잃는다. */
   const accepting = () => Boolean(active) && (active.accepting ? active.accepting() : true);
+  /** 봇이 도는 동안 사람 손이 섞이면 그 표본이 누구의 것인지 로그로 가를 수 없다 (REQ-603). */
+  const locked = () => botOwned && !fromBot;
 
   function press(dir, device) {
-    if (!accepting()) return;
+    if (!accepting() || locked()) return;
     const result = active.input.press(dir, device);
     const button = dirButtons.get(dir);
     if (result.accepted) {
@@ -47,7 +51,7 @@ export function createPad() {
   }
 
   function reset() {
-    if (!accepting()) return;
+    if (!accepting() || locked()) return;
     active.input.reset();
     SFX.reset();
     render();
@@ -95,7 +99,7 @@ export function createPad() {
         style: `--attr:${ATTR_VIEW[style.attr].color}`,
         title: style.gugyeol,
         onclick: () => {
-          if (!accepting()) return;
+          if (!accepting() || locked()) return;
           const fired = input.tap(style);
           if (!fired) return;
           render();
@@ -115,6 +119,7 @@ export function createPad() {
     const { input } = active;
     const top = input.top();
     root.classList.toggle('idle', !accepting());
+    root.classList.toggle('bot', botOwned);
     // 구조가 그대로면 노드를 건드리지 않는다 — 재생성은 클릭 타깃과 스크롤 위치까지 매 프레임 날린다.
     const sig = [
       input.candidates.map((s) => s.id).join(','), top ? top.id : '',
@@ -150,6 +155,17 @@ export function createPad() {
   }
 
   return {
+    /**
+     * 봇 v2 의 손 (REQ-605) — 사람 입력과 완전히 같은 경로를 지난다.
+     * 창이 닫혀 있으면 `peek()` 가 null 이라 봇은 그 사이 아무것도 두드리지 않는다.
+     */
+    bot: {
+      own(on) { botOwned = on; render(); },
+      peek: () => (accepting() ? { input: active.input, foeStyle: active.foeStyle?.() ?? null } : null),
+      press(dir, device) { fromBot = true; try { press(dir, device); } finally { fromBot = false; } },
+      reset() { fromBot = true; try { reset(); } finally { fromBot = false; } },
+    },
+
     /** @param {{input: object, masteryOf: Function, onFire: Function, onIgnore?: Function}} consumer */
     attach(consumer) {
       active = consumer;

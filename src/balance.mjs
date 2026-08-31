@@ -65,8 +65,19 @@ export const BALANCE = {
   // `winColorHintExchanges` 는 프로토 상시(∞) 지만 JSON 왕복에서 Infinity 가 null 이 되므로 유한 상한을 쓴다.
   winColorHintExchanges: Number.MAX_SAFE_INTEGER,
   simEfficiency: 0.1,
+  simTrainSeconds: 3600,
   buttonHitPx: 56,
   reward: { duelWin: 30, dispatchWin: 50 },
+
+  // 봇 v2 사람 속도 모델 (REQ-605). `misHitRate` 는 spec 미지정분 — 없으면 선행 게이트가 공허해진다.
+  bot: {
+    reactionMs: [450, 650],
+    keyMs: [260, 380],
+    navMs: [300, 600],
+    missRate: 0.15,
+    misHitRate: 0.06,
+    pollMs: 30,
+  },
 
   // HP·내공 시드 — 도전자 키는 CHALLENGERS.id 와 1:1 (REQ-506 게이트가 하향 조정한다)
   hp: { user: 100, disciple: 100, 'A-1': 40, 'A-2': 55, 'A-3': 70, B: 80 },

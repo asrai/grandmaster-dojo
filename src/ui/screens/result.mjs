@@ -1,42 +1,30 @@
 // 결과 화면 (REQ-209·406) — 패배는 무손실이고, 재도전은 같은 차수를 HP 만 되돌려 다시 연다.
 
-import { BALANCE } from '../../balance.mjs';
 import { clear, el } from '../dom.mjs';
-import { addCoins, advanceStage, isLastStage, logEvent } from '../session.mjs';
+import { settleDispatch, settleDuel } from '../session.mjs';
 
-function settleDuel(session, params) {
-  const lines = [];
-  if (params.win) {
-    addCoins(session, BALANCE.reward.duelWin, 'duel_win');
-    lines.push(`재화 +${BALANCE.reward.duelWin} 元`);
-    const unlocked = advanceStage(session, params.stage);
-    if (unlocked) lines.push(`${unlocked.name} ${unlocked.stage}차 해금`);
-    else if (isLastStage(params.stage)) lines.push('사부 대련 전 차수 격파 — 남은 것은 전수와 파견이다');
-  } else {
-    lines.push('잃은 것은 없다 — 숙련·성·재화는 그대로다');
-  }
+function duelLines(session, params) {
+  if (!params.win) return ['잃은 것은 없다 — 숙련·성·재화는 그대로다'];
+  const { reward, unlocked, cleared } = settleDuel(session, params);
+  const lines = [`재화 +${reward} 元`];
+  if (unlocked) lines.push(`${unlocked.name} ${unlocked.stage}차 해금`);
+  else if (cleared) lines.push('사부 대련 전 차수 격파 — 남은 것은 전수와 파견이다');
   return lines;
 }
 
-function settleDispatch(session, params) {
-  const lines = [];
-  if (params.win) {
-    addCoins(session, BALANCE.reward.dispatchWin, 'dispatch_win');
-    lines.push(`재화 +${BALANCE.reward.dispatchWin} 元`);
-  } else {
-    lines.push('도전자는 도주했다 — 잃은 것은 없다');
-  }
+function dispatchLines(session, params) {
+  const { reward } = settleDispatch(session, params);
+  const lines = [params.win ? `재화 +${reward} 元` : '도전자는 도주했다 — 잃은 것은 없다'];
   lines.push(params.rankTo > params.rankFrom
     ? `제자 성 ${params.rankFrom} → ${params.rankTo}`
     : `제자 성 ${params.rankTo} (변화 없음)`);
-  logEvent(session, 'cycle', { phase: 'cycle_done' });
   return lines;
 }
 
 export function renderResult(ctx) {
   const { session, root, params } = ctx;
   const duel = params.kind === 'duel';
-  const lines = duel ? settleDuel(session, params) : settleDispatch(session, params);
+  const lines = duel ? duelLines(session, params) : dispatchLines(session, params);
   ctx.refreshTop();
   ctx.pad.detach();
   clear(root);

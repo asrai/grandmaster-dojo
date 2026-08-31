@@ -6,7 +6,7 @@ import { arrowRow, attrMark, clear, el } from '../dom.mjs';
 import { ATTR_VIEW } from '../theme.mjs';
 import {
   ART_ID, ART_NAME, DISPATCH_CHALLENGER, artRank, canEquip, canTransmitNow,
-  challengerOfStage, equip, learnStyle, masteryOf, unequip,
+  challengerOfStage, equip, learnStyle, masteryOf, simulateTraining, unequip,
 } from '../session.mjs';
 
 const rankLabel = (rank) => (rank >= BALANCE.rankMax ? `${rank}성 · 완벽히 깨달음` : `${rank}성`);
@@ -114,6 +114,12 @@ export function renderDojo(ctx) {
         text: `파견 — ${DISPATCH_CHALLENGER.name}`,
         disabled: !session.transmitted,
         onclick: () => ctx.go('preview'),
+      }),
+      // 평가자는 실제로 방치할 수 없으므로 1시간을 버튼 하나로 압축해 보여 준다 (REQ-604).
+      el('button', {
+        class: 'small ghost',
+        text: `1시간 수련 시뮬 — +${Math.round(BALANCE.simEfficiency * BALANCE.simTrainSeconds)} 元`,
+        onclick: () => { simulateTraining(session); ctx.refreshTop(); },
       }),
       session.slots.some(Boolean) ? null : el('p', {
         class: 'dim', text: '초식을 수련해 숙련 30% 를 넘기면 실전 슬롯에 자동으로 장착된다.',
