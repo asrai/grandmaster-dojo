@@ -809,6 +809,32 @@ suite('헤드리스 봇 1사이클 (REQ-601·603·605)', () => {
     // 밸런스 시드를 튜닝하는 것만으로 이후 모든 PR 이 막힌다. 임계 판정은 판독기 출력이다.
   }
 
+  // 봇이 중간에 멈추고 사람이 이어 친 로그 — 두 손이 한 분수에 합산되면 kill 판정이 거짓이 된다.
+  const base = exportPayload(runs[0].session);
+  // 마지막 발동 직전에서 자른다 — 앞의 실전 발동이 전부 봇 몫이 되어 분자 차이가 확실히 생긴다.
+  const cut = base.entries.findLastIndex((e) => e.event === 'fire');
+  const mixed = {
+    ...base,
+    entries: [
+      ...base.entries.slice(0, cut),
+      { event: 'session', t_ms: base.entries[cut].t_ms, tester_role: 'self', device: 'keyboard' },
+      ...base.entries.slice(cut),
+    ],
+  };
+  const mixedOut = readout(mixed);
+  const pureOut = readout(base);
+  eq(mixedOut.aux.mixed_hands, true, '두 손이 섞인 사이클을 혼재로 식별한다');
+  eq(mixedOut.aux.tester_role, 'bot+self', '섞인 역할이 둘 다 남는다');
+  ok(mixedOut.aux.bot_hand_entries > 0, '봇 구간 항목 수가 보고된다');
+  ok(mixedOut.kill.b_hand_fires < pureOut.kill.b_hand_fires, '봇 구간은 완주율 분자에서 빠진다');
+  ok(mixedOut.kill.a_first_fire_ms > pureOut.kill.a_first_fire_ms, '(a) 는 사람의 첫 발동으로 다시 잡힌다');
+  eq(mixedOut.kill.d_cycle_done_ms, pureOut.kill.d_cycle_done_ms, '(d) 종점은 사이클의 성질이라 그대로다');
+
+  // 창 배율을 사이클 중에 바꾼 로그는 (b) 의 분모가 두 난이도에서 온 것이라 판독 불가다.
+  eq(readout({ ...base, accessibility_toggles: 2 }).aux.accessibility_toggles, 2,
+    '접근성 전환 횟수가 판독기까지 전달된다');
+  eq(pureOut.aux.accessibility_toggles, 0, '전환이 없으면 0');
+
   // 같은 시드는 같은 사이클을 그린다 — 이 성질이 없으면 봇 회귀가 회차마다 흔들린다.
   const twice = SEEDS.slice(0, 1).map(() => runHeadlessCycle({ random: createSeededRandom(SEEDS[0]) }));
   eq(twice[0].elapsedMs, runs[0].elapsedMs, '같은 시드 = 같은 가상 시간');

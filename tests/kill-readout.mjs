@@ -72,14 +72,22 @@ function auditEntries(entries) {
 
 // ------------------------------------------------------------------ 지표 산출
 
-/** 각 항목에 그 시점의 `cycle{phase}` 를 붙인다 — 실전 창과 수련 창의 구분자가 그것뿐이다. */
-function withPhase(entries) {
+/**
+ * 각 항목에 그 시점의 `cycle{phase}` 와 `session{tester_role}` 을 붙인다.
+ * 실전 창과 수련 창을 가르는 것도, 봇의 손과 사람의 손을 가르는 것도 이 두 이벤트뿐이다.
+ */
+function tag(entries) {
   let phase = null;
+  let role = null;
   return entries.map((entry) => {
     if (entry.event === 'cycle') phase = entry.phase;
-    return { ...entry, phase_at: phase };
+    if (entry.event === 'session') role = entry.tester_role;
+    return { ...entry, phase_at: phase, role_at: role };
   });
 }
+
+/** 손의 흔적을 남긴 항목 — 봇 구간을 사람 표본에서 빼려면 이 세 이벤트만 보면 된다. */
+const HAND_EVENTS = new Set(['key', 'fire', 'timeout']);
 
 /**
  * 첫 `cycle_done` 까지 자른다 — 결과 화면에서 계속 플레이한 세션을 그대로 세면
@@ -93,12 +101,21 @@ function firstCycle(tagged) {
 const rate = (num, den) => (den ? num / den : null);
 
 export function readout(payload) {
-  const { cycle: tagged, dropped } = firstCycle(withPhase(payload.entries));
+  const { cycle: all, dropped } = firstCycle(tag(payload.entries));
+
+  // 봇이 중간에 멈춘 사이클은 두 손이 한 로그에 섞인다 — 지표는 사람 구간만 세고 그 사실을 남긴다.
+  const handRoles = [...new Set(all.filter((e) => HAND_EVENTS.has(e.event)).map((e) => e.role_at))];
+  const botEntries = all.filter((e) => HAND_EVENTS.has(e.event) && e.role_at === 'bot').length;
+  const mixed = handRoles.length > 1;
+  const humanOnly = mixed && handRoles.some((r) => r !== 'bot');
+  const tagged = humanOnly ? all.filter((e) => e.role_at !== 'bot') : all;
+
   const at = (event, pred = () => true) => tagged.find((e) => e.event === event && pred(e)) ?? null;
 
   const firstFire = at('fire');
   const firstTransmit = at('transmit');
-  const cycleDone = at('cycle', (e) => e.phase === 'cycle_done');
+  // 종점은 사이클의 성질이라 손 구간 필터와 무관하게 전체에서 찾는다.
+  const cycleDone = all.find((e) => e.event === 'cycle' && e.phase === 'cycle_done') ?? null;
 
   // kill (b) 는 완주율 — 실전 창의 손 입력만 세고 원터치 창은 분모에서 뺀다 (REQ-302·603).
   const duel = tagged.filter((e) => e.phase_at === DUEL_PHASE);
@@ -158,7 +175,9 @@ export function readout(payload) {
           && e.grade in BALANCE.grades && isEffectiveSuccess(e.grade)).length,
         tagged.filter((e) => e.event === 'verdict' && e.who === 'user').length,
       ),
-      tester_role: tagged.findLast((e) => e.event === 'session')?.tester_role ?? null,
+      tester_role: handRoles.filter(Boolean).join('+') || null,
+      mixed_hands: mixed,
+      bot_hand_entries: humanOnly ? botEntries : 0,
       accessibility: payload.accessibility ?? null,
       accessibility_toggles: payload.accessibility_toggles ?? 0,
       dropped_after_cycle: dropped,
@@ -175,13 +194,20 @@ const mark = (pass) => (pass == null ? '  ?' : pass ? '  ✓' : '  ✗');
 function report(result) {
   const { kill, gate, aux } = result;
   const a = kill.a_first_fire_ms == null ? null : kill.a_first_fire_ms <= KILL.firstFireMs;
-  const b = kill.b_completion_rate == null ? null : kill.b_completion_rate >= KILL.completionRate;
-  const d = kill.d_cycle_done_ms == null ? null : kill.d_cycle_done_ms <= KILL.cycleDoneMs;
+  // 사이클 중 창 배율이 바뀌면 기본 창과 ×1.3 창의 fire/timeout 이 한 분수에 섞여 판정이 뒤집힌다.
+  const b = aux.accessibility_toggles > 0 || kill.b_completion_rate == null
+    ? null : kill.b_completion_rate >= KILL.completionRate;
+  // 봇이 섞인 사이클의 총 시간은 사람의 페이스가 아니다 — (b)·(a) 처럼 구간을 골라낼 수 없다.
+  const d = aux.mixed_hands || kill.d_cycle_done_ms == null
+    ? null : kill.d_cycle_done_ms <= KILL.cycleDoneMs;
   const g = gate.ignore_rate == null ? null : gate.ignore_rate <= KILL.ignoreRate;
 
   console.log(`\n판독 대상: tester_role=${aux.tester_role ?? '미상'}`
     + ` · 응수 창 ×1.3 ${aux.accessibility === null ? '미상' : aux.accessibility ? 'on' : 'off'}`
-    + (aux.accessibility_toggles ? ` (사이클 중 ${aux.accessibility_toggles}회 전환 — 모집단 혼재)` : '')
+    + (aux.accessibility_toggles ? ` (사이클 중 ${aux.accessibility_toggles}회 전환 — (b) 판독 불가)` : '')
+    + (aux.mixed_hands
+      ? ` · 손 혼재 — 봇 구간 ${aux.bot_hand_entries}건을 (a)(b)·게이트에서 제외, (d) 는 판독 불가`
+      : '')
     + (aux.dropped_after_cycle ? ` · 1사이클 이후 ${aux.dropped_after_cycle}건 제외` : ''));
   console.log(`${mark(g)} 선행 게이트  ignore_rate ${pct(gate.ignore_rate)} (임계 ${pct(KILL.ignoreRate)})`
     + ` · device별 ${Object.entries(gate.by_device).map(([d, v]) => `${d} ${pct(v)}`).join(' · ') || '—'}`);
