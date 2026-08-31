@@ -147,8 +147,8 @@ export function nextDojoAction(session) {
 }
 
 /** kill (d) 종점 감시 — 커서로 훑어 매 폴링마다 버퍼 전량을 다시 읽지 않는다. */
-function createCycleDoneProbe(session) {
-  let at = 0;
+function createCycleDoneProbe(session, from = 0) {
+  let at = from;
   let done = false;
   return () => {
     if (done) return true;
@@ -181,7 +181,7 @@ export function createBot({
 }) {
   const pace = createPace(random);
   const hand = createHand({ pace, now: clock.now, press, reset, random });
-  const cycleDone = createCycleDoneProbe(session);
+  let cycleDone = () => false;
   let timer = 0;
   let running = false;
   let inWindow = false;
@@ -242,14 +242,20 @@ export function createBot({
   }
 
   function stop() {
+    if (!running) return;
     running = false;
     clock.cancel(timer);
+    // 손이 돌아온 것도 모집단 변화다 — 자발 종료든 사람이 멈추든 이 한 자리에서 되돌린다.
+    logSessionMeta(session, { testerRole: 'self', device });
   }
 
   return {
     start() {
       if (running) return;
       running = true;
+      // 커서를 지금 버퍼 끝에 두지 않으면 지난 사이클의 `cycle_done` 을 이번 실행의 종점으로 읽는다.
+      cycleDone = createCycleDoneProbe(session, session.log.entries.length);
+      simulated = false;
       logSessionMeta(session, { testerRole: 'bot', device });
       step();
     },

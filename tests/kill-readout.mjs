@@ -12,7 +12,7 @@ import { pathToFileURL } from 'node:url';
 import { BALANCE } from '../src/balance.mjs';
 import { isEffectiveSuccess, responseWindowMs } from '../src/core.mjs';
 import { LOG_SCHEMA, TIME_FIELD, validate } from '../src/log.mjs';
-import { EXPORT_SCHEMA, exportPayload } from '../src/ui/session.mjs';
+import { EXPORT_SCHEMA, balanceDigest, exportPayload } from '../src/ui/session.mjs';
 import { createSeededRandom, runHeadlessCycle } from '../src/bot.mjs';
 
 /** kill-criterion 임계 (제안서 §7 · spec REQ-603). 판독기는 이 값만 알고 게임 로직은 모른다. */
@@ -32,14 +32,15 @@ const SELF_TEST_SEED = 20260902;
 
 function loadPayload(raw) {
   const parsed = JSON.parse(raw);
-  const entries = Array.isArray(parsed) ? parsed : parsed.entries;
-  if (!Array.isArray(entries)) throw new Error('entries 배열이 없다 — 내보내기 파일이 아니다');
-  const wrapper = Array.isArray(parsed) ? {} : parsed;
+  // 최상위 배열 = 버퍼만 있는 형태. 그 밖에는 내보내기 계약이라 키 결손을 통과로 접지 않는다.
+  if (Array.isArray(parsed)) return { bare: true, entries: parsed, log_violations: [] };
+  if (!Array.isArray(parsed.entries)) throw new Error('entries 배열이 없다 — 내보내기 파일이 아니다');
+  const missing = ['schema', 'log_violations'].filter((k) => !(k in parsed));
   return {
-    ...wrapper,
-    entries,
-    // 손으로 만진 파일이 위반 게이트를 통째로 건너뛰지 않게 배열로 못박는다.
-    log_violations: Array.isArray(wrapper.log_violations) ? wrapper.log_violations : [],
+    ...parsed,
+    bare: false,
+    missingKeys: missing,
+    log_violations: Array.isArray(parsed.log_violations) ? parsed.log_violations : [],
   };
 }
 
@@ -152,6 +153,7 @@ export function readout(payload) {
       ),
       tester_role: tagged.findLast((e) => e.event === 'session')?.tester_role ?? null,
       accessibility: payload.accessibility ?? null,
+      accessibility_toggles: payload.accessibility_toggles ?? 0,
       dropped_after_cycle: dropped,
     },
   };
@@ -159,19 +161,20 @@ export function readout(payload) {
 
 // ------------------------------------------------------------------ 출력
 
-const secs = (ms) => (ms === null ? '—' : `${(ms / 1000).toFixed(1)}s`);
-const pct = (v) => (v === null ? '—' : `${(v * 100).toFixed(1)}%`);
-const mark = (pass) => (pass === null ? '  ?' : pass ? '  ✓' : '  ✗');
+const secs = (ms) => (ms == null ? '—' : `${(ms / 1000).toFixed(1)}s`);
+const pct = (v) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`);
+const mark = (pass) => (pass == null ? '  ?' : pass ? '  ✓' : '  ✗');
 
 function report(result) {
   const { kill, gate, aux } = result;
-  const a = kill.a_first_fire_ms === null ? null : kill.a_first_fire_ms <= KILL.firstFireMs;
-  const b = kill.b_completion_rate === null ? null : kill.b_completion_rate >= KILL.completionRate;
-  const d = kill.d_cycle_done_ms === null ? null : kill.d_cycle_done_ms <= KILL.cycleDoneMs;
-  const g = gate.ignore_rate === null ? null : gate.ignore_rate <= KILL.ignoreRate;
+  const a = kill.a_first_fire_ms == null ? null : kill.a_first_fire_ms <= KILL.firstFireMs;
+  const b = kill.b_completion_rate == null ? null : kill.b_completion_rate >= KILL.completionRate;
+  const d = kill.d_cycle_done_ms == null ? null : kill.d_cycle_done_ms <= KILL.cycleDoneMs;
+  const g = gate.ignore_rate == null ? null : gate.ignore_rate <= KILL.ignoreRate;
 
   console.log(`\n판독 대상: tester_role=${aux.tester_role ?? '미상'}`
     + ` · 응수 창 ×1.3 ${aux.accessibility === null ? '미상' : aux.accessibility ? 'on' : 'off'}`
+    + (aux.accessibility_toggles ? ` (사이클 중 ${aux.accessibility_toggles}회 전환 — 모집단 혼재)` : '')
     + (aux.dropped_after_cycle ? ` · 1사이클 이후 ${aux.dropped_after_cycle}건 제외` : ''));
   console.log(`${mark(g)} 선행 게이트  ignore_rate ${pct(gate.ignore_rate)} (임계 ${pct(KILL.ignoreRate)})`
     + ` · device별 ${Object.entries(gate.by_device).map(([d, v]) => `${d} ${pct(v)}`).join(' · ') || '—'}`);
@@ -197,12 +200,26 @@ function main(argv) {
   let payload;
 
   if (file) {
-    payload = loadPayload(readFileSync(file, 'utf8'));
+    // 사람이 내려받은 파일을 넘기는 주 경로다 — 경로 오타·손상 JSON 이 raw 스택으로 죽지 않게 접는다.
+    let raw;
+    try {
+      raw = readFileSync(file, 'utf8');
+    } catch (err) {
+      console.error(`✗ 로그 파일을 읽을 수 없다: ${file} (${err.code ?? err.message})`);
+      return 1;
+    }
+    try {
+      payload = loadPayload(raw);
+    } catch (err) {
+      console.error(`✗ 로그 파일을 판독 형식으로 읽을 수 없다: ${err.message}`);
+      return 1;
+    }
     console.log(`로그 파일: ${file}`);
   } else {
     // 시드를 박아 CI 판독 결과가 회차마다 흔들리지 않게 한다 — 시드 강건성은 하네스가 쓸어본다.
     const { session, elapsedMs } = runHeadlessCycle({ random: createSeededRandom(SELF_TEST_SEED) });
-    payload = exportPayload(session);
+    // 파일 경로와 같은 정규화를 태워, 자체 생성분도 JSON 왕복을 거친 형태로만 판독된다.
+    payload = loadPayload(JSON.stringify(exportPayload(session)));
     console.log(`헤드리스 봇 1사이클 자체 생성 — 가상시간 ${(elapsedMs / 1000).toFixed(1)}s`
       + ` · 이벤트 ${payload.entries.length}건`);
     if (emitAt) {
@@ -212,9 +229,21 @@ function main(argv) {
   }
 
   let failures = 0;
-  if (payload.schema && payload.schema !== EXPORT_SCHEMA) {
+  if (payload.bare) {
+    console.log('· 최상위 배열 — 버퍼만 있는 형태로 읽는다 (위반 목록·밸런스 지문 없음)');
+  } else if (payload.missingKeys.length) {
+    console.error(`✗ 내보내기 계약 키 결손: ${payload.missingKeys.join(', ')}`
+      + ' — 없는 키를 통과로 접으면 지운 파일이 가장 깨끗해 보인다');
+    failures += 1;
+  } else if (payload.schema !== EXPORT_SCHEMA) {
     console.error(`✗ 알 수 없는 내보내기 스키마: ${payload.schema}`);
     failures += 1;
+  }
+  const drifted = Object.entries(balanceDigest())
+    .filter(([k, v]) => payload.balance && payload.balance[k] !== v);
+  if (drifted.length) {
+    console.warn(`! 밸런스 지문 불일치 ${drifted.map(([k, v]) => `${k}: 로그 ${payload.balance[k]} vs 현재 ${v}`).join(' · ')}`
+      + ' — 파생 지표(창 잔여·유효 성공률)는 현재 표 기준이다');
   }
   if (payload.log_violations.length) {
     console.error(`✗ 로그 스키마 위반 ${payload.log_violations.length}건 — kill 산식 입력으로 쓸 수 없다`);
@@ -231,7 +260,8 @@ function main(argv) {
     console.log(`✓ 필드 결손 0 — ${payload.entries.length}건 전량이 통합 로그 스키마와 일치`);
   }
   if (audit.missing.length) {
-    console.error(`✗ 미방출 이벤트 ${audit.missing.length}종: ${audit.missing.join(', ')}`);
+    console.error(`✗ 미방출 이벤트 ${audit.missing.length}종: ${audit.missing.join(', ')}`
+      + ' — 1사이클을 다 돌지 않았거나, 그 이벤트를 만드는 밸런스 손잡이(BALANCE.bot.*)가 0 이다');
     failures += 1;
   } else {
     console.log(`✓ 통합 로그 스키마 ${Object.keys(LOG_SCHEMA).length}종 전부 최소 1회 emit`);

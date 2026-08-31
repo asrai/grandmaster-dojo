@@ -11,6 +11,18 @@ import {
 /** 내보낸 로그의 판독 계약 이름 — `tests/kill-readout.mjs` 가 이 값으로 파일을 받아들인다. */
 export const EXPORT_SCHEMA = 'grandmaster-dojo/log-export@1';
 
+/**
+ * 판독기가 로그 밖에서 끌어다 쓰는 밸런스 값 — 창 길이·유효 성공 절단선.
+ * 내보낸 뒤 이 값들이 튜닝되면 옛 로그가 조용히 다른 수로 읽히므로 지문을 함께 싣는다.
+ */
+export const balanceDigest = () => ({
+  windowBaseMs: BALANCE.windowBaseMs,
+  windowStepMs: BALANCE.windowStepMs,
+  windowBaseLen: BALANCE.windowBaseLen,
+  accessibilityWindowMult: BALANCE.accessibilityWindowMult,
+  effectiveSuccessMaxOrder: BALANCE.effectiveSuccessMaxOrder,
+});
+
 /** 프로토의 비급은 1권뿐이라 무공 축의 모든 조회가 이 id 로 수렴한다. */
 export const ART_ID = ART_SETS[0].id;
 export const ART_NAME = ART_SETS[0].name;
@@ -54,6 +66,7 @@ export function createSession({ now } = {}) {
     coins: 0,
     stage: 1,
     accessibility: BALANCE.accessibilityWindow,
+    accessibilityToggles: 0,
     label: '문하생',
     transmitted: false,
   };
@@ -212,6 +225,8 @@ export function exportPayload(session, { exportedAt = new Date().toISOString() }
     coins: session.coins,
     // 접근성 창 ×1.3 은 완주율과 `tail_ms` 를 직접 움직이므로, 켠 로그와 끈 로그는 다른 모집단이다.
     accessibility: session.accessibility,
+    accessibility_toggles: session.accessibilityToggles,
+    balance: balanceDigest(),
     log_violations: session.logViolations.map((v) => ({ ...v })),
     entries: session.log.entries.map((e) => ({ ...e })),
   };

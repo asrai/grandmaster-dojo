@@ -24,7 +24,7 @@ const ROUTES = {
 };
 
 // 손가락 입력 기기와 키보드는 `ignore_rate` 가 다른 모집단이라 세션 메타에 그대로 실린다 (REQ-603).
-const DEVICE = window.matchMedia?.('(pointer: coarse)').matches ? 'button' : 'keyboard';
+const DEVICE = window.matchMedia?.('(pointer: coarse)')?.matches ? 'button' : 'keyboard';
 
 // `t_ms` 는 kill (a)·(d) 의 경과 시간이라 게임 루프와 같은 단조 시계를 써야 한다 (REQ-603).
 const session = createSession({ now: () => performance.now() });
@@ -65,6 +65,8 @@ $('a11y').checked = session.accessibility;
 $('a11y').addEventListener('change', (event) => {
   // 데이터 테이블은 시드로 두고 런타임 값은 세션이 갖는다 — 다음 창부터 반영된다.
   session.accessibility = event.target.checked;
+  // 사이클 도중에 창 배율이 바뀐 세션은 모집단이 섞인 것이라, 판독기가 그 사실을 알아야 한다.
+  session.accessibilityToggles += 1;
 });
 
 /** 로그 내보내기 (REQ-602) — 위반 목록을 함께 실어, 결손 로그가 조용히 판독에 쓰이지 않게 한다. */
@@ -101,19 +103,17 @@ const bot = createBot({
 });
 
 function paintBotButton() {
+  // 봇이 도는 동안 사람 입력이 섞이면 그 표본이 어느 손의 것인지 로그로 가를 수 없다.
+  ctx.pad.bot.own(bot.running);
   $('botBtn').textContent = bot.running ? '봇 정지' : '봇 v2 실행';
+  $('botBtn').setAttribute('aria-pressed', String(bot.running));
   $('botBtn').classList.toggle('urge', bot.running);
 }
 
 $('exportBtn').addEventListener('click', exportLog);
 $('botBtn').addEventListener('click', () => {
-  if (bot.running) {
-    bot.stop();
-    // 손이 돌아왔다는 것도 모집단 변화라, 이후 입력이 봇 표본으로 읽히지 않게 다시 선언한다.
-    logSessionMeta(session, { testerRole: 'self', device: DEVICE });
-  } else {
-    bot.start();
-  }
+  if (bot.running) bot.stop();
+  else bot.start();
   paintBotButton();
 });
 paintBotButton();
