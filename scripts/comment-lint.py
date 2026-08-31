@@ -286,6 +286,8 @@ def js_regex_at(src: str, i: int) -> bool:
     if j < 0:
         return True
     ch = src[j]
+    if ch in "+-" and j > 0 and src[j - 1] == ch:
+        return False
     if ch in _JS_REGEX_PREV_PUNCT:
         return True
     if ch.isalnum() or ch in "_$":
@@ -351,6 +353,8 @@ def js_skip_interp(src: str, i: int, n: int) -> int:
             i = js_skip_quote(src, i, n)
         elif c == "`":
             i = js_skip_template(src, i, n)
+        elif c == "/" and js_regex_at(src, i):
+            i = js_skip_regex(src, i, n)
         elif c == "\\":
             i += 2
         else:
@@ -577,6 +581,14 @@ def target_files(root: str, excludes: tuple[str, ...]) -> list[str]:
             and os.path.basename(p) != "comment-lint.py"]
 
 
+def scope_line(files: list[str], lint_set: list[str] | None = None) -> str:
+    from collections import Counter
+    by_ext = Counter(os.path.splitext(p)[1] for p in files)
+    detail = " · ".join(f"{e or '?'} {n}" for e, n in sorted(by_ext.items()))
+    tail = "" if lint_set is None else f" · 검사 {len(lint_set)}건"
+    return f"대상 {len(files)}건 ({detail}){tail}"
+
+
 def density(fr: FileResult) -> float:
     covered = {c.line for c in fr.comments if c.own_line} | {
         c.line for c in fr.comments if c.is_doc}
@@ -639,6 +651,7 @@ def main(argv: list[str]) -> int:
             ["git", "-C", args.root, "rev-parse", "--verify",
              f"{args.base}^{{commit}}"], capture_output=True, text=True)
         if probe.returncode != 0:
+            print(scope_line(files))
             print(f"comment-lint: base `{args.base}` unresolvable — "
                   f"skipping (fail-open). checkout fetch-depth 확인 필요",
                   file=sys.stderr)
@@ -650,6 +663,7 @@ def main(argv: list[str]) -> int:
                 capture_output=True, text=True, check=True).stdout
             changed = set(out.splitlines())
         except subprocess.CalledProcessError:
+            print(scope_line(files))
             print("comment-lint: diff failed — skipping (fail-open)",
                   file=sys.stderr)
             return 0
@@ -689,7 +703,7 @@ def main(argv: list[str]) -> int:
         lines_out.extend(f"- {f}" for f in all_fails)
     else:
         lines_out.append("## comment-lint: hard-fail 0건")
-    lines_out.append(f"대상 {len(files)}건 · 검사 {len(lint_set)}건")
+    lines_out.append(scope_line(files, lint_set))
     com, nb = aggregate_density(args.root, files)
     pct = 100 * com / nb if nb else 0.0
     dens_line = f"A1 전체 밀도 {pct:.1f}% ({com}/{nb})"
@@ -751,6 +765,8 @@ _FIX_JS = '''\
 const url = "https://host/src/foo.mjs:123 inside a string";
 const t = `template with // no comment and ${x ? "a" : `b`} inside`;
 const re = /https:\\/\\//;  // trailing comment survives the regex
+const n = i++ / 2;  // division keeps its trailing comment
+const s2 = `${t.replace(/[}]/g, "")} tail`;  // interp regex must not desync
 // normal comment was 0.29 → 0.38
 // see vision.py:140 and core.mjs:88 for parity
 '''
@@ -800,9 +816,14 @@ def self_test() -> int:
            "js: string content not a comment")
     expect(not any("no comment" in c.text for c in js.comments),
            "js: template-literal content not a comment")
-    expect(any("trailing comment survives" in c.text and not c.own_line
+    expect(any(c.text.startswith("trailing comment survives") and not c.own_line
                for c in js.comments),
-           "js: `//` after a regex literal is still a comment")
+           "js: a regex literal is skipped whole, not opened as a comment")
+    expect(any(c.text.startswith("division keeps") for c in js.comments),
+           "js: `/` after postfix ++ divides, so the trailing comment survives")
+    expect(any(c.text.startswith("interp regex must not desync")
+               for c in js.comments),
+           "js: a regex inside `${...}` does not break out of the template")
     js_fails = msgs("f.mjs", _FIX_JS, ".mjs")
     expect(sum("R2" in f for f in js_fails) == 2,
            f"js: 2 R2 hits (py + mjs refs), got {js_fails}")
