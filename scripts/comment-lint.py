@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Comment hygiene lint — py/gd/cs. Stdlib only, deterministic.
+"""Comment hygiene lint — py/gd/cs/js. Stdlib only, deterministic.
 
 Hard-fail (exit 1):
   R1  consecutive regular-comment block > MAX_BLOCK lines
-      (doc comments exempt: py docstring / gd ## / cs /// & /** )
+      (doc comments exempt: py docstring / gd ## / cs /// & js|cs /** )
   R2  absolute line-number refs in comments/docstrings: `foo.py:123`, `(:123`
   R3  chronology signature: >=2 issue refs (#N) on one comment line,
       or >=3 distinct issue refs within one comment block
@@ -16,7 +16,8 @@ Advisory (report only, never fails):
   A1  per-file & repo comment density (+ delta vs --base when given)
   A2  past-narration keyword lines
 
-Scope: git-tracked *.py *.gd *.cs minus DEFAULT_EXCLUDES (vendored/generated).
+Scope: git-tracked *.py *.gd *.cs *.mjs *.js *.cjs minus DEFAULT_EXCLUDES
+(vendored/generated).
 
 Modes:
   full (default)              — every violation fails. New repos / batch audits.
@@ -265,7 +266,169 @@ def extract_cs(path: str, src: str) -> FileResult:
     return r
 
 
-EXTRACTORS = {".py": extract_py, ".gd": extract_gd, ".cs": extract_cs}
+_JS_REGEX_PREV_PUNCT = frozenset("=(,:[!&|?{};+-*%~^<>")
+# a `/` after one of these keywords still starts a regex, not a division
+_JS_REGEX_PREV_WORDS = frozenset((
+    "return", "typeof", "instanceof", "in", "of", "case", "delete", "void",
+    "do", "else", "yield", "await", "new", "throw",
+))
+_JS_CONTROL_HEADS = frozenset(("if", "for", "while", "switch", "catch", "with"))
+
+
+def js_regex_at(src: str, i: int) -> bool:
+    """`src[i] == '/'` — regex literal (True) or division operator (False)?
+
+    Getting this wrong makes `\\/` inside a regex read as a line comment and
+    swallows the rest of the line, so the preceding token decides.
+    """
+    j = i - 1
+    while j >= 0 and src[j] in " \t\r\n":
+        j -= 1
+    if j < 0:
+        return True
+    ch = src[j]
+    if ch in "+-" and j > 0 and src[j - 1] == ch:
+        return False
+    if ch in _JS_REGEX_PREV_PUNCT:
+        return True
+    if ch == ")":
+        return js_closes_control_head(src, j)
+    if ch.isalnum() or ch in "_$":
+        k = j
+        while k >= 0 and (src[k].isalnum() or src[k] in "_$"):
+            k -= 1
+        return src[k + 1:j + 1] in _JS_REGEX_PREV_WORDS
+    return False
+
+
+def js_closes_control_head(src: str, j: int) -> bool:
+    """`src[j] == ')'` — `if (…)` 류 헤드를 닫는가? 그렇다면 뒤따르는 `/` 는 정규식."""
+    depth, k = 0, j
+    while k >= 0:
+        if src[k] == ")":
+            depth += 1
+        elif src[k] == "(":
+            depth -= 1
+            if depth == 0:
+                break
+        k -= 1
+    if k < 0:
+        return False
+    k -= 1
+    while k >= 0 and src[k] in " \t\r\n":
+        k -= 1
+    end = k
+    while k >= 0 and (src[k].isalnum() or src[k] in "_$"):
+        k -= 1
+    return src[k + 1:end + 1] in _JS_CONTROL_HEADS
+
+
+def js_skip_quote(src: str, i: int, n: int) -> int:
+    q = src[i]
+    j = i + 1
+    while j < n and src[j] != q and src[j] != "\n":
+        j += 2 if src[j] == "\\" else 1
+    return j + 1
+
+
+def js_skip_regex(src: str, i: int, n: int) -> int:
+    j, in_class = i + 1, False
+    while j < n and src[j] != "\n":
+        c = src[j]
+        if c == "\\":
+            j += 2
+            continue
+        if c == "[":
+            in_class = True
+        elif c == "]":
+            in_class = False
+        elif c == "/" and not in_class:
+            return j + 1
+        j += 1
+    return i + 1  # unterminated on its line — it was a division after all
+
+
+def extract_js(path: str, src: str) -> FileResult:
+    r = FileResult(path)
+    lines = src.splitlines()
+    r.nonblank = sum(1 for l in lines if l.strip())
+    i, n = 0, len(src)
+    line, col = 1, 0
+    # 열려 있는 템플릿 문맥: "tmpl" = 리터럴 본문, ["interp", depth] = `${…}` 안의 코드
+    stack: list = []
+
+    def advance(k: int) -> None:
+        nonlocal i, line, col
+        for _ in range(k):
+            if i < n and src[i] == "\n":
+                line += 1
+                col = 0
+            else:
+                col += 1
+            i += 1
+
+    def own_line_at(ln: int, c: int) -> bool:
+        return lines[ln - 1][:c].strip() == "" if ln <= len(lines) else True
+
+    while i < n:
+        ch = src[i]
+        nxt = src[i + 1] if i + 1 < n else ""
+        if stack and stack[-1] == "tmpl":
+            if ch == "\\":
+                advance(2)
+            elif ch == "`":
+                stack.pop()
+                advance(1)
+            elif ch == "$" and nxt == "{":
+                stack.append(["interp", 0])
+                advance(2)
+            else:
+                advance(1)
+            continue
+        if ch == "/" and nxt == "/":
+            start_line, start_col = line, col
+            j = src.find("\n", i)
+            j = n if j == -1 else j
+            r.comments.append(Comment(
+                line=start_line, text=src[i:j].lstrip("/").strip(),
+                is_doc=False, own_line=own_line_at(start_line, start_col),
+            ))
+            advance(j - i)
+        elif ch == "/" and nxt == "*":
+            start_line, start_col = line, col
+            j = src.find("*/", i + 2)
+            j = n - 2 if j == -1 else j
+            is_doc = src.startswith("/**", i)
+            first = own_line_at(start_line, start_col)
+            for off, seg in enumerate(src[i + 2:j].split("\n")):
+                r.comments.append(Comment(
+                    line=start_line + off, text=seg.strip().lstrip("*").strip(),
+                    is_doc=is_doc, own_line=(first if off == 0 else True),
+                ))
+            advance(j + 2 - i)
+        elif ch == "`":
+            stack.append("tmpl")
+            advance(1)
+        elif ch in "\"'":
+            advance(js_skip_quote(src, i, n) - i)
+        elif ch == "/" and js_regex_at(src, i):
+            advance(js_skip_regex(src, i, n) - i)
+        elif ch == "{" and stack:
+            stack[-1][1] += 1
+            advance(1)
+        elif ch == "}" and stack:
+            if stack[-1][1] == 0:
+                stack.pop()  # `${…}` 를 닫고 템플릿 본문으로 돌아간다
+            else:
+                stack[-1][1] -= 1
+            advance(1)
+        else:
+            advance(1)
+    return r
+
+
+EXTRACTORS = {".py": extract_py, ".gd": extract_gd, ".cs": extract_cs,
+              ".mjs": extract_js, ".js": extract_js, ".cjs": extract_js}
 
 
 # ── rules ─────────────────────────────────────────────────────────────────
@@ -413,7 +576,7 @@ def ratchet_filter(current: list[tuple[str, str]],
 def target_files(root: str, excludes: tuple[str, ...]) -> list[str]:
     try:
         out = subprocess.run(
-            ["git", "-C", root, "ls-files", "*.py", "*.gd", "*.cs"],
+            ["git", "-C", root, "ls-files"] + [f"*{e}" for e in EXTRACTORS],
             capture_output=True, text=True, check=True).stdout
         paths = out.splitlines()
     except (subprocess.CalledProcessError, FileNotFoundError):
@@ -425,6 +588,14 @@ def target_files(root: str, excludes: tuple[str, ...]) -> list[str]:
             and os.path.splitext(p)[1] in EXTRACTORS
             # self-exclude: 이 스크립트의 규칙 문서가 패턴 예시를 항상 포함
             and os.path.basename(p) != "comment-lint.py"]
+
+
+def scope_line(files: list[str], lint_set: list[str] | None = None) -> str:
+    from collections import Counter
+    by_ext = Counter(os.path.splitext(p)[1] for p in files)
+    detail = " · ".join(f"{e or '?'} {n}" for e, n in sorted(by_ext.items()))
+    tail = "" if lint_set is None else f" · 검사 {len(lint_set)}건"
+    return f"대상 {len(files)}건 ({detail}){tail}"
 
 
 def density(fr: FileResult) -> float:
@@ -489,6 +660,7 @@ def main(argv: list[str]) -> int:
             ["git", "-C", args.root, "rev-parse", "--verify",
              f"{args.base}^{{commit}}"], capture_output=True, text=True)
         if probe.returncode != 0:
+            print(scope_line(files))
             print(f"comment-lint: base `{args.base}` unresolvable — "
                   f"skipping (fail-open). checkout fetch-depth 확인 필요",
                   file=sys.stderr)
@@ -500,6 +672,7 @@ def main(argv: list[str]) -> int:
                 capture_output=True, text=True, check=True).stdout
             changed = set(out.splitlines())
         except subprocess.CalledProcessError:
+            print(scope_line(files))
             print("comment-lint: diff failed — skipping (fail-open)",
                   file=sys.stderr)
             return 0
@@ -539,6 +712,7 @@ def main(argv: list[str]) -> int:
         lines_out.extend(f"- {f}" for f in all_fails)
     else:
         lines_out.append("## comment-lint: hard-fail 0건")
+    lines_out.append(scope_line(files, lint_set))
     com, nb = aggregate_density(args.root, files)
     pct = 100 * com / nb if nb else 0.0
     dens_line = f"A1 전체 밀도 {pct:.1f}% ({com}/{nb})"
@@ -595,6 +769,19 @@ var r = "esc \\" quote // still string";
    spans lines */
 '''
 
+_FIX_JS = '''\
+/** JSDoc block — exempt kind */
+const url = "https://host/src/foo.mjs:123 inside a string";
+const t = `template with // no comment and ${x ? "a" : `b`} inside`;
+const re = /https:\\/\\//;  // trailing comment survives the regex
+const n = i++ / 2;  // division keeps its trailing comment
+const s2 = `${t.replace(/[{]/g, "")} tail`;  // interp regex must not desync
+if (ok) /https?:\\/\\//.test("foo.py:123");  // control-head regex is not a comment
+const c1 = `${/* interp block vision.mjs:7 */ v}`;
+// normal comment was 0.29 → 0.38
+// see vision.py:140 and core.mjs:88 for parity
+'''
+
 
 def self_test() -> int:
     failures: list[str] = []
@@ -633,6 +820,35 @@ def self_test() -> int:
            "cs: block comment lines counted")
     _, adv = check_file(cs, 15)
     expect(any("A2" in a for a in adv), "cs: A2 value-history flagged")
+
+    # 상류 템플릿 전파가 이 파일을 덮으면 JS 확장자가 조용히 사라진다 — CI 는
+    # 계속 green 이 되므로 등록 자체를 단정으로 잡는다.
+    expect(all(e in EXTRACTORS for e in (".mjs", ".js", ".cjs")),
+           "js: JS-family extractor registered")
+
+    js = extract_js("f.mjs", _FIX_JS)
+    expect(any(c.is_doc for c in js.comments), "js: /** doc detected")
+    expect(not any("foo.mjs:123" in c.text for c in js.comments),
+           "js: string content not a comment")
+    expect(not any("no comment" in c.text for c in js.comments),
+           "js: template-literal content not a comment")
+    expect(any(c.text.startswith("trailing comment survives") and not c.own_line
+               for c in js.comments),
+           "js: a regex literal is skipped whole, not opened as a comment")
+    expect(any(c.text.startswith("division keeps") for c in js.comments),
+           "js: `/` after postfix ++ divides, so the trailing comment survives")
+    expect(any(c.text.startswith("interp regex must not desync")
+               for c in js.comments),
+           "js: a regex inside `${...}` does not break out of the template")
+    expect(not any("foo.py:123" in c.text for c in js.comments),
+           "js: a regex after a control head is not opened as a comment")
+    expect(any("interp block" in c.text for c in js.comments),
+           "js: a comment inside `${...}` is extracted, not skipped")
+    js_fails = msgs("f.mjs", _FIX_JS, ".mjs")
+    expect(sum("R2" in f for f in js_fails) == 3,
+           f"js: 3 R2 hits (py + mjs refs + interp block), got {js_fails}")
+    _, js_adv = check_file(js, 15)
+    expect(any("A2" in a for a in js_adv), "js: A2 value-history flagged")
 
     long_block = "\n".join(f"# narration line {i}" for i in range(20)) + "\ncode = 1\n"
     expect(any("R1" in f for f in msgs("long.py", long_block)),
