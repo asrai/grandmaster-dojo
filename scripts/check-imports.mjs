@@ -76,7 +76,12 @@ async function linkFrom(entry) {
       throw new Error(`bare 지정자 '${spec}' — 이 repo 는 런타임 의존성이 없다`);
     }
     const target = resolve(dirname(from), spec);
-    readFileSync(target); // 부재는 여기서 ENOENT 로 잡힌다
+    // 절대 경로가 메시지에 새면 머신마다 문면이 달라진다 — repo 상대로 다시 던진다.
+    try {
+      readFileSync(target);
+    } catch {
+      throw new Error(`'${spec}' 대상 없음 — ${rel(from)} → ${rel(target)}`);
+    }
     edges.add(`${rel(from)}\t${spec}`);
     return load(target);
   };
@@ -84,8 +89,7 @@ async function linkFrom(entry) {
   try {
     await load(entry).link(linker);
   } catch (err) {
-    const where = err?.code === 'ENOENT' && err.path ? ` (대상 ${rel(err.path)})` : '';
-    failures.set(`${rel(entry)}::${err.message}`, `${rel(entry)}: ${err.message}${where}`);
+    failures.set(`${rel(entry)}::${err.message}`, `${rel(entry)}: ${err.message}`);
   }
 }
 
