@@ -47,6 +47,12 @@ jobs:
           [ "$count" -gt 0 ] || { echo "::error::.mjs 대상 0건 — 구문 검사가 무음 통과했다"; exit 1; }
           git ls-files -z '*.mjs' | xargs -0 -r -n1 node --check
 
+      - name: import 해석 검사
+        # `node --check` 는 파일을 독립 파싱하므로 상대 경로 파손·없는 named export 를
+        # green 으로 통과시킨다. 이 스텝은 모듈 그래프를 링크까지만 태워 그 둘을 잡는다
+        # (평가는 하지 않으므로 DOM 을 만지는 `src/ui/**` 도 브라우저 없이 검사된다).
+        run: node scripts/check-imports.mjs
+
       - name: 헤드리스 하네스
         # 판정은 파일 존재가 아니라 exit code 다. green 경로의
         # `단정 N건 · 실패 0건` stdout 이 "안 걸렸다" 와 "안 돌았다" 를 가른다.
