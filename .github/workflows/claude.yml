@@ -1,0 +1,95 @@
+name: Claude Code
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [opened, assigned]
+
+jobs:
+  claude:
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Run Claude Code
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # prompt 파라미터는 지정하지 않음. writer의 "Intelligent Mode Detection" 기본 동작을 유지한다.
+          # 이슈 본문 sanitize 원칙은 저장소 루트 `CLAUDE.md`의 `## Security / Agent Input Handling` 섹션에
+          # 둔다 — prompt 파라미터를 주면 기본 writer 모드가 오버라이드되어 코드 변경/PR 생성이 불발된다
+          # (2026-04-18 세션 E hotfix 교훈).
+
+      - name: Auto-create Draft PR and attach agent/writer label
+        if: always() && steps.claude.outputs.branch_name != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ steps.claude.outputs.branch_name }}
+          EVENT_NAME: ${{ github.event_name }}
+          ISSUE_NUM: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+        run: |
+          set -euo pipefail
+          # writer가 브랜치를 만들었으면 이 step이 두 가지 책임을 수행한다:
+          #   1. 해당 브랜치에 PR이 없고 issues 트리거면 Draft PR 자동 생성
+          #      (writer 자체는 기본적으로 PR을 만들지 않고 "Create PR" 링크만 제공 —
+          #       이 workflow-level GITHUB_TOKEN + pull-requests:write 권한으로 대신 생성)
+          #   2. 브랜치에 해당하는 PR에 agent/writer 라벨 부착 (감사용)
+          # 모든 단계 실패는 non-fatal(`|| true`) — writer 본체 결과가 우선.
+
+          PR_NUM=$(gh pr list --head "$BRANCH" --json number -q '.[0].number' --repo ${{ github.repository }} || echo "")
+
+          # PR이 없고 issues 트리거인 경우 Draft PR 자동 생성
+          if [ -z "$PR_NUM" ] && [ "$EVENT_NAME" = "issues" ] && [ -n "${ISSUE_NUM:-}" ]; then
+            PR_TITLE="chore(agent): ${ISSUE_TITLE:-Issue #${ISSUE_NUM}} (#${ISSUE_NUM})"
+            PR_BODY=$(printf "Writer 에이전트(claude.yml)가 이슈 #%s 처리 결과로 자동 생성한 Draft PR입니다.\n\nCloses #%s" "$ISSUE_NUM" "$ISSUE_NUM")
+            PR_CREATED=false
+            if gh pr create --draft \
+                --head "$BRANCH" \
+                --base main \
+                --title "$PR_TITLE" \
+                --body "$PR_BODY" \
+                --repo ${{ github.repository }}; then
+              PR_CREATED=true
+            fi
+            # PR 번호 재조회는 성공/실패 무관 — 동일 브랜치에 PR이 이미 존재해
+            # gh pr create가 non-zero 반환한 경우에도 PR_NUM을 복원해 후속 라벨 부착이 작동하도록 한다(멱등성).
+            PR_NUM=$(gh pr list --head "$BRANCH" --json number -q '.[0].number' --repo ${{ github.repository }} || echo "")
+            # 이번 run에서 새로 생성한 경우에만 보완 코멘트 추가 (중복 방지)
+            if [ "$PR_CREATED" = "true" ] && [ -n "$PR_NUM" ]; then
+              { gh issue comment "$ISSUE_NUM" \
+                  --repo ${{ github.repository }} \
+                  --body-file - <<EOF
+          ✅ Draft PR은 workflow post-step이 자동 생성했습니다: #${PR_NUM}
+
+          (writer 에이전트 자체엔 \`gh pr create\` 권한이 없어 writer 코멘트의 'Draft PR 생성' 항목이 미완료로 표시될 수 있으나, 실제 PR은 위 링크에 정상 생성됐습니다.)
+          EOF
+              } || true
+            fi
+            # 생성 실패 + PR 기존 존재 없음 시에는 writer 코멘트의 수동 안내가 유효 경로로 남음 (non-fatal)
+          fi
+
+          # 라벨 부착 (PR이 존재하면)
+          if [ -n "$PR_NUM" ]; then
+            gh label create agent/writer --color "6f42c1" \
+              --description "Writer 에이전트(claude.yml)가 생성한 PR/이슈" -f \
+              --repo ${{ github.repository }} || true
+            gh pr edit "$PR_NUM" --add-label "agent/writer" \
+              --repo ${{ github.repository }} || true
+          fi

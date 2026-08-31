@@ -1,0 +1,121 @@
+name: Fire-and-forget Risk triage
+
+# Purpose
+# -------
+# Parse the Risk Rubric dropdown value from Fire-and-forget Issue Forms and
+# conditionally apply the `auto-merge` label. Issues scoring C get
+# `risk-c-escalate` plus a comment suggesting Plan-driven conversion, instead
+# of silently entering the auto-merge batch.
+#
+# Replaces the old static `labels: [auto-merge]` in fire-and-forget.yml,
+# which could let a mis-scored C-issue into the batch.
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+
+jobs:
+  triage:
+    # job-레벨 opt-in (asrai-bot #1923 실측 기반): Risk Rubric 마커를 포함한
+    # Fire-and-forget 폼 이슈만 러너를 기동한다. 일반 이슈는 job-level skip =
+    # 러너 미기동 = 무과금 (기동만 해도 1분 올림 과금 — 이슈 opened/edited 전부에
+    # 발화하던 구 형태가 상시 지출원이었다). script 내부의 동일 마커 체크는 벨트.
+    # 마커 literal 의 SoT 는 ISSUE_TEMPLATE/fire-and-forget.yml 의 dropdown label —
+    # 그쪽만 바꾸면 이 if 가 조용히 영원-skip 이 된다 (3곳 동시 수정 필수:
+    # form label + 이 if + script 의 includes/regex).
+    if: ${{ !github.event.issue.pull_request && contains(github.event.issue.body, '위험도 자가 판정') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Triage risk
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const body = context.payload.issue.body || '';
+            const issueNumber = context.payload.issue.number;
+
+            // Heuristic: only Fire-and-forget issues include the Risk Rubric section.
+            // (Plan-driven and bug templates don't have it.)
+            if (!body.includes('위험도 자가 판정')) {
+              core.info('Not a Fire-and-forget issue (no Risk Rubric section). Skipping.');
+              return;
+            }
+
+            // Issue Forms dropdown renders as:
+            //   ### 위험도 자가 판정 (Risk Rubric)
+            //   <value line>
+            const match = body.match(/### 위험도 자가 판정[^\n]*\n+([^\n]+)/);
+            if (!match) {
+              core.warning('Risk Rubric section present but value line not parsed. Body may be malformed.');
+              return;
+            }
+            const risk = match[1].trim();
+            core.info(`Parsed risk value: "${risk}"`);
+
+            // Decide label based on prefix
+            const currentLabels = context.payload.issue.labels.map(l => l.name);
+            let toAdd = [];
+            let toRemove = [];
+
+            if (risk.startsWith('A ') || risk.startsWith('B ')) {
+              if (!currentLabels.includes('auto-merge')) toAdd.push('auto-merge');
+              if (currentLabels.includes('risk-c-escalate')) toRemove.push('risk-c-escalate');
+            } else if (risk.startsWith('C ')) {
+              if (currentLabels.includes('auto-merge')) toRemove.push('auto-merge');
+              if (!currentLabels.includes('risk-c-escalate')) toAdd.push('risk-c-escalate');
+
+              // Post a comment suggesting conversion (only on first entry into C)
+              if (!currentLabels.includes('risk-c-escalate')) {
+                const removedAutoMerge = currentLabels.includes('auto-merge');
+                const statusLine = removedAutoMerge
+                  ? '`auto-merge` 라벨을 제거하고 `risk-c-escalate`를 부착했습니다.'
+                  : '`auto-merge` 미적용 상태로 `risk-c-escalate`를 부착했습니다.';
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  body: [
+                    '🚨 **Risk C 감지 — Fire-and-forget 배치 진입 차단**',
+                    '',
+                    '이 Issue는 위험도 C(핵심 비즈니스 로직/인증/DB 스키마/외부 API 계약 등)로 자가 판정되었습니다.',
+                    `${statusLine} Fire-and-forget 파이프라인은 이 Issue를 picking하지 않습니다.`,
+                    '',
+                    '**권장 조치**: 이 Issue를 닫고 `Plan-driven 작업` 템플릿으로 다시 작성해주세요. Plan-driven Flow는 머지 시점에 사람의 결정이 개입되므로 C급 변경에 적합합니다.',
+                    '',
+                    '잘못 판정했다면 이슈 본문의 위험도 드롭다운을 A/B로 수정하세요 — `edited` 이벤트가 본 워크플로를 재실행해 라벨을 자동 교체합니다.',
+                  ].join('\n'),
+                });
+              }
+            } else if (risk === '_No response_' || risk === '') {
+              core.warning('Risk Rubric left unanswered — no labels applied. Fire-and-forget batch requires a Risk score.');
+              return;
+            } else {
+              core.warning(`Unrecognized risk value: "${risk}". Expected prefix "A ", "B ", or "C ".`);
+              return;
+            }
+
+            if (toAdd.length) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: toAdd,
+              });
+              core.info(`Added: ${toAdd.join(', ')}`);
+            }
+            for (const label of toRemove) {
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  name: label,
+                });
+                core.info(`Removed: ${label}`);
+              } catch (e) {
+                if (e.status !== 404) throw e;
+              }
+            }

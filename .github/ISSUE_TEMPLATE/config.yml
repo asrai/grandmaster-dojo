@@ -1,0 +1,15 @@
+# Issue template chooser configuration.
+# - Blocks empty "Open a blank issue" link so every issue uses one of the
+#   structured templates (Plan-driven / Fire-and-forget / Bug).
+# - contact_links route non-issue concerns (security, feature discussion)
+#   to the right channel instead of cluttering the Issues tab.
+
+blank_issues_enabled: false
+
+contact_links:
+  - name: 🔐 보안 취약점 보고
+    url: https://github.com/asrai/REPLACE_WITH_REPO/security/advisories/new
+    about: "공개 Issue 대신 Private vulnerability reporting으로 신고해주세요. 공개 Issue는 취약점 노출 위험이 있습니다."
+  - name: 💬 기능 제안·아이디어 토론
+    url: https://github.com/asrai/REPLACE_WITH_REPO/discussions
+    about: "아직 구현 요청 단계가 아닌 아이디어/토론은 Discussions에서 진행해주세요. Issues는 실행 가능한 작업 단위로 유지합니다."

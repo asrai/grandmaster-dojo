@@ -1,3 +1,8 @@
-.claude/settings.local.json
+# macOS
 .DS_Store
+
+# Claude Code — machine-local overrides (permissions, per-machine model choice)
+# Project-shared settings.json is committed; settings.local.json is machine-private.
+.claude/settings.local.json
+
 *.log

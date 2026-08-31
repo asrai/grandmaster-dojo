@@ -1,0 +1,320 @@
+name: Agent Usage Report
+
+on:
+  schedule:
+    - cron: "0 0 1 * *"  # UTC 매월 1일 00:00 (KST 매월 1일 09:00)
+  workflow_dispatch:
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      actions: read
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Collect 30-day agent run stats
+        id: collect
+        run: |
+          set -euo pipefail
+          SINCE=$(date -u -d "30 days ago" +%Y-%m-%d)
+
+          collect() {
+            local wf="$1"
+            gh run list --workflow="$wf" --created ">=$SINCE" \
+              --json conclusion,databaseId --limit 500 \
+              --repo ${{ github.repository }} 2>/dev/null || echo "[]"
+          }
+
+          W_JSON=$(collect claude.yml)
+          R_JSON=$(collect claude-review.yml)
+
+          # Total = 실행된 run 수 — skipped(guard 미충족 정상 skip)/null 제외.
+          # skip 은 에이전트 활동이 아니므로 분모에서 빼야 실패율이 희석/왜곡되지 않음.
+          W_TOTAL=$(echo "$W_JSON" | jq '[.[] | select(.conclusion != null and .conclusion != "skipped")] | length')
+          R_TOTAL=$(echo "$R_JSON" | jq '[.[] | select(.conclusion != null and .conclusion != "skipped")] | length')
+          # W_FAIL/R_FAIL 은 benign 제외 후 tally_breakdown 에서 산출 (아래)
+
+          # 실패 분류 (timeout/cancelled/rate_limit/auth/permission/other)
+          # conclusion 필드로 먼저 분류, failure 내부는 log grep 으로 세분
+          classify_failure() {
+            local run_id="$1"
+            local conclusion="$2"
+            case "$conclusion" in
+              timed_out)  echo "timeout";   return ;;
+              cancelled)  echo "cancelled"; return ;;
+            esac
+            local log
+            log=$(gh run view "$run_id" --log --repo ${{ github.repository }} 2>/dev/null || echo "")
+            # benign 을 auth 보다 먼저 판정 — 이 에러 라인은 "401 Unauthorized" 문구를
+            # 포함하므로 순서가 뒤면 auth 로 오분류됨. 템플릿 최초 도입/동기화 PR 에서만
+            # 나는 무해 에러로, 액션 자체가 "this is normal and you should ignore" 안내.
+            if echo "$log" | grep -qE 'Workflow validation failed'; then
+              echo "benign"
+            elif echo "$log" | grep -qE '(rate_limit_exceeded|HTTP 429|API rate limit)'; then
+              echo "rate_limit"
+            elif echo "$log" | grep -qE '(401 Unauthorized|bad credentials)'; then
+              echo "auth"
+            elif echo "$log" | grep -qE 'permission_denials_count["[:space:]]*[:=][[:space:]]*[1-9]'; then
+              echo "permission"
+            else
+              echo "other"
+            fi
+          }
+
+          # writer / reviewer breakdown 집계
+          # NOTE: associative array (declare -A) 대신 독립 변수 6개 사용 —
+          # macOS bash 3.x 호환 + 로컬 테스트 가능성 + 분류 카테고리가 고정이라 오버헤드 없음
+          # 반환 형식: "REALFAIL|breakdown|BENIGN" (`|` 는 breakdown 에 안 나오는 안전 구분자)
+          # - REALFAIL: benign 제외 실제 실패 수 (= W_FAIL/R_FAIL 분자)
+          # - breakdown: "cause:n cause:n ..." (benign 미포함)
+          # - BENIGN:   무해 제외 건수 (투명성 표시용)
+          tally_breakdown() {
+            local json="$1"
+            local c_timeout=0 c_cancelled=0 c_rate_limit=0 c_auth=0 c_permission=0 c_other=0
+            local c_benign=0 realfail=0
+            local id concl cause
+            while IFS=$'\t' read -r id concl; do
+              [ -z "$id" ] && continue
+              cause=$(classify_failure "$id" "$concl")
+              case "$cause" in
+                benign)     c_benign=$((c_benign + 1)); continue ;;
+                timeout)    c_timeout=$((c_timeout + 1)) ;;
+                cancelled)  c_cancelled=$((c_cancelled + 1)) ;;
+                rate_limit) c_rate_limit=$((c_rate_limit + 1)) ;;
+                auth)       c_auth=$((c_auth + 1)) ;;
+                permission) c_permission=$((c_permission + 1)) ;;
+                other)      c_other=$((c_other + 1)) ;;
+              esac
+              realfail=$((realfail + 1))
+            done < <(echo "$json" | jq -r '.[] | select(.conclusion != "success" and .conclusion != null and .conclusion != "skipped") | "\(.databaseId)\t\(.conclusion)"')
+            local out=""
+            [ "$c_timeout"    -gt 0 ] && out="${out}timeout:${c_timeout} "
+            [ "$c_cancelled"  -gt 0 ] && out="${out}cancelled:${c_cancelled} "
+            [ "$c_rate_limit" -gt 0 ] && out="${out}rate_limit:${c_rate_limit} "
+            [ "$c_auth"       -gt 0 ] && out="${out}auth:${c_auth} "
+            [ "$c_permission" -gt 0 ] && out="${out}permission:${c_permission} "
+            [ "$c_other"      -gt 0 ] && out="${out}other:${c_other} "
+            echo "${realfail}|${out% }|${c_benign}"
+          }
+
+          W_TALLY=$(tally_breakdown "$W_JSON")
+          W_FAIL="${W_TALLY%%|*}"
+          W_BENIGN="${W_TALLY##*|}"
+          W_BREAKDOWN=$(echo "$W_TALLY" | cut -d'|' -f2)
+          R_TALLY=$(tally_breakdown "$R_JSON")
+          R_FAIL="${R_TALLY%%|*}"
+          R_BENIGN="${R_TALLY##*|}"
+          R_BREAKDOWN=$(echo "$R_TALLY" | cut -d'|' -f2)
+
+          # Dominant cause across both agents (for escalation guide highlight)
+          DOMINANT=$(
+            { echo "$W_BREAKDOWN"; echo "$R_BREAKDOWN"; } \
+              | tr ' ' '\n' | sed '/^$/d' \
+              | awk -F: '{ sum[$1] += $2 } END { for (k in sum) print sum[k], k }' \
+              | sort -rn | head -1 | awk '{print $2}'
+          )
+          DOMINANT="${DOMINANT:-none}"
+
+          # permission_denials_count 샘플링: writer/reviewer 합쳐서 최근 20건
+          # (기존 지표 유지 — breakdown 과 독립적으로 "최근 샘플" 관점 제공)
+          SAMPLE_IDS=$(echo "$W_JSON $R_JSON" | jq -s '[.[] | .[]] | sort_by(-.databaseId) | [.[0:20] | .[].databaseId] | .[]' -r || true)
+          DENIAL_COUNT=0
+          SAMPLE_SIZE=0
+          if [ -n "$SAMPLE_IDS" ]; then
+            for id in $SAMPLE_IDS; do
+              SAMPLE_SIZE=$((SAMPLE_SIZE + 1))
+              if gh run view "$id" --log --repo ${{ github.repository }} 2>/dev/null \
+                 | grep -qE 'permission_denials_count["[:space:]]*[:=][[:space:]]*[1-9]'; then
+                DENIAL_COUNT=$((DENIAL_COUNT + 1))
+              fi
+            done
+          fi
+
+          {
+            echo "w_total=$W_TOTAL"
+            echo "w_fail=$W_FAIL"
+            echo "r_total=$R_TOTAL"
+            echo "r_fail=$R_FAIL"
+            echo "w_breakdown=$W_BREAKDOWN"
+            echo "r_breakdown=$R_BREAKDOWN"
+            echo "w_benign=$W_BENIGN"
+            echo "r_benign=$R_BENIGN"
+            echo "dominant=$DOMINANT"
+            echo "denial=$DENIAL_COUNT"
+            echo "sample=$SAMPLE_SIZE"
+            echo "since=$SINCE"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create audit issue
+        id: audit
+        env:
+          W_TOTAL: ${{ steps.collect.outputs.w_total }}
+          W_FAIL: ${{ steps.collect.outputs.w_fail }}
+          R_TOTAL: ${{ steps.collect.outputs.r_total }}
+          R_FAIL: ${{ steps.collect.outputs.r_fail }}
+          W_BREAKDOWN: ${{ steps.collect.outputs.w_breakdown }}
+          R_BREAKDOWN: ${{ steps.collect.outputs.r_breakdown }}
+          W_BENIGN: ${{ steps.collect.outputs.w_benign }}
+          R_BENIGN: ${{ steps.collect.outputs.r_benign }}
+          DOMINANT: ${{ steps.collect.outputs.dominant }}
+          DENIAL: ${{ steps.collect.outputs.denial }}
+          SAMPLE: ${{ steps.collect.outputs.sample }}
+          SINCE: ${{ steps.collect.outputs.since }}
+        run: |
+          set -euo pipefail
+          pct() {
+            if [ "$2" -gt 0 ]; then echo "$(( $1 * 100 / $2 ))%"; else echo "N/A"; fi
+          }
+          W_RATE=$(pct "$W_FAIL" "$W_TOTAL")
+          R_RATE=$(pct "$R_FAIL" "$R_TOTAL")
+          D_RATE=$(pct "$DENIAL" "$SAMPLE")
+
+          THRESH_FAIL=15
+          THRESH_DENIAL=10
+          warn() {
+            local v="${1%\%}"
+            if [ "$v" != "N/A" ] && [ "$v" -gt "$2" ]; then echo "⚠️ "; fi
+          }
+          W_WARN=$(warn "$W_RATE" "$THRESH_FAIL")
+          R_WARN=$(warn "$R_RATE" "$THRESH_FAIL")
+          D_WARN=$(warn "$D_RATE" "$THRESH_DENIAL")
+
+          # Detect which thresholds breached (for escalation step)
+          BREACHES=""
+          [ -n "$W_WARN" ] && BREACHES="${BREACHES}writer 실패율 ${W_RATE} > ${THRESH_FAIL}%;"
+          [ -n "$R_WARN" ] && BREACHES="${BREACHES}reviewer 실패율 ${R_RATE} > ${THRESH_FAIL}%;"
+          [ -n "$D_WARN" ] && BREACHES="${BREACHES}denial 비율 ${D_RATE} > ${THRESH_DENIAL}%;"
+
+          gh label create agent/report --color "1d76db" \
+            --description "agent-usage-report.yml 월간 감사 이슈" -f \
+            --repo ${{ github.repository }} || true
+
+          TITLE="Agent Usage Report — $(date -u +%Y-%m)"
+          UNTIL=$(date -u +%Y-%m-%d)
+
+          REPORT_URL=$(gh issue create \
+            --title "$TITLE" \
+            --label "agent/report" \
+            --repo ${{ github.repository }} \
+            --body-file - <<EOF
+          ## 30-Day Agent Audit ($SINCE ~ $UNTIL)
+
+          | 에이전트 | Total | Failed | 실패율 | 원인 breakdown |
+          |---|---:|---:|---:|---|
+          | writer (\`claude.yml\`) | $W_TOTAL | $W_FAIL | ${W_WARN}${W_RATE} | ${W_BREAKDOWN:-—} |
+          | reviewer (\`claude-review.yml\`) | $R_TOTAL | $R_FAIL | ${R_WARN}${R_RATE} | ${R_BREAKDOWN:-—} |
+
+          **permission_denials 샘플링 (최근 $SAMPLE run)**: $DENIAL 건 / $SAMPLE 샘플 = ${D_WARN}${D_RATE}
+
+          **benign 제외**: writer ${W_BENIGN} · reviewer ${R_BENIGN} (무해 에러 — Total·실패율 모두 비포함)
+
+          ### breakdown 분류
+          - \`timeout\` — \`conclusion=timed_out\` (action timeout-minutes 초과)
+          - \`cancelled\` — 수동 취소 또는 외부 이벤트 간섭
+          - \`rate_limit\` — API 쿼터 초과 (HTTP 429 / rate_limit_exceeded)
+          - \`auth\` — 401 Unauthorized / bad credentials (토큰 만료 의심)
+          - \`permission\` — \`permission_denials_count > 0\` (tool 권한 범위 초과)
+          - \`other\` — 위 패턴 미일치. 개별 run log 수동 조사 필요
+          - \`benign\` — 무해 에러로 Total·분자 모두 제외 (예: 템플릿 도입/동기화 PR 의 \`Workflow validation failed ... this is normal\`). \`skipped\`(guard 미충족 정상 skip) 도 동일하게 제외
+
+          ### 임계치
+          - 실패율 > ${THRESH_FAIL}% → breakdown 의 dominant 원인으로 조치 분기
+          - denial 비율 > ${THRESH_DENIAL}% → \`allowedTools\`/프롬프트 권한 범위 재검토
+          - ⚠️ 마킹된 지표는 해당 월 내 원인 조사 후 본 이슈에 코멘트로 결론 기록 → 클로즈
+
+          참고: Skill \`github-workflow\` references/fire-and-forget.md § Agent Audit
+          EOF
+          )
+
+          {
+            echo "report_url=$REPORT_URL"
+            echo "breaches=$BREACHES"
+            echo "w_rate=$W_RATE"
+            echo "r_rate=$R_RATE"
+            echo "d_rate=$D_RATE"
+            echo "thresh_fail=$THRESH_FAIL"
+            echo "thresh_denial=$THRESH_DENIAL"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Escalate on threshold breach
+        if: steps.audit.outputs.breaches != ''
+        env:
+          REPORT_URL: ${{ steps.audit.outputs.report_url }}
+          BREACHES: ${{ steps.audit.outputs.breaches }}
+          W_RATE: ${{ steps.audit.outputs.w_rate }}
+          R_RATE: ${{ steps.audit.outputs.r_rate }}
+          D_RATE: ${{ steps.audit.outputs.d_rate }}
+          THRESH_FAIL: ${{ steps.audit.outputs.thresh_fail }}
+          THRESH_DENIAL: ${{ steps.audit.outputs.thresh_denial }}
+          DOMINANT: ${{ steps.collect.outputs.dominant }}
+          W_BREAKDOWN: ${{ steps.collect.outputs.w_breakdown }}
+          R_BREAKDOWN: ${{ steps.collect.outputs.r_breakdown }}
+        run: |
+          set -euo pipefail
+
+          gh label create agent/alert --color "d73a4a" \
+            --description "에이전트 지표 임계치 초과 (자동 에스컬레이션)" -f \
+            --repo ${{ github.repository }} || true
+
+          MONTH=$(date -u +%Y-%m)
+          TITLE="⚠️ Agent metrics exceeded threshold — ${MONTH}"
+
+          # BREACHES is "item1;item2;..." — split into bullet list
+          BREACH_LIST=$(echo "$BREACHES" | tr ';' '\n' | sed '/^$/d' | sed 's/^/- /')
+
+          # 원인별 조치 가이드 매핑 (dominant 원인 기준 강조)
+          guide_for() {
+            case "$1" in
+              timeout)    echo "prompt 간소화 또는 action \`timeout-minutes\` 조정" ;;
+              cancelled)  echo "수동 취소/외부 이벤트 간섭 조사. 반복되면 워크플로 트리거 조건 재검토" ;;
+              rate_limit) echo "Max 한도 재확인 또는 월간 cron 스케줄 분산. Claude Code 5시간 롤링 한도 초과 가능성" ;;
+              auth)       echo "CLAUDE_CODE_OAUTH_TOKEN 회전 필요. \`~/dotfiles/docs/key-calendar.md\` 의 last-rotated 확인" ;;
+              permission) echo "\`claude-review.yml\` 의 \`allowedTools\` 범위 재검토. 신규 도구 요청 시 적절한지 판단" ;;
+              other)      echo "개별 run log 수동 조사 (\`gh run view --log\`). 새 실패 패턴이면 분류 규칙 확장" ;;
+              *)          echo "원인 분류 데이터 없음" ;;
+            esac
+          }
+
+          {
+            echo "## 임계치 초과 항목"
+            echo ""
+            echo "$BREACH_LIST"
+            echo ""
+            echo "## 측정값"
+            echo ""
+            echo "| 지표 | 현재 | 임계치 |"
+            echo "|---|---:|---:|"
+            echo "| writer 실패율 | ${W_RATE} | ${THRESH_FAIL}% |"
+            echo "| reviewer 실패율 | ${R_RATE} | ${THRESH_FAIL}% |"
+            echo "| denial 비율 | ${D_RATE} | ${THRESH_DENIAL}% |"
+            echo ""
+            echo "## 실패 원인 breakdown"
+            echo ""
+            echo "- writer: ${W_BREAKDOWN:-—}"
+            echo "- reviewer: ${R_BREAKDOWN:-—}"
+            echo "- **Dominant 원인**: \`${DOMINANT}\`"
+            echo ""
+            echo "## 조치"
+            echo ""
+            echo "1. 원본 리포트에서 상세 수치 확인: ${REPORT_URL}"
+            echo "2. **Dominant 원인(\`${DOMINANT}\`) 조치**: $(guide_for "$DOMINANT")"
+            echo "3. 원인별 조치 매핑 (보조 원인 대응 참조):"
+            echo "   - \`timeout\` → $(guide_for timeout)"
+            echo "   - \`cancelled\` → $(guide_for cancelled)"
+            echo "   - \`rate_limit\` → $(guide_for rate_limit)"
+            echo "   - \`auth\` → $(guide_for auth)"
+            echo "   - \`permission\` → $(guide_for permission)"
+            echo "   - \`other\` → $(guide_for other)"
+            echo "4. 원인 파악 후 본 이슈에 결론 코멘트 + close. 원본 리포트도 동반 close 권장"
+            echo ""
+            echo "🤖 Auto-generated by \`agent-usage-report.yml\` 임계치 감지 스텝"
+          } > /tmp/alert_body.md
+
+          gh issue create \
+            --title "$TITLE" \
+            --label "agent/alert" \
+            --body-file /tmp/alert_body.md \
+            --repo ${{ github.repository }}

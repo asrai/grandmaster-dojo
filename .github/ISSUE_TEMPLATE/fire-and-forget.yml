@@ -1,0 +1,92 @@
+name: Fire-and-forget 자동 처리
+description: 수락 기준이 자명한 저위험 작업 (Risk A/B). 에이전트가 배치로 일괄 처리
+title: ""
+# Note: 라벨은 Form에서 정적으로 부착하지 않는다. `risk-triage.yml` 워크플로가
+# 본문의 위험도 드롭다운 값을 파싱해 A/B면 `auto-merge`, C면 `risk-c-escalate`
+# + Plan-driven 전환 권장 코멘트를 부착한다. C 잘못 진입을 서버 측에서 차단하기
+# 위해 의도적으로 Form 정적 부착을 제거(세션 F, 2026-04-18).
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Fire-and-forget Automation 대상 Issue 템플릿. 에이전트가 이 Issue를 받아 PR 생성 → CI + claude-review 통과 시 자동 머지합니다.
+
+        다음 중 하나라도 해당하면 이 템플릿 대신 `Plan-driven 작업`을 쓰세요:
+        - 설계 판단/트레이드오프 결정이 필요
+        - 실패 시 롤백이 어려움
+        - 인증/과금/DB 마이그레이션/외부 API 계약 등 민감 경로
+
+  - type: textarea
+    id: background
+    attributes:
+      label: 배경
+      description: 1~3줄.
+      placeholder: ESLint no-unused-vars 규칙 위반이 ~~ 파일들에 쌓여있음.
+    validations:
+      required: true
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: 목표
+      description: 한 줄.
+      placeholder: 해당 파일들의 unused-vars를 모두 제거하고 lint 에러 0 달성.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 수락 기준
+      description: 제3자가 PR diff만 보고 "기준 충족" 판정이 가능하도록 구체적으로.
+      value: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+
+  - type: dropdown
+    id: risk
+    attributes:
+      label: 위험도 자가 판정 (Risk Rubric)
+      description: |
+        A = README/주석/lint 자동수정/unit test 추가/patch-level deps
+        B = 재현 명확한 버그 픽스, 단순 CRUD, 격리된 UI 컴포넌트
+        C = 핵심 비즈니스 로직/인증/DB 스키마/외부 API 계약 — 이 템플릿으로 진행 금지
+      options:
+        - A — 자동 처리 권장
+        - B — 자동 처리 가능 (단일 PR)
+        - C — Plan-driven으로 전환 필요
+      default: 0
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: self-evident
+    attributes:
+      label: 자명성 체크
+      description: 모두 체크되어야 Fire-and-forget 배치에 포함됩니다.
+      options:
+        - label: 수락 기준만 읽고 제3자가 통과/불통과를 판정할 수 있다
+          required: true
+        - label: 실패 시 `git revert` 한 번으로 완전히 되돌릴 수 있다
+          required: true
+
+  - type: textarea
+    id: agent_request
+    attributes:
+      label: 에이전트 요청 (자동 주입, 필요 시 조정)
+      description: |
+        이 필드의 텍스트가 이슈 본문에 포함되어 `@claude` 멘션으로 writer 에이전트를 트리거합니다.
+        Draft PR 생성·라벨 부착은 `claude.yml` post-step이 자동 처리하므로 이 필드에 PR 관련 지시를 넣을 필요는 없습니다.
+        writer 실행을 원치 않으면 이 필드를 비우세요.
+      value: |
+        @claude 위 수락 기준에 따라 작업해주세요.
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        위험도 **C**를 선택했다면 이 Issue를 닫고 `Plan-driven 작업` 템플릿으로 다시 작성하세요. Fire-and-forget 파이프라인은 C를 받으면 전체 배치를 중단하고 Plan 경로로 에스컬레이션합니다.

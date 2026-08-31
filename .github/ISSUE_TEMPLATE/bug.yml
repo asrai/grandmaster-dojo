@@ -1,0 +1,68 @@
+name: 버그 리포트
+description: 재현 가능한 버그 (대부분 Risk B 후보)
+title: "[bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        재현 절차 → 기대 vs 실제 → 환경. 이 3가지가 있어야 에이전트/사람 모두 즉시 착수할 수 있습니다.
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 재현 절차
+      description: 숫자 스텝으로. 가능한 한 최소 재현 경로.
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대 동작
+      description: 정상 시나리오에서 무엇이 일어나야 하는가?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 실제 동작
+      description: 실제로 관측된 동작. 에러 메시지 원문 포함 권장.
+    validations:
+      required: true
+
+  - type: input
+    id: env
+    attributes:
+      label: 환경
+      description: "Node/Python 버전, OS, 브라우저 등 해당되는 것만."
+      placeholder: "Node 20.19.1 · macOS 15.1 · Chrome 131"
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 로그 / 스크린샷
+      description: 첨부 가능하면 붙여주세요. 민감 정보는 마스킹.
+    validations:
+      required: false
+
+  - type: textarea
+    id: agent_request
+    attributes:
+      label: 에이전트 요청 (선택)
+      description: |
+        writer 에이전트가 이 버그를 수정하게 하려면 이 필드를 그대로 두세요 (`@claude` 멘션으로 트리거).
+        Draft PR 생성은 `claude.yml` post-step이 자동 처리하므로 PR 관련 지시는 불필요합니다.
+        사람이 직접 수정할 경우 비워두면 됩니다.
+      value: |
+        @claude 위 재현 절차를 참고해 수정해주세요.
+    validations:
+      required: false

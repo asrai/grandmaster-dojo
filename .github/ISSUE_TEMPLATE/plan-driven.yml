@@ -1,0 +1,53 @@
+name: Plan-driven 작업
+description: 설계 판단이 필요하거나 사람이 머지 결정을 내릴 작업
+title: ""
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Plan-driven Flow 진입용 Issue 템플릿. CLI에서 plan mode로 설계를 다듬고, 사용자가 Merge Confirmation UX 단계에서 머지 결정을 내리는 경로입니다.
+
+        저위험 일괄 처리가 적절하다면 대신 `Fire-and-forget 자동 처리` 템플릿을 선택하세요.
+
+  - type: textarea
+    id: background
+    attributes:
+      label: 배경
+      description: 왜 이 작업이 필요한가? 현재 상태와 제약을 3~5줄로.
+      placeholder: |
+        현재 X가 ~~한 상태라 ~~한 문제가 있음. 최근 ~~ 결정 이후로 ~~.
+    validations:
+      required: true
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: 목표
+      description: 이 작업이 끝났을 때 달성되어야 할 상태를 1~2줄로.
+      placeholder: |
+        ~~가 ~~하게 동작하고, ~~ 경로에서 ~~가 자동 처리됨.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 수락 기준
+      description: |
+        체크박스 리스트. 제3자가 PR diff만 보고 "기준 충족" 판정이 가능하도록 구체적으로.
+      value: |
+        - [ ]
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        작성 완료 후 CLI에서 plan mode로 진입:
+        ```
+        [[해당 Issue URL]] 내용으로 plan 세워줘
+        ```
