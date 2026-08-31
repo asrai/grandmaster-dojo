@@ -8,7 +8,8 @@ import { SFX } from '../audio.mjs';
 import { PHASE, createMatch } from '../match.mjs';
 import { createSequenceInput } from '../sequence-input.mjs';
 import {
-  ART_NAME, artRank, challengerOfStage, equippedStyles, logEvent, masteryOf, recordEffectiveSuccess,
+  ART_NAME, artRank, challengerOfStage, equippedStyles, logEvent, logTimeout, logVerdict,
+  masteryOf, recordEffectiveSuccess,
 } from '../session.mjs';
 
 function telegraphView(view) {
@@ -104,23 +105,11 @@ export function startDuel(ctx) {
         windowFill.style.width = `${view.ratio * 100}%`;
         ctx.pad.render();
       },
-      onTimeout() {
-        logEvent(session, 'timeout', {
-          styleTop: input.top()?.id ?? null,
-          buffer_len: input.buffer.length,
-        });
-      },
+      onTimeout() { logTimeout(session, input); },
       onVerdict(view) {
         const { verdict, fire } = view;
         ctx.pad.render();
-        // `opening` 이 스키마의 `state` 자리 — grade 만으로는 빈틈 발생률을 역산할 수 없다.
-        logEvent(session, 'verdict', {
-          grade: verdict.grade,
-          dmg_out: verdict.dmgOut,
-          dmg_in: verdict.dmgIn,
-          state: verdict.opening,
-          who: 'user',
-        });
+        logVerdict(session, verdict, 'user');
         renderHp(view);
         const gv = GRADE_VIEW[verdict.grade];
         clear(verdictEl).appendChild(el('div', {
@@ -153,6 +142,8 @@ export function startDuel(ctx) {
     input,
     masteryOf: (style) => masteryOf(session, style.id),
     accepting: () => match.phase === PHASE.WINDOW,
+    // 봇이 「이기는 색」을 화면과 같은 근거로 고를 수 있게 그 수의 예고를 함께 건넨다 (REQ-605).
+    foeStyle: () => match.view().telegraphed,
     onFire: (fired) => { SFX.fire(); match.fire(fired); },
   });
   match.start();

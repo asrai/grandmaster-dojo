@@ -26,6 +26,10 @@ body {
 #top #label { font-weight: 700; color: var(--gold); }
 #top #coins { margin-left: auto; }
 #top label { display: flex; gap: 4px; align-items: center; color: var(--dim); }
+/* 검증 도구는 헤더 아래 줄로 흘려 놓는다 — 플레이 중 손이 닿는 자리가 아니다. */
+#tools { display: flex; gap: 6px; width: 100%; }
+#tools button { padding: 4px 8px; font-size: 12px; }
+#tools button.urge { border-color: var(--gold); color: var(--gold); }
 
 #screen { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
 
@@ -147,6 +151,10 @@ button.ghost { background: transparent; }
     <span id="rank" class="dim">유운검법 1성</span>
     <span id="coins">元 0</span>
     <label><input type="checkbox" id="a11y">응수 창 ×1.3 (쉬움)</label>
+    <div id="tools">
+      <button id="exportBtn" class="ghost">로그 내보내기</button>
+      <button id="botBtn" class="ghost">봇 v2 실행</button>
+    </div>
   </header>
 
   <main id="screen"></main>

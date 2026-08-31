@@ -8,6 +8,9 @@ import {
   learn, masteryPct, rankForPts, rankOf, styleById, transmit,
 } from '../core.mjs';
 
+/** 내보낸 로그의 판독 계약 이름 — `tests/kill-readout.mjs` 가 이 값으로 파일을 받아들인다. */
+export const EXPORT_SCHEMA = 'grandmaster-dojo/log-export@1';
+
 /** 프로토의 비급은 1권뿐이라 무공 축의 모든 조회가 이 id 로 수렴한다. */
 export const ART_ID = ART_SETS[0].id;
 export const ART_NAME = ART_SETS[0].name;
@@ -20,8 +23,8 @@ export const DISPATCH_CHALLENGER = CHALLENGERS.find((c) => c.mode === 'dispatch'
  * 이벤트 핸들러 안의 throw 가 되면 그 수에서 시연이 정지한다), 검증은 여기서 돌려 위반이
  * 무음으로 지나가지 않게 한다. 검증되지 않는 쓰기 경로는 노출하지 않는다.
  */
-function createPlayLog(violations) {
-  const buffer = createLogBuffer({ strict: false });
+function createPlayLog(violations, now) {
+  const buffer = createLogBuffer({ strict: false, now });
   return {
     entries: buffer.entries,
     serialize: buffer.serialize,
@@ -38,11 +41,12 @@ function createPlayLog(violations) {
   };
 }
 
-export function createSession() {
+/** @param {object} [opts] `now` 는 `t_ms` 의 출처 — 헤드리스 봇은 가상 시계를 준다 (REQ-605). */
+export function createSession({ now } = {}) {
   // 위반은 게임을 멈추지 않되 여기 쌓여, 로그 내보내기가 결손을 그대로 실어 나르지 않는다.
   const logViolations = [];
   return {
-    log: createPlayLog(logViolations),
+    log: createPlayLog(logViolations, now),
     logViolations,
     progress: createProgress(),
     disciple: createDisciple(),
@@ -135,6 +139,66 @@ export function accrueDiscipleRank(session, styleId) {
 export function addCoins(session, delta, reason) {
   session.coins += delta;
   logEvent(session, 'coins', { delta, reason });
+}
+
+/** 수련 시뮬 (REQ-604) — 방치 축을 1시간분 재화로 압축해 보여 준다. 소비처는 없다 (M2+). */
+export function simulateTraining(session, seconds = BALANCE.simTrainSeconds) {
+  const delta = Math.round(BALANCE.simEfficiency * seconds);
+  addCoins(session, delta, 'train_sim');
+  return delta;
+}
+
+/** 개인별 pass/fail 모집단 분리자 (REQ-603) — 로그 하나가 누구의 손인지 여기서만 알 수 있다. */
+export function logSessionMeta(session, { testerRole = 'self', device = 'keyboard' } = {}) {
+  logEvent(session, 'session', { tester_role: testerRole, device });
+}
+
+/** `opening` 이 스키마의 `state` 자리 — grade 만으로는 빈틈 발생률을 역산할 수 없다. */
+export function logVerdict(session, verdict, who) {
+  logEvent(session, 'verdict', {
+    grade: verdict.grade,
+    dmg_out: verdict.dmgOut,
+    dmg_in: verdict.dmgIn,
+    state: verdict.opening,
+    who,
+  });
+}
+
+/** kill (b) 완주율의 분모 — 창을 넘긴 수는 `fire` 와 같은 자리에서 세어야 짝이 맞는다. */
+export function logTimeout(session, input) {
+  logEvent(session, 'timeout', { styleTop: input.top()?.id ?? null, buffer_len: input.buffer.length });
+}
+
+/** 대련 결과 정산 (REQ-209·604) — 문구는 화면이 만들고 여기서는 상태만 움직인다. */
+export function settleDuel(session, { win, stage }) {
+  if (!win) return { reward: 0, unlocked: null, cleared: false };
+  addCoins(session, BALANCE.reward.duelWin, 'duel_win');
+  return {
+    reward: BALANCE.reward.duelWin,
+    unlocked: advanceStage(session, stage),
+    cleared: isLastStage(stage),
+  };
+}
+
+/** 파견 결과 정산 (REQ-406·604). `cycle_done` 이 kill (d) 의 종점이라 승패와 무관하게 찍힌다. */
+export function settleDispatch(session, { win }) {
+  if (win) addCoins(session, BALANCE.reward.dispatchWin, 'dispatch_win');
+  logEvent(session, 'cycle', { phase: 'cycle_done' });
+  return { reward: win ? BALANCE.reward.dispatchWin : 0 };
+}
+
+/**
+ * 내보내기 페이로드 (REQ-602). 스키마 위반을 함께 실어, 결손 로그가 kill 산식의
+ * 입력으로 조용히 쓰이지 않게 한다 — 판독기는 이 배열이 비어야 통과시킨다.
+ */
+export function exportPayload(session, { exportedAt = new Date().toISOString() } = {}) {
+  return {
+    schema: EXPORT_SCHEMA,
+    exported_at: exportedAt,
+    coins: session.coins,
+    log_violations: session.logViolations.map((v) => ({ ...v })),
+    entries: session.log.entries.map((e) => ({ ...e })),
+  };
 }
 
 export const canTransmitNow = (session) => canTransmit(session.progress, ART_ID, session.disciple);

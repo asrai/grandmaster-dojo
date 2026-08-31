@@ -6,6 +6,48 @@ import { foeStyleById, judge, resolveMatch, responseWindowMs } from '../core.mjs
 
 export const PHASE = { TELEGRAPH: 'telegraph', WINDOW: 'window', RESOLVE: 'resolve', DONE: 'done' };
 
+/** 브라우저 프레임 시계 — 기본 구동원이자 이 모듈이 전역에 닿는 유일한 지점이다. */
+const FRAME_TIMER = {
+  now: () => performance.now(),
+  schedule: (fn) => requestAnimationFrame(fn),
+  cancel: (id) => cancelAnimationFrame(id),
+};
+
+/**
+ * 가상 프레임 시계 — 실시간을 기다리지 않으므로 `tick()` 한 번이 한 프레임이다.
+ * 하네스·봇이 대련 루프의 사본이 아니라 `createMatch` 그 자체를 돌리게 하는 부품이다.
+ */
+export function createVirtualTimer({ stepMs = 16 } = {}) {
+  let t = 0;
+  let nextId = 1;
+  const queued = new Map();
+  return {
+    now: () => t,
+    schedule(fn) { const id = nextId; nextId += 1; queued.set(id, fn); return id; },
+    cancel(id) { queued.delete(id); },
+    tick() {
+      // 프레임 본문이 다음 프레임을 다시 예약하므로 실행 전에 큐를 비운다.
+      const due = [...queued.values()];
+      queued.clear();
+      t += stepMs;
+      for (const fn of due) fn();
+      return due.length;
+    },
+  };
+}
+
+/** 가상 시계를 대련이 끝날 때까지 돌린다. */
+export function pumpToEnd(match, timer, { maxTicks = 20000 } = {}) {
+  let ticks = 0;
+  match.start();
+  while (match.phase !== PHASE.DONE && ticks < maxTicks) {
+    timer.tick();
+    ticks += 1;
+  }
+  if (match.phase !== PHASE.DONE) throw new Error(`대련이 ${maxTicks} 프레임 안에 끝나지 않았다`);
+  return { view: match.view(), ticks, elapsedMs: timer.now() };
+}
+
 /**
  * @param {object} p
  * @param {object} p.challenger  도전자 행 (예고 순환·내공 시드의 출처)
@@ -14,8 +56,11 @@ export const PHASE = { TELEGRAPH: 'telegraph', WINDOW: 'window', RESOLVE: 'resol
  * @param {() => number} p.openLen 상대 빈틈 수의 창 기준 길이 — 장착이 바뀌면 따라 바뀐다
  * @param {() => boolean} p.accessibility 접근성 창 확대 여부
  * @param {object} p.hooks onTelegraph · onWindow · onTick · onTimeout · onVerdict · onEnd
+ * @param {object} [p.timer] 프레임 구동원 (now/schedule/cancel) — 헤드리스는 가상 시계를 준다
  */
-export function createMatch({ challenger, selfHpMax, rankOf, openLen, accessibility, hooks = {} }) {
+export function createMatch({
+  challenger, selfHpMax, rankOf, openLen, accessibility, hooks = {}, timer = FRAME_TIMER,
+}) {
   const foePower = BALANCE.challengerPower[challenger.group];
   const foeHpMax = BALANCE.hp[challenger.id];
   const s = {
@@ -34,7 +79,7 @@ export function createMatch({ challenger, selfHpMax, rankOf, openLen, accessibil
   let raf = 0;
   let pending = null;
 
-  const clock = () => performance.now();
+  const clock = () => timer.now();
   const elapsed = () => clock() - s.phaseStart;
 
   const view = () => ({
@@ -93,7 +138,7 @@ export function createMatch({ challenger, selfHpMax, rankOf, openLen, accessibil
   }
 
   function frame() {
-    raf = requestAnimationFrame(frame);
+    raf = timer.schedule(frame);
     if (s.phase === PHASE.TELEGRAPH) {
       if (elapsed() >= BALANCE.telegraphMs) enterWindow();
       return;
@@ -113,7 +158,7 @@ export function createMatch({ challenger, selfHpMax, rankOf, openLen, accessibil
     if (s.phase === PHASE.RESOLVE && elapsed() >= BALANCE.resolveMs) {
       if (s.outcome.over) {
         s.phase = PHASE.DONE;
-        cancelAnimationFrame(raf);
+        timer.cancel(raf);
         hooks.onEnd?.({ ...view(), outcome: s.outcome });
       } else {
         enterTelegraph();
@@ -125,10 +170,10 @@ export function createMatch({ challenger, selfHpMax, rankOf, openLen, accessibil
     view,
     start() {
       enterTelegraph();
-      raf = requestAnimationFrame(frame);
+      raf = timer.schedule(frame);
     },
     stop() {
-      cancelAnimationFrame(raf);
+      timer.cancel(raf);
       s.phase = PHASE.DONE;
     },
     /** 창을 닫는 유일한 경로 — 발동은 다음 프레임에 판정된다. */

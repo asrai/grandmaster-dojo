@@ -150,6 +150,16 @@ export function createPad() {
   }
 
   return {
+    /**
+     * 봇 v2 의 손 (REQ-605) — 사람 입력과 완전히 같은 경로를 지난다.
+     * 창이 닫혀 있으면 `peek()` 가 null 이라 봇은 그 사이 아무것도 두드리지 않는다.
+     */
+    bot: {
+      peek: () => (accepting() ? { input: active.input, foeStyle: active.foeStyle?.() ?? null } : null),
+      press,
+      reset,
+    },
+
     /** @param {{input: object, masteryOf: Function, onFire: Function, onIgnore?: Function}} consumer */
     attach(consumer) {
       active = consumer;

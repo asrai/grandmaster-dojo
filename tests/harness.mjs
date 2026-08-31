@@ -5,8 +5,16 @@ import {
   ART_SETS, BALANCE, CHALLENGERS, DISCIPLE, FOE_STYLES, STYLES,
 } from '../src/balance.mjs';
 import { LOG_SCHEMA, TIME_FIELD, createLogBuffer, validate } from '../src/log.mjs';
+import {
+  createDiscipleHand, createSeededRandom, runHeadlessCycle,
+} from '../src/bot.mjs';
+import { createMatch, createVirtualTimer, pumpToEnd } from '../src/ui/match.mjs';
 import { createSequenceInput } from '../src/ui/sequence-input.mjs';
-import { createSession, logEvent } from '../src/ui/session.mjs';
+import {
+  EXPORT_SCHEMA, addCoins, createSession, exportPayload, logEvent, settleDispatch, settleDuel,
+  simulateTraining,
+} from '../src/ui/session.mjs';
+import { KILL, readout } from './kill-readout.mjs';
 import {
   applyEffectiveSuccess, artById, assertCounterIntegrity, assertPrefixFree, canLearn, canTransmit,
   challengerById, createDisciple, createProgress, discipleRankOf, discipleStyles, finisherOf,
@@ -485,33 +493,51 @@ suite('제자 자동 선택 (REQ-403)', () => {
 
 // ----------------------- 9. 케이스 8 — B 밸런스 게이트 시뮬 (REQ-402·403·506)
 
+// 사본이 아니라 실루프다 — `createMatch` 를 가상 시계로 돌려 파견 화면과 같은 코드를 검증한다.
 function simulateDispatch({ challengerId, disciple, setId }) {
   const challenger = challengerById(challengerId);
-  const foePower = BALANCE.challengerPower[challenger.group];
-  const rank = discipleRankOf(disciple, setId);
+  const session = createSession();
+  session.disciple = disciple;
   const styles = discipleStyles(disciple, setId);
-  // 제자는 응수 창의 60% 시점에 반드시 실행하므로 선기 잔여는 항상 이 값이다.
-  const r = 1 - BALANCE.discipleFireRatio;
-
-  let foeHp = BALANCE.hp[challenger.id];
-  let selfHp = BALANCE.hp.disciple;
-  let foeOpen = false;
-  let outcome = resolveMatch({ selfHp, foeHp, exchanges: 0 });
+  const timer = createVirtualTimer();
   const trace = [];
+  let ended = null;
+  let match = null;
 
-  for (let i = 0; i < BALANCE.maxExchanges && !outcome.over; i += 1) {
-    // 빈틈 수에도 예고 순번은 전진한다 — 상대가 그 수를 잃는 것으로 본다.
-    const telegraphed = foeOpen ? null : foeStyleById(challenger.styles[i % challenger.styles.length]);
-    const selfStyle = selectDiscipleStyle({ styles, foeStyle: telegraphed, rankOf: () => rank });
-    if (!selfStyle) throw new Error(`${challenger.id} ${i + 1}수 — 낼 초식이 없다`);
-    const verdict = judge({ selfStyle, foeStyle: telegraphed, selfRank: rank, foePower, r, foeOpen });
-    foeHp -= verdict.dmgOut;
-    selfHp -= verdict.dmgIn;
-    foeOpen = verdict.opening === 'foe';
-    trace.push({ exchange: i + 1, foe: telegraphed ? telegraphed.id : null, self: selfStyle.id, ...verdict, foeHp, selfHp });
-    outcome = resolveMatch({ selfHp, foeHp, exchanges: i + 1 });
-  }
-  return { win: outcome.win, exchanges: trace.length, foeHp, selfHp, trace, rank };
+  const hand = createDiscipleHand({ session, styles, fire: (fired) => match.fire(fired) });
+  match = createMatch({
+    challenger,
+    selfHpMax: BALANCE.hp.disciple,
+    rankOf: () => discipleRankOf(session.disciple, setId),
+    openLen: () => Math.max(...styles.map((s) => s.seq.length)),
+    accessibility: () => false,
+    timer,
+    hooks: {
+      onTelegraph() { hand.arm(); },
+      onTick(view) { hand.tick(view); },
+      onVerdict(view) {
+        trace.push({
+          exchange: view.exchange,
+          foe: view.telegraphed ? view.telegraphed.id : null,
+          self: view.fire ? view.fire.style.id : null,
+          ...view.verdict,
+          foeHp: view.foeHp,
+          selfHp: view.selfHp,
+        });
+      },
+      onEnd(view) { ended = view; },
+    },
+  });
+  pumpToEnd(match, timer);
+
+  return {
+    win: ended.outcome.win,
+    exchanges: trace.length,
+    foeHp: ended.foeHp,
+    selfHp: ended.selfHp,
+    trace,
+    rank: discipleRankOf(disciple, setId),
+  };
 }
 
 suite('케이스 8 — B 밸런스 게이트 (REQ-403·506)', () => {
@@ -718,6 +744,82 @@ suite('케이스 4 — 딜레이드 힌트 페이스 (REQ-108·308)', () => {
   ok(responseWindowMs(3) - paceOf('duel') * 3 >= 0, '유운보 완주 여유가 음수가 아니다');
 });
 
+// ------------------- 13. 재화 · 결과 정산 · 로그 내보내기 (REQ-602·604 · 수용 케이스 11)
+
+suite('재화 · 정산 · 내보내기 (REQ-602·604·209)', () => {
+  const session = createSession();
+
+  eq(simulateTraining(session), 360, '수련 시뮬 = simEfficiency × simTrainSeconds');
+  eq(session.coins, 360, '재화가 세션에 적립된다');
+  deepEq(session.log.entries.at(-1).reason, 'train_sim', '수련 시뮬도 coins 이벤트로 남는다');
+
+  const duelLoss = settleDuel(session, { win: false, stage: 1 });
+  eq(duelLoss.reward, 0, '패배는 무손실·무보상 (REQ-209)');
+  eq(session.stage, 1, '패배로 차수가 움직이지 않는다');
+
+  const duelWin = settleDuel(session, { win: true, stage: 1 });
+  eq(duelWin.reward, BALANCE.reward.duelWin, '대련 승리 보상 시드');
+  eq(session.stage, 2, '승리로 차수가 전진');
+  eq(session.coins, 360 + BALANCE.reward.duelWin, '보상이 재화에 더해진다');
+
+  settleDispatch(session, { win: true });
+  eq(session.coins, 360 + BALANCE.reward.duelWin + BALANCE.reward.dispatchWin, '파견 승리 보상 시드');
+  const last = session.log.entries.at(-1);
+  // kill (d) 종점은 승패와 무관하게 파견 결과에서 닫혀야 한다.
+  deepEq([last.event, last.phase], ['cycle', 'cycle_done'], '파견 정산이 cycle_done 을 남긴다');
+
+  const payload = exportPayload(session, { exportedAt: '2026-09-02T00:00:00.000Z' });
+  eq(payload.schema, EXPORT_SCHEMA, '내보내기 스키마 이름');
+  eq(payload.coins, session.coins, '재화 스냅샷 동봉');
+  eq(payload.entries.length, session.log.entries.length, '세션 버퍼 전량이 실린다');
+  deepEq(payload.log_violations, [], '위반 0건이면 빈 배열');
+  eq(JSON.parse(JSON.stringify(payload)).entries.length, payload.entries.length, 'JSON 왕복 무손실');
+
+  // 위반이 있으면 그대로 실려야 판독기가 결손 로그를 거부할 수 있다 (인계 계약).
+  const warn = console.warn;
+  console.warn = () => {};
+  try { logEvent(session, 'unlock', {}); } finally { console.warn = warn; }
+  eq(exportPayload(session).log_violations.length, 1, '위반은 내보내기에 함께 실린다');
+});
+
+// --------------------- 14. 헤드리스 봇 1사이클 (REQ-601·603·605 · 수용 케이스 11)
+
+suite('헤드리스 봇 1사이클 (REQ-601·603·605)', () => {
+  const SEEDS = [20260901, 20260902, 7919, 104729, 1299709];
+  const runs = SEEDS.map((seed) => runHeadlessCycle({ random: createSeededRandom(seed) }));
+
+  for (const [i, run] of runs.entries()) {
+    const payload = exportPayload(run.session);
+    deepEq(run.session.logViolations, [], `시드 ${SEEDS[i]} — 로그 스키마 위반 0건`);
+
+    const emitted = new Set(payload.entries.map((e) => e.event));
+    const missing = Object.keys(LOG_SCHEMA).filter((event) => !emitted.has(event));
+    // REQ-601 최종 검증 — 실제 1사이클에서 17종이 전부 나오지 않으면 kill 산식에 구멍이 있다.
+    deepEq(missing, [], `시드 ${SEEDS[i]} — 통합 로그 17종 전량 emit`);
+
+    const metrics = readout(payload);
+    eq(metrics.aux.tester_role, 'bot', `시드 ${SEEDS[i]} — tester_role 이 봇으로 남는다`);
+    ok(metrics.kill.a_first_fire_ms > 0, `시드 ${SEEDS[i]} — first_fire_t 가 가상 시계로 찍힌다`);
+    eq(metrics.kill.d_cycle_done_ms, run.elapsedMs, `시드 ${SEEDS[i]} — cycle_done_t = 사이클 총 시간`);
+    ok(metrics.kill.d_cycle_done_ms <= KILL.cycleDoneMs,
+      `시드 ${SEEDS[i]} — 1사이클 ${(run.elapsedMs / 1000).toFixed(1)}s ≤ 300s`);
+    ok(metrics.gate.ignore_rate <= KILL.ignoreRate,
+      `시드 ${SEEDS[i]} — ignore_rate ${(metrics.gate.ignore_rate * 100).toFixed(1)}% ≤ 15% (선행 게이트)`);
+    ok(metrics.kill.b_hand_fires + metrics.kill.b_timeouts > 0,
+      `시드 ${SEEDS[i]} — 실전 창 완주율의 분모가 비어 있지 않다`);
+    ok(metrics.aux.first_transmit_ms !== null, `시드 ${SEEDS[i]} — 전수까지 도달`);
+  }
+
+  // 같은 시드는 같은 사이클을 그린다 — 이 성질이 없으면 봇 회귀가 회차마다 흔들린다.
+  const twice = SEEDS.slice(0, 1).map(() => runHeadlessCycle({ random: createSeededRandom(SEEDS[0]) }));
+  eq(twice[0].elapsedMs, runs[0].elapsedMs, '같은 시드 = 같은 가상 시간');
+
+  const rates = runs.map((r) => readout(exportPayload(r.session)).kill.b_completion_rate);
+  console.log(`    봇 v2 ${runs.length}회: 사이클 `
+    + `${runs.map((r) => (r.elapsedMs / 1000).toFixed(0)).join('/')}s · 완주율 `
+    + `${rates.map((r) => `${(r * 100).toFixed(0)}%`).join('/')}`);
+});
+
 // -------------------------------------------- 12. BALANCE 파라미터 census (REQ-606)
 
 suite('BALANCE 파라미터 census (REQ-606)', () => {
@@ -730,7 +832,8 @@ suite('BALANCE 파라미터 census (REQ-606)', () => {
     trainGraduateHits: 3, masteryTrainPct: 30, masteryFullPct: 100, ignoreHighlightAt: 3,
     rankStep: 3, rankMax: 12, slots: 3, equipMasteryPct: 30,
     discipleStartRank: 1, discipleRankMax: 10, discipleFireRatio: 0.6,
-    winColorHintExchanges: Number.MAX_SAFE_INTEGER, simEfficiency: 0.1, buttonHitPx: 56,
+    winColorHintExchanges: Number.MAX_SAFE_INTEGER, simEfficiency: 0.1, simTrainSeconds: 3600,
+    buttonHitPx: 56,
   };
   for (const [key, value] of Object.entries(SEEDS)) eq(BALANCE[key], value, `BALANCE.${key}`);
   deepEq(BALANCE.damageByLen, { 3: 10, 4: 14, 5: 20 }, 'BALANCE.damageByLen');
@@ -741,6 +844,10 @@ suite('BALANCE 파라미터 census (REQ-606)', () => {
   deepEq(BALANCE.hp, { user: 100, disciple: 100, 'A-1': 40, 'A-2': 55, 'A-3': 70, B: 80 }, 'BALANCE.hp');
   deepEq(BALANCE.challengerPower, { A: 1, B: 1.1 }, 'BALANCE.challengerPower');
   deepEq(BALANCE.reward, { duelWin: 30, dispatchWin: 50 }, 'BALANCE.reward');
+  deepEq(BALANCE.bot, {
+    reactionMs: [450, 650], keyMs: [260, 380], navMs: [300, 600],
+    missRate: 0.15, misHitRate: 0.06, pollMs: 30,
+  }, 'BALANCE.bot (REQ-605 사람 속도 시드)');
   deepEq(jsonLossy(BALANCE, 'BALANCE'), [], 'BALANCE 에 JSON 왕복에서 소실되는 값이 없다');
   eq(JSON.parse(JSON.stringify(BALANCE)).winColorHintExchanges, BALANCE.winColorHintExchanges,
     '상시 힌트 상한이 JSON 왕복에서 보존된다');
@@ -757,7 +864,7 @@ suite('BALANCE 파라미터 census (REQ-606)', () => {
 // ------------------------------------------------------------------ 결과
 
 // suite() 가 예외를 삼키므로, 하한이 없으면 스위트가 통째로 건너뛰어도 실패 1건으로만 보인다.
-const MIN_CHECKS = 950;
+const MIN_CHECKS = 1750;
 if (checks < MIN_CHECKS) {
   failures += 1;
   console.error(`  ✗ 단정 수 ${checks} < 하한 ${MIN_CHECKS} — 스위트가 조용히 건너뛰어졌다`);
