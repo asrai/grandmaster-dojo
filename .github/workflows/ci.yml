@@ -48,9 +48,9 @@ jobs:
           git ls-files -z '*.mjs' | xargs -0 -r -n1 node --check
 
       - name: import 해석 검사
-        # `node --check` 는 파일을 독립 파싱하므로 상대 경로 파손·없는 named export 를
-        # green 으로 통과시킨다. 이 스텝은 모듈 그래프를 링크까지만 태워 그 둘을 잡는다
-        # (평가는 하지 않으므로 DOM 을 만지는 `src/ui/**` 도 브라우저 없이 검사된다).
+        # 위 구문 검사가 못 보는 상대 경로·named export 파손을 잡는다. 별도 잡이 아니라
+        # 이 잡의 스텝인 것은 ruleset `main protection` 의 required context 가 `ci` 하나뿐이라
+        # 잡을 늘리면 그 등록을 다시 손대야 하기 때문이다.
         run: node scripts/check-imports.mjs
 
       - name: 헤드리스 하네스
