@@ -9,7 +9,7 @@ import {
   applyEffectiveSuccess, artById, assertCounterIntegrity, assertPrefixFree, canLearn, canTransmit,
   challengerById, createDisciple, createProgress, discipleRankOf, discipleStyles, finisherOf,
   foeStyleById, initiativeOf, isEffectiveSuccess, judge, learn, masteryPct, powerOf, ptsForRank,
-  rankForPts, rankOf, responseWindowMs, selectDiscipleStyle, styleById, transmit,
+  rankForPts, rankOf, resolveMatch, responseWindowMs, selectDiscipleStyle, styleById, transmit,
 } from '../src/core.mjs';
 
 // --------------------------------------------------------------- 단정 도구
@@ -494,9 +494,10 @@ function simulateDispatch({ challengerId, disciple, setId }) {
   let foeHp = BALANCE.hp[challenger.id];
   let selfHp = BALANCE.hp.disciple;
   let foeOpen = false;
+  let outcome = resolveMatch({ selfHp, foeHp, exchanges: 0 });
   const trace = [];
 
-  for (let i = 0; i < BALANCE.maxExchanges && foeHp > 0 && selfHp > 0; i += 1) {
+  for (let i = 0; i < BALANCE.maxExchanges && !outcome.over; i += 1) {
     // 빈틈 수에도 예고 순번은 전진한다 — 상대가 그 수를 잃는 것으로 본다.
     const telegraphed = foeOpen ? null : foeStyleById(challenger.styles[i % challenger.styles.length]);
     const selfStyle = selectDiscipleStyle({ styles, foeStyle: telegraphed, rankOf: () => rank });
@@ -506,9 +507,9 @@ function simulateDispatch({ challengerId, disciple, setId }) {
     selfHp -= verdict.dmgIn;
     foeOpen = verdict.opening === 'foe';
     trace.push({ exchange: i + 1, foe: telegraphed ? telegraphed.id : null, self: selfStyle.id, ...verdict, foeHp, selfHp });
+    outcome = resolveMatch({ selfHp, foeHp, exchanges: i + 1 });
   }
-  const win = foeHp <= 0 ? true : selfHp <= 0 ? false : selfHp > foeHp;
-  return { win, exchanges: trace.length, foeHp, selfHp, trace, rank };
+  return { win: outcome.win, exchanges: trace.length, foeHp, selfHp, trace, rank };
 }
 
 suite('케이스 8 — B 밸런스 게이트 (REQ-403·506)', () => {
@@ -529,7 +530,49 @@ suite('케이스 8 — B 밸런스 게이트 (REQ-403·506)', () => {
     + `등급 ${sim.trace.map((t) => BALANCE.grades[t.grade].label).join('·')}`);
 });
 
-// -------------------------------------------- 10. BALANCE 파라미터 census (REQ-606)
+// ------------------------------- 10. 대련 종료 판정 (REQ-201) — 상태기계와 공유하는 규칙
+
+suite('대련 종료 판정 (REQ-201)', () => {
+  const at = (selfHp, foeHp, exchanges) => resolveMatch({ selfHp, foeHp, exchanges });
+
+  eq(at(100, 40, 1).over, false, '양쪽 생존 · 수 상한 전이면 계속');
+  deepEq(at(60, 0, 3), { over: true, win: true, by: 'hp' }, '상대 HP 소진 = 승');
+  deepEq(at(0, 20, 3), { over: true, win: false, by: 'hp' }, '내 HP 소진 = 패');
+  deepEq(at(0, 0, 3), { over: true, win: true, by: 'hp' }, '상호 소진은 낸 쪽의 승');
+  deepEq(at(-5, 10, 3), { over: true, win: false, by: 'hp' }, '음수 HP 도 소진');
+
+  const last = BALANCE.maxExchanges;
+  eq(at(40, 30, last - 1).over, false, `${last - 1}수까지는 잔여 HP 비교를 하지 않는다`);
+  deepEq(at(40, 30, last), { over: true, win: true, by: 'exchanges' }, '수 상한 · 앞서면 승');
+  deepEq(at(30, 40, last), { over: true, win: false, by: 'exchanges' }, '수 상한 · 뒤지면 패');
+  deepEq(at(30, 30, last), { over: true, win: false, by: 'exchanges' }, '수 상한 · 동률은 패');
+
+  // 제자 100 vs B 80 — 비율 비교였다면 0.40 < 0.44 로 뒤집힌다.
+  eq(at(40, 35, last).win, true, '최대 HP 비대칭에서도 절대값으로 비교한다');
+  eq(at(BALANCE.hp.disciple, BALANCE.hp.B, last).win, true, '무피해 종료는 최대 HP 가 큰 쪽 승');
+});
+
+// --------------------------------- 11. 케이스 4 — 딜레이드 힌트 페이스 (REQ-108·308)
+
+suite('케이스 4 — 딜레이드 힌트 페이스 (REQ-108·308)', () => {
+  // 힌트 1개 점등(hintDelay) + 그 화살표를 누르는 시간이 힌트 의존 플레이의 키당 페이스다.
+  const KEYPRESS_MS = 350;
+  const paceOf = (mode) => BALANCE.hintDelayMs[mode] + KEYPRESS_MS;
+  eq(paceOf('duel'), 850, 'spec 케이스 4 실전 페이스 = 키당 0.85s');
+
+  for (const len of [3, 4, 5]) {
+    const window = responseWindowMs(len);
+    eq(paceOf('duel') * len <= window, len === 3,
+      `실전 ${len}키 힌트 의존 완주 (${paceOf('duel') * len}ms vs 창 ${window}ms)`);
+    ok(paceOf('train') * len <= window,
+      `수련 ${len}키는 힌트 즉시라 완주 (${paceOf('train') * len}ms vs 창 ${window}ms)`);
+  }
+
+  // 3키 실전이 통과선인 것이 케이스 4 의 요지 — 여유가 사라지면 hintDelay 튜닝이 필요하다.
+  ok(responseWindowMs(3) - paceOf('duel') * 3 >= 0, '유운보 완주 여유가 음수가 아니다');
+});
+
+// -------------------------------------------- 12. BALANCE 파라미터 census (REQ-606)
 
 suite('BALANCE 파라미터 census (REQ-606)', () => {
   // spec § 데이터 구조 파라미터 표의 시드값 — 값이 바뀌면 밸런스 로그 회차가 필요하다.
