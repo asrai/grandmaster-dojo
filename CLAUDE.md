@@ -4,7 +4,7 @@
 
 일대종사 (一代宗師) / EN working title **Grandmaster Dojo** — 손으로 익힌 초식이 자동화되는 순간이 보상이다. 당신이 익힌 만큼 제자가 대신 싸운다. (Supercent AI Native Game PD take-home, deadline 2026-09-07 23:59 KST.)
 
-- Engine: HTML5 (vanilla JS, single-file `index.html`, zero dependencies) — see `docs/adr/` + vault `13. 일대종사/1. 구상/엔진 결정 (HTML5 vs Unity WebGL).md` for the ADR (Unity/Godot deliberately not adopted; re-decision triggers recorded there)
+- Engine: HTML5 (vanilla JS, `index.html` + ESM modules under `src/`, zero dependencies, no build step) — see `docs/adr/` + vault `13. 일대종사/1. 구상/엔진 결정 (HTML5 vs Unity WebGL).md` for the ADR (Unity/Godot deliberately not adopted; re-decision triggers recorded there)
 - Genre: 아이들 아케이드 (하이브리드 캐주얼) — mastery-gated automation (숙련도 = 자동화 권한)
 - Platform: Web HTML5 first (web portals / PWA), Capacitor-wrapped mobile second
 - Core input: 후보 필터 시퀀스 (autocomplete-style prefix filtering; fire = single remaining candidate + full sequence); 6단 공방 판정 (완파/우세/상쇄/열세/역파/피격)
@@ -41,9 +41,10 @@ The `gitleaks` binary is required, but the dotfiles `Brewfile` entry `brew "gitl
 
 ## Dev Workflow (HTML5)
 
-- No build step: `index.html` is the shipped artifact. Open it directly or serve with `python3 -m http.server 8000` (Chrome MCP cannot navigate `file://`, so use the local server for automated smoke).
+- No build step: `index.html` is the shipped artifact, and its runtime logic **must** live in the ESM modules under `src/`, pulled in with `<script type="module">`. ESM is same-origin only, so always serve with `python3 -m http.server 8000`; do not open `file://`. (`index.html` still carries the v0 inline script; the v2 state machine is what moves it onto `src/`, and `README.md`'s run instructions sync with it.)
+- `src/` is DOM-free by contract (`balance.mjs` data · `core.mjs` pure logic · `log.mjs` schema+buffer); that is what lets the Node harness import the same modules the browser runs.
 - All tunables live in the `BALANCE` object; the 6단 판정표 + 파라미터 10종 must be **data-driven JSON** (round-2 CTO#2) so balance tuning never touches logic.
-- Verification tiers: headless harness (판정 등급 · 피해 정수 · 상태 전이 assertions over the full 6단 × 빈틈 × 선기 matrix) → human-speed bot in Chrome (pace regression, logged to `docs/balance-log.md`) → manual playtest. Bot numbers are reference values, never a substitute for human measurement.
+- Verification tiers: headless harness (`node tests/harness.mjs` — 판정 등급 · 피해 정수 · 상태 전이 assertions over the full 6단 × 빈틈 × 선기 matrix) → human-speed bot in Chrome (pace regression, logged to `docs/balance-log.md`) → manual playtest. Bot numbers are reference values, never a substitute for human measurement.
 - No engine workflow variant exists for HTML5 — see `docs/TODO-workflow-variants.md` for the CI job still to be authored.
 
 ## Comment Policy
