@@ -127,6 +127,21 @@ export function judge({ selfStyle, foeStyle = null, selfRank, foePower = 1, r = 
   };
 }
 
+/**
+ * 대련 종료 판정 (REQ-201) — HP 소진, 아니면 수 상한에서 잔여 HP 비교.
+ * 최대 HP 가 서로 달라도 비율이 아니라 절대값으로 비교한다 — 비율은 최대 HP 가 낮은
+ * 도전자를 구조적으로 유리하게 만들어 REQ-506 이 지키려는 첫 파견 승리를 뒤집는다.
+ * @returns {{over: boolean, win: ?boolean, by: ?('hp'|'exchanges')}}
+ */
+export function resolveMatch({ selfHp, foeHp, exchanges, maxExchanges = BALANCE.maxExchanges }) {
+  // 교차 판정이라 양쪽이 같은 수에 소진될 수 있다 — 그 수를 낸 쪽의 승으로 본다.
+  if (foeHp <= 0) return { over: true, win: true, by: 'hp' };
+  if (selfHp <= 0) return { over: true, win: false, by: 'hp' };
+  // 동률은 도전자 쪽 판정승 — 수 상한까지 갔으면 앞선 쪽만 이긴다.
+  if (exchanges >= maxExchanges) return { over: true, win: selfHp > foeHp, by: 'exchanges' };
+  return { over: false, win: null, by: null };
+}
+
 // -------------------------------------------------------------------- 숙련 · 성
 
 /** 초식 진행도 0 상태. `learned` 기본값 = 각 무공의 1식. */

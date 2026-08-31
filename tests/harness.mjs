@@ -4,12 +4,14 @@
 import {
   ART_SETS, BALANCE, CHALLENGERS, DISCIPLE, FOE_STYLES, STYLES,
 } from '../src/balance.mjs';
-import { LOG_SCHEMA, TIME_FIELD, createLogBuffer } from '../src/log.mjs';
+import { LOG_SCHEMA, TIME_FIELD, createLogBuffer, validate } from '../src/log.mjs';
+import { createSequenceInput } from '../src/ui/sequence-input.mjs';
+import { createSession, logEvent } from '../src/ui/session.mjs';
 import {
   applyEffectiveSuccess, artById, assertCounterIntegrity, assertPrefixFree, canLearn, canTransmit,
   challengerById, createDisciple, createProgress, discipleRankOf, discipleStyles, finisherOf,
   foeStyleById, initiativeOf, isEffectiveSuccess, judge, learn, masteryPct, powerOf, ptsForRank,
-  rankForPts, rankOf, responseWindowMs, selectDiscipleStyle, styleById, transmit,
+  rankForPts, rankOf, resolveMatch, responseWindowMs, selectDiscipleStyle, styleById, transmit,
 } from '../src/core.mjs';
 
 // --------------------------------------------------------------- 단정 도구
@@ -494,9 +496,10 @@ function simulateDispatch({ challengerId, disciple, setId }) {
   let foeHp = BALANCE.hp[challenger.id];
   let selfHp = BALANCE.hp.disciple;
   let foeOpen = false;
+  let outcome = resolveMatch({ selfHp, foeHp, exchanges: 0 });
   const trace = [];
 
-  for (let i = 0; i < BALANCE.maxExchanges && foeHp > 0 && selfHp > 0; i += 1) {
+  for (let i = 0; i < BALANCE.maxExchanges && !outcome.over; i += 1) {
     // 빈틈 수에도 예고 순번은 전진한다 — 상대가 그 수를 잃는 것으로 본다.
     const telegraphed = foeOpen ? null : foeStyleById(challenger.styles[i % challenger.styles.length]);
     const selfStyle = selectDiscipleStyle({ styles, foeStyle: telegraphed, rankOf: () => rank });
@@ -506,9 +509,9 @@ function simulateDispatch({ challengerId, disciple, setId }) {
     selfHp -= verdict.dmgIn;
     foeOpen = verdict.opening === 'foe';
     trace.push({ exchange: i + 1, foe: telegraphed ? telegraphed.id : null, self: selfStyle.id, ...verdict, foeHp, selfHp });
+    outcome = resolveMatch({ selfHp, foeHp, exchanges: i + 1 });
   }
-  const win = foeHp <= 0 ? true : selfHp <= 0 ? false : selfHp > foeHp;
-  return { win, exchanges: trace.length, foeHp, selfHp, trace, rank };
+  return { win: outcome.win, exchanges: trace.length, foeHp, selfHp, trace, rank };
 }
 
 suite('케이스 8 — B 밸런스 게이트 (REQ-403·506)', () => {
@@ -529,7 +532,193 @@ suite('케이스 8 — B 밸런스 게이트 (REQ-403·506)', () => {
     + `등급 ${sim.trace.map((t) => BALANCE.grades[t.grade].label).join('·')}`);
 });
 
-// -------------------------------------------- 10. BALANCE 파라미터 census (REQ-606)
+// ------------------------------- 10. 대련 종료 판정 (REQ-201) — 상태기계와 공유하는 규칙
+
+suite('대련 종료 판정 (REQ-201)', () => {
+  const at = (selfHp, foeHp, exchanges) => resolveMatch({ selfHp, foeHp, exchanges });
+
+  eq(at(100, 40, 1).over, false, '양쪽 생존 · 수 상한 전이면 계속');
+  deepEq(at(60, 0, 3), { over: true, win: true, by: 'hp' }, '상대 HP 소진 = 승');
+  deepEq(at(0, 20, 3), { over: true, win: false, by: 'hp' }, '내 HP 소진 = 패');
+  deepEq(at(0, 0, 3), { over: true, win: true, by: 'hp' }, '상호 소진은 낸 쪽의 승');
+  deepEq(at(-5, 10, 3), { over: true, win: false, by: 'hp' }, '음수 HP 도 소진');
+
+  const last = BALANCE.maxExchanges;
+  eq(at(40, 30, last - 1).over, false, `${last - 1}수까지는 잔여 HP 비교를 하지 않는다`);
+  deepEq(at(40, 30, last), { over: true, win: true, by: 'exchanges' }, '수 상한 · 앞서면 승');
+  deepEq(at(30, 40, last), { over: true, win: false, by: 'exchanges' }, '수 상한 · 뒤지면 패');
+  deepEq(at(30, 30, last), { over: true, win: false, by: 'exchanges' }, '수 상한 · 동률은 패');
+
+  // 제자 100 vs B 80 — 비율 비교였다면 0.40 < 0.44 로 뒤집힌다.
+  eq(at(40, 35, last).win, true, '최대 HP 비대칭에서도 절대값으로 비교한다');
+  eq(at(BALANCE.hp.disciple, BALANCE.hp.B, last).win, true, '무피해 종료는 최대 HP 가 큰 쪽 승');
+});
+
+// ------------- 10-a. 플레이 경로 로그 검증 (REQ-601·603) — 비엄격 버퍼의 무음 통과를 막는다
+
+suite('플레이 경로 로그 검증 (REQ-601·603)', () => {
+  const session = createSession();
+  eq(session.log.entries.length, 0, '세션은 빈 버퍼로 시작');
+  deepEq(session.logViolations, [], '위반 목록도 빈 상태');
+
+  logEvent(session, 'reset', {});
+  eq(session.log.entries.length, 1, '정상 이벤트는 적재된다');
+  deepEq(session.logViolations, [], '정상 이벤트는 위반으로 세지 않는다');
+
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    // 필드 결손·오타·미정의 이벤트 — 셋 다 적재는 이어지되 관측 가능해야 한다.
+    logEvent(session, 'fire', { styleId: 'yuun-bo', len: 3, oneTap: false });
+    logEvent(session, 'narrow', { style_id: 'yuun-bo' });
+    logEvent(session, 'nope', {});
+    logEvent(session, 'key', {
+      dir: 'D', accepted: true, candidates_n: 1, top_attr: 'fast', device: 'gamepad',
+    });
+  } finally {
+    console.warn = warn;
+  }
+
+  eq(session.log.entries.length, 5, '위반 이벤트도 적재를 끊지 않는다 (시연 중 정지 방지)');
+  eq(session.logViolations.length, 4, '결손·오타·미정의·열거 밖이 전부 위반으로 잡힌다');
+  deepEq(session.logViolations.map((v) => v.event), ['fire', 'narrow', 'nope', 'key'], '위반 이벤트 이름');
+  ok(session.logViolations[0].reason.includes('r'), '결손 필드명이 사유에 남는다');
+
+  // 검증은 관례가 아니라 싱크의 성질이어야 한다 — 원시 버퍼를 우회할 쓰기 경로가 없다.
+  const warn2 = console.warn;
+  console.warn = () => {};
+  try { session.log.log('unlock', {}); } finally { console.warn = warn2; }
+  eq(session.logViolations.length, 5, 'session.log.log 직접 호출도 검증을 거친다');
+  deepEq(Object.keys(session.log).sort(), ['clear', 'entries', 'log', 'serialize'],
+    '세션 로그에 검증 없는 쓰기 API 가 없다');
+
+  // `validate` 가 export 되어 있어야 이 경로가 스키마 정의를 두 벌로 갖지 않는다.
+  eq(typeof validate, 'function', 'log.mjs 가 validate 를 노출한다');
+  eq(validate('reset', {}), undefined, '정상 이벤트는 통과');
+});
+
+// ------------------------- 10-b. 후보 필터 입력기 (REQ-102~109) — DOM 없이 도는 유일한 UI 층
+
+suite('후보 필터 입력기 (REQ-102·103·105·106·108·109)', () => {
+  const yuunBo = styleById('yuun-bo');
+  const jeokUn = styleById('jeok-un');
+  const haengUn = styleById('haeng-un');
+
+  function harnessInput({ pool, mastery = {}, mode = 'duel' }) {
+    let clock = 0;
+    const events = [];
+    const input = createSequenceInput({
+      pool,
+      masteryOf: (s) => mastery[s.id] ?? 0,
+      hintDelayMs: BALANCE.hintDelayMs[mode],
+      now: () => clock,
+      remainingRatio: () => 0.5,
+      log: (event, fields) => events.push({ event, ...fields }),
+    });
+    input.arm();
+    return { input, events, tick: (ms) => { clock += ms; }, ids: () => input.candidates.map((s) => s.id) };
+  }
+
+  const pool = [yuunBo, jeokUn, haengUn];
+
+  // 정렬 = 숙련 높은 순 → 동률 슬롯 순 (REQ-102)
+  const sorted = harnessInput({ pool, mastery: { 'jeok-un': 100 } });
+  deepEq(sorted.ids(), ['jeok-un', 'yuun-bo', 'haeng-un'], '숙련 높은 초식이 최상단');
+  const tied = harnessInput({ pool });
+  deepEq(tied.ids(), ['yuun-bo', 'jeok-un', 'haeng-un'], '숙련 동률이면 슬롯 순 (결정적)');
+
+  // 접두어 필터 + 갈래 전환 (케이스 2)
+  const branch = harnessInput({ pool });
+  eq(branch.input.press('D', 'keyboard').accepted, true, '↓ 는 세 초식 공통 접두어');
+  deepEq(branch.ids(), ['yuun-bo', 'jeok-un', 'haeng-un'], '↓ 뒤 후보 3');
+  branch.input.press('L', 'keyboard');
+  deepEq(branch.ids(), ['jeok-un'], '← 로 2식 갈래');
+  eq(branch.input.top().attr, 'hard', '최상단 속성이 강으로 갱신 = 진행형 후보 색');
+
+  // 후보 0 이 되는 키는 무시 (REQ-103)
+  const ignored = harnessInput({ pool });
+  ignored.input.press('D', 'button');
+  const beforeBuffer = ignored.input.buffer;
+  const result = ignored.input.press('D', 'button');
+  eq(result.accepted, false, '후보 0 이 되는 키는 수락되지 않는다');
+  deepEq(ignored.input.buffer, beforeBuffer, '버퍼 불변');
+  deepEq(ignored.ids(), ['yuun-bo', 'jeok-un', 'haeng-un'], '후보 불변');
+  eq(ignored.input.ignores, 1, '무시 누적');
+  deepEq(ignored.events.filter((e) => e.event === 'ignore'), [{ event: 'ignore', dir: 'D' }], 'ignore 로깅');
+  eq(ignored.events.at(-2).accepted, false, '무시된 키도 key 로 남아 ignore_rate 분모가 된다');
+
+  // 리셋 (REQ-105)
+  ignored.input.reset();
+  deepEq(ignored.input.buffer, [], '리셋 → 버퍼 비움');
+  deepEq(ignored.ids(), ['yuun-bo', 'jeok-un', 'haeng-un'], '리셋 → 후보 전체 복원');
+  eq(ignored.input.ignores, 0, '리셋 → 무시 누적도 0');
+
+  // 발동 (REQ-106) + 발동 뒤 잠금
+  const firing = harnessInput({ pool });
+  for (const dir of yuunBo.seq.slice(0, -1)) firing.input.press(dir, 'keyboard');
+  eq(firing.input.press('U', 'keyboard').fired.style.id, 'yuun-bo', '후보 1 ∧ 버퍼 == 시퀀스 → 발동');
+  const fireEvent = firing.events.at(-1);
+  deepEq(
+    [fireEvent.event, fireEvent.styleId, fireEvent.len, fireEvent.oneTap, fireEvent.r],
+    ['fire', 'yuun-bo', 3, false, 0.5], 'fire 필드가 스키마 그대로',
+  );
+  eq(firing.input.press('D', 'keyboard').accepted, false, '발동 뒤 입력은 ignore 가 아니라 무반응');
+  eq(firing.events.filter((e) => e.event === 'ignore').length, 0, '발동 뒤 키가 ignore_rate 를 오염시키지 않는다');
+
+  // 딜레이드 힌트 인덱스 경계 (REQ-108)
+  const hint = harnessInput({ pool: [yuunBo] });
+  eq(hint.input.revealed(), 0, '창이 열린 직후에는 점등 없음');
+  hint.tick(BALANCE.hintDelayMs.duel - 1);
+  eq(hint.input.revealed(), 0, `${BALANCE.hintDelayMs.duel}ms 직전까지 점등 없음`);
+  hint.tick(1);
+  eq(hint.input.revealed(), 1, '지연이 지나면 다음 화살표 하나만 점등');
+  hint.input.press('D', 'keyboard');
+  eq(hint.input.revealed(), 1, '키를 받으면 힌트 시계가 다시 시작한다');
+  hint.tick(BALANCE.hintDelayMs.duel);
+  eq(hint.input.revealed(), 2, '입력분 + 점등분');
+  hint.tick(BALANCE.hintDelayMs.duel * 5);
+  eq(hint.input.revealed(), 2, '점등은 키마다 하나씩 — 지연이 쌓여도 앞서 나가지 않는다');
+
+  const trainHint = harnessInput({ pool: [yuunBo], mode: 'train' });
+  eq(trainHint.input.revealed(), 1, '수련은 지연 0 이라 즉시 점등');
+  const fullHint = harnessInput({ pool: [yuunBo], mastery: { 'yuun-bo': BALANCE.masteryFullPct } });
+  eq(fullHint.input.revealed(), yuunBo.seq.length, '숙련 100% 는 지연 없이 전 시퀀스 노출');
+
+  // 원터치 (REQ-109)
+  const oneTap = harnessInput({ pool, mastery: { 'yuun-bo': BALANCE.masteryFullPct } });
+  eq(oneTap.input.tap(jeokUn), null, '숙련 100% 가 아니면 원터치 불가');
+  const tapped = oneTap.input.tap(yuunBo);
+  eq(tapped.oneTap, true, '원터치 발동');
+  eq(oneTap.events.at(-1).r, 0.5, '원터치 r 은 탭 시점 잔여 비율');
+  eq(oneTap.input.tap(yuunBo), null, '발동 뒤 원터치도 잠긴다');
+
+  // arm 이 그 창의 장착을 다시 읽는다
+  const rearm = harnessInput({ pool: [yuunBo] });
+  rearm.input.arm([yuunBo, jeokUn]);
+  deepEq(rearm.ids(), ['yuun-bo', 'jeok-un'], 'arm(pool) 이 후보 집합을 갱신');
+});
+
+// --------------------------------- 11. 케이스 4 — 딜레이드 힌트 페이스 (REQ-108·308)
+
+suite('케이스 4 — 딜레이드 힌트 페이스 (REQ-108·308)', () => {
+  // 힌트 1개 점등(hintDelay) + 그 화살표를 누르는 시간이 힌트 의존 플레이의 키당 페이스다.
+  const KEYPRESS_MS = 350;
+  const paceOf = (mode) => BALANCE.hintDelayMs[mode] + KEYPRESS_MS;
+  eq(paceOf('duel'), 850, 'spec 케이스 4 실전 페이스 = 키당 0.85s');
+
+  for (const len of [3, 4, 5]) {
+    const window = responseWindowMs(len);
+    eq(paceOf('duel') * len <= window, len === 3,
+      `실전 ${len}키 힌트 의존 완주 (${paceOf('duel') * len}ms vs 창 ${window}ms)`);
+    ok(paceOf('train') * len <= window,
+      `수련 ${len}키는 힌트 즉시라 완주 (${paceOf('train') * len}ms vs 창 ${window}ms)`);
+  }
+
+  // 3키 실전이 통과선인 것이 케이스 4 의 요지 — 여유가 사라지면 hintDelay 튜닝이 필요하다.
+  ok(responseWindowMs(3) - paceOf('duel') * 3 >= 0, '유운보 완주 여유가 음수가 아니다');
+});
+
+// -------------------------------------------- 12. BALANCE 파라미터 census (REQ-606)
 
 suite('BALANCE 파라미터 census (REQ-606)', () => {
   // spec § 데이터 구조 파라미터 표의 시드값 — 값이 바뀌면 밸런스 로그 회차가 필요하다.
@@ -538,7 +727,7 @@ suite('BALANCE 파라미터 census (REQ-606)', () => {
     openingWindowPenalty: 0.4, accessibilityWindowMult: 1.3, accessibilityWindow: false,
     resolveMs: 500, maxExchanges: 12, powerBase: 1, powerPerRank: 0.05,
     initiativeBase: 1, initiativePerRatio: 0.3, clashK: 0.5, effectiveSuccessMaxOrder: 2,
-    trainGraduateHits: 3, masteryTrainPct: 30, masteryFullPct: 100,
+    trainGraduateHits: 3, masteryTrainPct: 30, masteryFullPct: 100, ignoreHighlightAt: 3,
     rankStep: 3, rankMax: 12, slots: 3, equipMasteryPct: 30,
     discipleStartRank: 1, discipleRankMax: 10, discipleFireRatio: 0.6,
     winColorHintExchanges: Number.MAX_SAFE_INTEGER, simEfficiency: 0.1, buttonHitPx: 56,
