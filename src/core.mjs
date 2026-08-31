@@ -98,8 +98,9 @@ function gradeOf({ selfStyle, foeStyle, foeOpen }) {
  */
 export function judge({ selfStyle, foeStyle = null, selfRank, foePower = 1, r = 0, foeOpen = false }) {
   if (!(r >= 0 && r <= 1)) throw new Error(`선기 잔여 비율이 0~1 밖: ${r}`);
-  if (!Number.isFinite(selfRank)) throw new Error(`성이 유한한 수가 아니다: ${selfRank}`);
-  if (!Number.isFinite(foePower)) throw new Error(`상대 내공이 유한한 수가 아니다: ${foePower}`);
+  // 음수·비정수는 내공을 뒤집어 피해를 회복으로 만든다 — 유한성만으로는 못 막는다.
+  if (!Number.isInteger(selfRank) || selfRank < 1) throw new Error(`성이 1 이상의 정수가 아니다: ${selfRank}`);
+  if (!Number.isFinite(foePower) || foePower <= 0) throw new Error(`상대 내공이 양수가 아니다: ${foePower}`);
   const grade = gradeOf({ selfStyle, foeStyle, foeOpen });
   const rule = BALANCE.grades[grade];
   const selfPower = powerOf(selfRank);

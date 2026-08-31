@@ -40,6 +40,18 @@ function eq(actual, expected, message) {
   ok(Object.is(actual, expected), `${message} — 기대 ${JSON.stringify(expected)}, 실제 ${JSON.stringify(actual)}`);
 }
 
+/** JSON 왕복에서 조용히 null 이 되거나 사라지는 값의 경로를 전부 모은다. */
+function jsonLossy(value, path) {
+  if (typeof value === 'number') return Number.isFinite(value) ? [] : [`${path}=${String(value)}`];
+  if (value === undefined || typeof value === 'function' || typeof value === 'symbol') {
+    return [`${path}=${String(value)}`];
+  }
+  if (value && typeof value === 'object') {
+    return Object.entries(value).flatMap(([k, v]) => jsonLossy(v, `${path}.${k}`));
+  }
+  return [];
+}
+
 // NaN·Infinity·undefined 는 JSON 에서 전부 null 로 접히므로 별도 토큰으로 남긴다.
 const stable = (value) => JSON.stringify(value, (_key, v) => {
   if (typeof v === 'number' && !Number.isFinite(v)) return `«${String(v)}»`;
@@ -261,6 +273,7 @@ suite('케이스 5 — 6단 판정 전 조합 (REQ-202·203·204·205)', () => {
               const actual = judge({ selfStyle: self, foeStyle: foe, selfRank: rank, foePower, r, foeOpen });
               deepEq(actual, expected,
                 `${self ? self.id : '미완주'} vs ${foe.id} (빈틈=${foeOpen} r=${r} 성=${rank} N적=${foePower})`);
+              ok(actual.dmgOut >= 0 && actual.dmgIn >= 0, `피해가 음수가 아니다 (${self ? self.id : '미완주'} vs ${foe.id})`);
               seenGrades.add(actual.grade);
               combos += 1;
             }
@@ -292,10 +305,15 @@ suite('케이스 5 — 6단 판정 전 조합 (REQ-202·203·204·205)', () => {
     '빈틈이 아닌데 상대 초식이 없으면 throw', '상대 초식이 없다');
   throws(() => judge({ selfStyle: styleById('yuun-bo'), foeStyle: foeStyleById('alpha'), selfRank: 1, r: 1.5 }),
     '선기 잔여 비율 범위 밖은 throw', '0~1 밖');
+  const dom = (over) => () => judge({ selfStyle: styleById('yuun-bo'), foeStyle: foeStyleById('alpha'), selfRank: 1, ...over });
   throws(() => judge({ selfStyle: styleById('yuun-bo'), foeStyle: foeStyleById('alpha') }),
-    '성 결손은 NaN 이 아니라 throw', '성이 유한한 수가 아니다');
-  throws(() => judge({ selfStyle: styleById('yuun-bo'), foeStyle: foeStyleById('alpha'), selfRank: 1, foePower: NaN }),
-    '상대 내공 결손은 NaN 이 아니라 throw', '상대 내공이 유한한 수가 아니다');
+    '성 결손은 NaN 이 아니라 throw', '성이 1 이상의 정수가 아니다');
+  throws(dom({ selfRank: -30 }), '음수 성은 throw — 피해가 회복으로 뒤집힌다', '성이 1 이상의 정수가 아니다');
+  throws(dom({ selfRank: 0 }), '0성은 throw', '성이 1 이상의 정수가 아니다');
+  throws(dom({ selfRank: 1.5 }), '비정수 성은 throw', '성이 1 이상의 정수가 아니다');
+  throws(dom({ foePower: NaN }), '상대 내공 NaN 은 throw', '상대 내공이 양수가 아니다');
+  throws(dom({ foePower: -1 }), '음수 상대 내공은 throw — 받는 피해가 회복으로 뒤집힌다', '상대 내공이 양수가 아니다');
+  throws(dom({ foePower: 0 }), '0 상대 내공은 throw', '상대 내공이 양수가 아니다');
 
   // 파해와 역파가 동시에 성립하면 완파가 이긴다 — 시드 데이터에는 충돌 쌍이 없어 합성한다.
   const mutualSelf = { id: 'm-self', attr: 'fast', d: 10, counters: 'm-foe' };
@@ -534,7 +552,7 @@ suite('BALANCE 파라미터 census (REQ-606)', () => {
   deepEq(BALANCE.hp, { user: 100, disciple: 100, 'A-1': 40, 'A-2': 55, 'A-3': 70, B: 80 }, 'BALANCE.hp');
   deepEq(BALANCE.challengerPower, { A: 1, B: 1.1 }, 'BALANCE.challengerPower');
   deepEq(BALANCE.reward, { duelWin: 30, dispatchWin: 50 }, 'BALANCE.reward');
-  deepEq(JSON.parse(JSON.stringify(BALANCE)), JSON.parse(JSON.stringify(BALANCE)), 'BALANCE 는 JSON 직렬화 가능');
+  deepEq(jsonLossy(BALANCE, 'BALANCE'), [], 'BALANCE 에 JSON 왕복에서 소실되는 값이 없다');
   eq(JSON.parse(JSON.stringify(BALANCE)).winColorHintExchanges, BALANCE.winColorHintExchanges,
     '상시 힌트 상한이 JSON 왕복에서 보존된다');
   deepEq(Object.entries(BALANCE.grades).map(([id, g]) => [id, g.label, g.order, g.outPct, g.inPct, g.opening]), [
