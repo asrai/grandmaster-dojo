@@ -1,0 +1,49 @@
+name: CI
+
+# 이 repo 의 유일한 검증 잡. `main protection` ruleset 의 required status check
+# 로 등록되므로 **경로 필터를 두지 않는다** — 필터에 걸린 PR 은 `ci` 를 영원히
+# 보고하지 않아 무음 차단된다 (#6).
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # comment-lint 의 ratchet base 를 resolve 하려면 base 커밋이 있어야 한다
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 구문 검사 (ESM 모듈 전량)
+        run: |
+          echo "대상 .mjs $(git ls-files '*.mjs' | wc -l | tr -d ' ')건"
+          git ls-files -z '*.mjs' | xargs -0 -n1 node --check
+
+      - name: 헤드리스 하네스
+        # 판정은 파일 존재가 아니라 exit code 다. green 경로의
+        # `단정 N건 · 실패 0건` stdout 이 "안 걸렸다" 와 "안 돌았다" 를 가른다.
+        run: node tests/harness.mjs
+
+      - name: comment-lint self-test
+        run: python3 scripts/comment-lint.py --self-test
+
+      - name: comment-lint (ratchet)
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: python3 scripts/comment-lint.py --root . --changed-only --base "$BASE"
