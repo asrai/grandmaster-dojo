@@ -35,7 +35,7 @@ python3 -m http.server 8000
 node tests/harness.mjs   # 헤드리스 회귀 — 판정 등급·피해 정수·상태 전이·밸런스 게이트
 ```
 
-`src/balance.mjs`(데이터) · `src/core.mjs`(순수 로직) · `src/log.mjs`(로그 스키마)는 DOM 을 모르므로 브라우저와 하네스가 같은 모듈을 쓴다. DOM 을 아는 코드는 전부 `src/ui/` 아래에 있다.
+`src/balance.mjs`(데이터) · `src/core.mjs`(순수 로직) · `src/log.mjs`(로그 스키마)는 DOM 을 모르므로 브라우저와 하네스가 같은 모듈을 쓴다. DOM 을 아는 코드는 `src/ui/` 아래에 있고, 그중 입력기 `src/ui/sequence-input.mjs` 만은 DOM-free 라 하네스가 함께 회귀한다.
 
 ## 문서
 

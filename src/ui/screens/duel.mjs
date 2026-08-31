@@ -8,8 +8,7 @@ import { SFX } from '../audio.mjs';
 import { PHASE, createMatch } from '../match.mjs';
 import { createSequenceInput } from '../sequence-input.mjs';
 import {
-  DUEL_STAGES, artRank, challengerOfStage, equippedStyles, logEvent, masteryOf,
-  recordEffectiveSuccess,
+  ART_NAME, artRank, challengerOfStage, equippedStyles, logEvent, masteryOf, recordEffectiveSuccess,
 } from '../session.mjs';
 
 function telegraphView(view) {
@@ -55,7 +54,7 @@ export function startDuel(ctx) {
     el('div', { class: 'window' }, [windowFill]),
     el('div', { class: 'head' }, [
       el('b', { text: '사부' }),
-      el('span', { class: 'dim', text: `유운검법 ${artRank(session)}성` }),
+      el('span', { class: 'dim', text: `${ART_NAME} ${artRank(session)}성` }),
     ]),
     selfHpEl,
     banner,
@@ -92,6 +91,8 @@ export function startDuel(ctx) {
         clear(verdictEl);
         windowFill.style.width = '100%';
         renderHp(view);
+        // 예고 구간에 직전 수의 버퍼·후보가 남으면 이미 낸 초식이 아직 걸린 것처럼 읽힌다.
+        input.arm(equippedStyles(session));
         ctx.pad.render();
       },
       onWindow() {
@@ -133,8 +134,8 @@ export function startDuel(ctx) {
           if (changes.rank) {
             SFX.rank();
             toast(changes.rank.to >= BALANCE.rankMax
-              ? '유운검법 — 완벽히 깨달음'
-              : `유운검법 ${changes.rank.to}성`, 'rank');
+              ? `${ART_NAME} — 완벽히 깨달음`
+              : `${ART_NAME} ${changes.rank.to}성`, 'rank');
           } else if (changes.unlock) {
             toast('새 초식을 배울 수 있다 — 도장에서');
           }
@@ -158,5 +159,3 @@ export function startDuel(ctx) {
   return () => { match.stop(); ctx.pad.detach(); };
 }
 
-/** 최고 차수는 그 자리에 머문다 — 재진입이 막히면 남은 성 성장 경로가 통째로 닫힌다. */
-export const nextStage = (stage) => Math.min(stage + 1, DUEL_STAGES.length);

@@ -4,7 +4,7 @@
 import { BALANCE } from '../balance.mjs';
 import { $ } from './dom.mjs';
 import { createPad } from './pad.mjs';
-import { artRank, createSession, logEvent } from './session.mjs';
+import { ART_NAME, artRank, createSession, logEvent } from './session.mjs';
 import { renderDojo } from './screens/dojo.mjs';
 import { renderPreview, startDispatch } from './screens/dispatch.mjs';
 import { startDuel } from './screens/duel.mjs';
@@ -35,7 +35,7 @@ let teardown = null;
 
 function refreshTop() {
   $('label').textContent = session.label;
-  $('rank').textContent = `유운검법 ${artRank(session)}성`;
+  $('rank').textContent = `${ART_NAME} ${artRank(session)}성`;
   $('coins').textContent = `元 ${session.coins}`;
 }
 
@@ -54,6 +54,7 @@ function go(phase, params = {}) {
 // 히트 영역 최소치도 BALANCE 값이라, CSS 가 그 값을 변수로 받아 간다 (REQ-101).
 document.documentElement.style.setProperty('--hit', `${BALANCE.buttonHitPx}px`);
 
+$('a11y').checked = session.accessibility;
 $('a11y').addEventListener('change', (event) => {
   // 데이터 테이블은 시드로 두고 런타임 값은 세션이 갖는다 — 다음 창부터 반영된다.
   session.accessibility = event.target.checked;

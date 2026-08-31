@@ -98,7 +98,6 @@ export function createPad() {
           if (!accepting()) return;
           const fired = input.tap(style);
           if (!fired) return;
-          SFX.fire();
           render();
           active.onFire(fired);
         },
@@ -129,8 +128,15 @@ export function createPad() {
   }
 
   function onKeyDown(event) {
-    if (!accepting()) return;
-    if (RESET_KEYS.has(event.key)) { event.preventDefault(); reset(); return; }
+    // 오토리핏은 손이 친 키가 아니다 — 그대로 흘리면 `ignore_rate` 와 후보 좁힘이 함께 오염된다.
+    if (event.repeat || !accepting()) return;
+    if (RESET_KEYS.has(event.key)) {
+      // 포커스가 버튼에 있으면 Space 는 그 버튼의 활성화 키다.
+      if (event.target && event.target.tagName === 'BUTTON') return;
+      event.preventDefault();
+      reset();
+      return;
+    }
     const dir = KEYMAP[event.key];
     if (!dir) return;
     event.preventDefault();

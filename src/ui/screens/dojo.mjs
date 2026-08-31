@@ -1,11 +1,11 @@
 // 도장 (REQ-303·305·306·308) — 배우기 · 수련 · 장착 · 전수 · 대련/파견 진입.
 
 import { BALANCE, STYLES } from '../../balance.mjs';
-import { canLearn, discipleRankOf, discipleStyles } from '../../core.mjs';
+import { artById, canLearn, discipleRankOf, discipleStyles } from '../../core.mjs';
 import { arrowRow, attrMark, clear, el } from '../dom.mjs';
 import { ATTR_VIEW } from '../theme.mjs';
 import {
-  ART_ID, DISPATCH_CHALLENGER, artRank, canEquip, canTransmitNow,
+  ART_ID, ART_NAME, DISPATCH_CHALLENGER, artRank, canEquip, canTransmitNow,
   challengerOfStage, equip, learnStyle, masteryOf, unequip,
 } from '../session.mjs';
 
@@ -70,7 +70,7 @@ function discipleCard(session) {
     rank === null
       ? el('p', { class: 'dim', text: '아직 전수한 무공이 없다 — 무공을 12성으로 깨달으면 전수할 수 있다.' })
       : el('div', {}, [
-        el('p', {}, [el('b', { text: '유운검법' }), el('span', { class: 'badge', text: `${rank}성` })]),
+        el('p', {}, [el('b', { text: ART_NAME }), el('span', { class: 'badge', text: `${rank}성` })]),
         el('div', { class: 'icons' }, styles.map((s) => el('span', {
           class: 'cand mini', style: `--attr:${ATTR_VIEW[s.attr].color}`,
         }, [attrMark(s.attr), el('span', { class: 'cand-name', text: s.name })]))),
@@ -88,7 +88,7 @@ export function renderDojo(ctx) {
 
   root.append(
     el('section', { class: 'card' }, [
-      el('h2', { text: '유운검법 流雲劍法' }),
+      el('h2', { text: `${ART_NAME} ${artById(ART_ID).hanja}` }),
       el('p', {}, [
         el('span', { class: `badge${rank >= BALANCE.rankMax ? ' max' : ''}`, text: rankLabel(rank) }),
         el('span', { class: 'dim', text: ` 성 포인트 ${session.progress.arts[ART_ID].rankPts}` }),
@@ -105,7 +105,7 @@ export function renderDojo(ctx) {
       }),
       el('button', {
         class: 'primary',
-        text: '전수 — 제자에게 유운검법을',
+        text: `전수 — 제자에게 ${ART_NAME}을`,
         disabled: !canTransmitNow(session),
         onclick: () => ctx.go('transmit'),
       }),

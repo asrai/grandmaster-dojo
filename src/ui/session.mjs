@@ -10,6 +10,7 @@ import {
 
 /** 프로토의 비급은 1권뿐이라 무공 축의 모든 조회가 이 id 로 수렴한다. */
 export const ART_ID = ART_SETS[0].id;
+export const ART_NAME = ART_SETS[0].name;
 export const DUEL_STAGES = CHALLENGERS.filter((c) => c.mode === 'duel')
   .slice().sort((a, b) => a.stage - b.stage);
 export const DISPATCH_CHALLENGER = CHALLENGERS.find((c) => c.mode === 'dispatch');
@@ -36,6 +37,17 @@ export const artRank = (session) => rankOf(session.progress, ART_ID);
 export const equippedStyles = (session) => session.slots.filter(Boolean).map(styleById);
 export const canEquip = (session, styleId) => masteryOf(session, styleId) >= BALANCE.equipMasteryPct;
 export const challengerOfStage = (stage) => DUEL_STAGES[stage - 1];
+export const isLastStage = (stage) => stage >= DUEL_STAGES.length;
+
+/**
+ * 대련 승리로 차수를 전진시키고 새로 해금된 도전자를 돌려준다 (없으면 null).
+ * 최고 차수는 그 자리에 머문다 — 재진입이 막히면 남은 성 성장 경로가 통째로 닫힌다.
+ */
+export function advanceStage(session, clearedStage) {
+  if (clearedStage !== session.stage || isLastStage(session.stage)) return null;
+  session.stage += 1;
+  return challengerOfStage(session.stage);
+}
 
 export function equip(session, styleId, slotIdx) {
   if (!canEquip(session, styleId)) return false;

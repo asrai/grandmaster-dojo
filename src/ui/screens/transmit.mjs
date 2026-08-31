@@ -6,7 +6,7 @@ import { discipleRankOf, discipleStyles } from '../../core.mjs';
 import { attrMark, clear, el } from '../dom.mjs';
 import { ATTR_VIEW } from '../theme.mjs';
 import { SFX } from '../audio.mjs';
-import { ART_ID, artRank, runTransmit } from '../session.mjs';
+import { ART_ID, ART_NAME, artRank, runTransmit } from '../session.mjs';
 
 const icons = (styles, cls) => el('div', { class: 'icons' }, styles.map((s) => el('div', {
   class: `cand ${cls}`, style: `--attr:${ATTR_VIEW[s.attr].color}`,
@@ -30,7 +30,7 @@ export function renderTransmit(ctx) {
   root.append(el('section', { class: 'card transmit' }, [
     el('p', {}, [el('span', {
       class: 'badge max',
-      text: masterRank >= BALANCE.rankMax ? '유운검법 — 완벽히 깨달음' : `유운검법 ${masterRank}성`,
+      text: masterRank >= BALANCE.rankMax ? `${ART_NAME} — 완벽히 깨달음` : `${ART_NAME} ${masterRank}성`,
     })]),
     el('div', { class: 'sides' }, [
       el('div', { class: 'side' }, [

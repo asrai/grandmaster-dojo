@@ -9,11 +9,16 @@ import { attrMark, clear, el, hpBar } from '../dom.mjs';
 import { ATTR_VIEW, GRADE_VIEW, attrLabel, gradeLabel, winAttrOf } from '../theme.mjs';
 import { SFX } from '../audio.mjs';
 import { createMatch } from '../match.mjs';
-import { ART_ID, DISPATCH_CHALLENGER, accrueDiscipleRank, logEvent } from '../session.mjs';
+import { ART_ID, ART_NAME, DISPATCH_CHALLENGER, accrueDiscipleRank, logEvent } from '../session.mjs';
 
 const styleIcon = (style, extra = '') => el('div', {
   class: `cand${extra ? ` ${extra}` : ''}`, style: `--attr:${ATTR_VIEW[style.attr].color}`,
-}, [attrMark(style.attr), el('span', { class: 'cand-name', text: style.name })]);
+}, [
+  attrMark(style.attr),
+  el('span', { class: 'cand-name', text: style.name }),
+  // 지시 여부를 외곽선 색만으로 두면 색각 이상에서 구분되지 않는다.
+  extra.includes('picked') ? el('span', { class: 'tag', text: '지시' }) : null,
+]);
 
 export function renderPreview(ctx) {
   const { session, root } = ctx;
@@ -31,7 +36,7 @@ export function renderPreview(ctx) {
       el('b', { text: `절초 ${finisher.name} ${finisher.hanja}` }),
       el('span', { class: 'dim', text: ` · ${attrLabel(finisher.attr)} · ${finisher.len}수 · 이기는 색 ${attrLabel(winAttrOf(finisher.attr))}` }),
     ]),
-    el('h2', { text: `제자 — 유운검법 ${discipleRankOf(session.disciple, ART_ID)}성` }),
+    el('h2', { text: `제자 — ${ART_NAME} ${discipleRankOf(session.disciple, ART_ID)}성` }),
     el('div', { class: 'icons' }, styles.map((s) => styleIcon(s))),
     el('div', { class: 'actions' }, [
       el('button', { class: 'primary', text: '파견 보내기', onclick: () => ctx.go('dispatch') }),
@@ -65,7 +70,7 @@ export function startDispatch(ctx) {
     telegraphEl,
     verdictEl,
     el('div', { class: 'window' }, [windowFill]),
-    el('div', { class: 'head' }, [el('b', { text: '제자' }), el('span', { class: 'dim', text: `유운검법 ${rankFrom}성` })]),
+    el('div', { class: 'head' }, [el('b', { text: '제자' }), el('span', { class: 'dim', text: `${ART_NAME} ${rankFrom}성` })]),
     selfHpEl,
     iconsEl,
   ]));

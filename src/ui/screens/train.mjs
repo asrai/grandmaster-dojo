@@ -11,7 +11,7 @@ import { logEvent, masteryOf, recordEffectiveSuccess } from '../session.mjs';
 export function startTrain(ctx) {
   const { session, root, params } = ctx;
   const style = styleById(params.styleId);
-  const windowMs = responseWindowMs(style.seq.length, { accessibility: session.accessibility });
+  let windowMs = responseWindowMs(style.seq.length, { accessibility: session.accessibility });
   clear(root);
 
   const statusEl = el('div', { class: 'grade' });
@@ -57,6 +57,8 @@ export function startTrain(ctx) {
 
   function arm() {
     settled = false;
+    // 접근성 토글이 헤더에 상시 노출되므로 수련 중 변경도 다음 시도부터 반영한다.
+    windowMs = responseWindowMs(style.seq.length, { accessibility: session.accessibility });
     startedAt = performance.now();
     input.arm();
     ctx.pad.attach({

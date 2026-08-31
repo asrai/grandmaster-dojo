@@ -2,20 +2,16 @@
 
 import { BALANCE } from '../../balance.mjs';
 import { clear, el } from '../dom.mjs';
-import { addCoins, challengerOfStage, logEvent } from '../session.mjs';
-import { nextStage } from './duel.mjs';
+import { addCoins, advanceStage, isLastStage, logEvent } from '../session.mjs';
 
 function settleDuel(session, params) {
   const lines = [];
   if (params.win) {
     addCoins(session, BALANCE.reward.duelWin, 'duel_win');
     lines.push(`재화 +${BALANCE.reward.duelWin} 元`);
-    const advanced = nextStage(params.stage);
-    if (params.stage === session.stage && advanced !== session.stage) {
-      session.stage = advanced;
-      const next = challengerOfStage(session.stage);
-      lines.push(next ? `${next.name} ${next.stage}차 해금` : '도전자 A 전 차수 격파');
-    }
+    const unlocked = advanceStage(session, params.stage);
+    if (unlocked) lines.push(`${unlocked.name} ${unlocked.stage}차 해금`);
+    else if (isLastStage(params.stage)) lines.push('사부 대련 전 차수 격파 — 남은 것은 전수와 파견이다');
   } else {
     lines.push('잃은 것은 없다 — 숙련·성·재화는 그대로다');
   }
