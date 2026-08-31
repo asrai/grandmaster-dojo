@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>초식 도장 — 프로토타입 v0</title>
+<style>
+  :root {
+    --bg:#15120f; --panel:#221c17; --ink:#f3e9d8; --dim:#9c8f7d; --accent:#e0a533;
+    --ok:#6fcf7a; --bad:#e2574d; --auto:#5fb3e8; --line:#3a3027;
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif; overscroll-behavior:none; }
+  #app { max-width:420px; margin:0 auto; min-height:100%; display:flex; flex-direction:column; padding:10px 12px 16px; gap:10px; user-select:none; touch-action:none; }
+  header { display:flex; justify-content:space-between; align-items:baseline; }
+  header h1 { font-size:18px; margin:0; letter-spacing:.04em; }
+  header h1 small { color:var(--dim); font-weight:400; font-size:11px; margin-left:6px; }
+  .stat { font-variant-numeric:tabular-nums; color:var(--dim); font-size:12px; }
+  .stat b { color:var(--accent); font-size:15px; }
+
+  #arena { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 14px 12px; position:relative; min-height:230px; display:flex; flex-direction:column; gap:10px; }
+  .row { display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--dim); }
+  .hp { display:flex; gap:4px; }
+  .hp i { width:14px; height:8px; border-radius:2px; background:var(--line); display:block; }
+  .hp i.on { background:var(--bad); }
+  .hp.master i.on { background:var(--ok); }
+  #enemyName { font-size:13px; color:var(--ink); }
+
+  #telegraph { text-align:center; min-height:96px; display:flex; flex-direction:column; justify-content:center; gap:6px; }
+  #attack { font-size:22px; font-weight:700; letter-spacing:.06em; transition:transform .12s; }
+  #attack.idle { color:var(--dim); font-size:15px; font-weight:400; }
+  #counter { font-size:13px; color:var(--dim); }
+  #counter b { color:var(--accent); }
+  #seq { display:flex; justify-content:center; gap:8px; min-height:38px; }
+  .key { width:34px; height:34px; border-radius:8px; border:1px solid var(--line); display:grid; place-items:center; font-size:18px; color:var(--dim); background:#1a1512; }
+  .key.done { background:var(--accent); color:#1a1512; border-color:var(--accent); }
+  .key.hidden { color:transparent; }
+  .key.hidden.done { color:#1a1512; }
+  .key.miss { animation:shake .25s; border-color:var(--bad); }
+  @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-4px)} 75%{transform:translateX(4px)} }
+  #bar { height:6px; background:var(--line); border-radius:3px; overflow:hidden; }
+  #barFill { height:100%; width:0%; background:var(--accent); transition:none; }
+  #barFill.auto { background:var(--auto); }
+  #flash { position:absolute; inset:0; border-radius:12px; pointer-events:none; opacity:0; }
+  #flash.ok { background:rgba(111,207,122,.18); animation:fade .4s forwards; }
+  #flash.bad { background:rgba(226,87,77,.25); animation:fade .4s forwards; }
+  @keyframes fade { from{opacity:1} to{opacity:0} }
+  #toast { position:absolute; left:50%; top:8px; transform:translateX(-50%); background:#000a; padding:4px 10px; border-radius:20px; font-size:12px; color:var(--ink); opacity:0; transition:opacity .2s; white-space:nowrap; }
+  #toast.show { opacity:1; }
+
+  #styles { display:grid; gap:8px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 12px; display:grid; grid-template-columns:1fr auto; gap:4px 10px; align-items:center; }
+  .card.locked { opacity:.55; }
+  .card.active { border-color:var(--accent); }
+  .card.auto { border-color:var(--auto); }
+  .card .name { font-size:15px; font-weight:700; }
+  .card .name small { color:var(--dim); font-weight:400; margin-left:4px; font-size:11px; }
+  .card .vs { font-size:11px; color:var(--dim); }
+  .card .keys { display:flex; gap:4px; }
+  .card .keys span { font-size:12px; color:var(--dim); border:1px solid var(--line); border-radius:4px; padding:0 4px; }
+  .mbar { grid-column:1/2; height:5px; background:var(--line); border-radius:3px; overflow:hidden; }
+  .mbar i { display:block; height:100%; background:var(--accent); width:0; transition:width .2s; }
+  .mbar.auto i { background:var(--auto); }
+  .mlabel { font-size:11px; color:var(--dim); grid-column:1/2; }
+  .card button { grid-row:1/4; grid-column:2/3; }
+  .badge { font-size:11px; padding:2px 8px; border-radius:10px; background:var(--auto); color:#0d1a22; font-weight:700; grid-row:1/4; grid-column:2/3; text-align:center; }
+
+  button { font:inherit; font-size:13px; padding:8px 12px; border-radius:8px; border:1px solid var(--line); background:#2b241d; color:var(--ink); cursor:pointer; }
+  button:disabled { opacity:.35; cursor:default; }
+  button.primary { background:var(--accent); color:#1a1512; border-color:var(--accent); font-weight:700; }
+  button.primary.pulse { animation:pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(224,165,51,.6)} 50%{box-shadow:0 0 0 8px rgba(224,165,51,0)} }
+  #dojo { display:flex; gap:8px; flex-wrap:wrap; }
+  #dojo button { flex:1 1 45%; }
+  footer { display:flex; gap:8px; justify-content:space-between; font-size:11px; color:var(--dim); align-items:center; }
+  footer button { font-size:11px; padding:5px 8px; }
+
+  #banner { position:fixed; inset:0; background:#000c; display:none; place-items:center; padding:20px; z-index:10; }
+  #banner.show { display:grid; }
+  #banner .box { background:var(--panel); border:1px solid var(--accent); border-radius:14px; padding:22px; max-width:340px; text-align:center; }
+  #banner h2 { margin:0 0 8px; color:var(--accent); }
+  #banner p { margin:6px 0; font-size:13px; color:var(--dim); }
+  #banner p b { color:var(--ink); }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>초식 도장<small>v0 프로토타입</small></h1>
+    <div class="stat">元 <b id="coins">0</b> &nbsp;·&nbsp; <span id="clock">0:00</span></div>
+  </header>
+
+  <section id="arena">
+    <div class="row">
+      <span id="enemyName">도전자</span>
+      <span class="hp" id="enemyHp"></span>
+    </div>
+    <div id="telegraph">
+      <div id="attack" class="idle">도전자가 자세를 잡는다…</div>
+      <div id="counter"></div>
+      <div id="seq"></div>
+    </div>
+    <div id="bar"><div id="barFill"></div></div>
+    <div class="row">
+      <span>사부 <span id="masterLabel"></span></span>
+      <span class="hp master" id="masterHp"></span>
+    </div>
+    <div id="flash"></div>
+    <div id="toast"></div>
+  </section>
+
+  <section id="styles"></section>
+
+  <section id="dojo">
+    <button id="formationBtn" disabled>진법 「일자진」 — 300元</button>
+    <button id="simBtn" disabled>1시간 수련 시뮬</button>
+  </section>
+
+  <footer>
+    <span>← ↑ → ↓ 키 / 스와이프</span>
+    <span>
+      <button id="exportBtn">로그 내보내기</button>
+      <button id="resetBtn">초기화</button>
+    </span>
+  </footer>
+</div>
+
+<div id="banner"><div class="box">
+  <h2>일자진 완성 — 1사이클 완료</h2>
+  <p>소요 <b id="bTime"></b></p>
+  <p>수동 입력 성공 <b id="bManual"></b> · 제자 커버 <b id="bCover"></b></p>
+  <p>도전자 격파 <b id="bKills"></b></p>
+  <p style="margin-top:12px">이제 제자 둘이 대련을 잇는다. 사부는 더 강한 도전자를 기다린다.</p>
+  <button class="primary" id="bClose">계속</button>
+</div></div>
+
+<script>
+'use strict';
+// ---------------------------------------------------------------- balance
+const BALANCE = {
+  enemyHp: 3,
+  masterHp: 5,
+  hitReward: 2,
+  killRewardBase: 10, killRewardGrowth: 0.15,
+  gapMs: 1200, gapStep: 40, gapMin: 600,
+  autoEffInit: 0.6, effGain: 0.08, autoDelayRatio: 0.45,
+  formationPrice: 300, formationEffBonus: 0.15, formationSpeed: 1.5,
+  simHours: 1, simEfficiency: 0.3,
+  styles: [
+    { id:'yuun',      name:'유운보', hanja:'流雲步', attack:'횡베기',   seq:['D','R'],         windowMs:2200, threshold:6,  hintUntil:3, price:0   },
+    { id:'bangyeok',  name:'반격장', hanja:'反擊掌', attack:'찌르기',   seq:['L','U','R'],     windowMs:2600, threshold:8,  hintUntil:4, price:60  },
+    { id:'cheonbung', name:'천붕각', hanja:'天崩脚', attack:'내려치기', seq:['U','U','D','L'], windowMs:3000, threshold:10, hintUntil:5, price:150 },
+  ],
+};
+const ARROW = { L:'←', U:'↑', R:'→', D:'↓' };
+const SAVE_KEY = 'stance-dojo-v0';
+
+// ---------------------------------------------------------------- state
+function freshState() {
+  return {
+    coins: 0, kills: 0, formation: false, cycleDone: false,
+    styles: BALANCE.styles.map((s, i) => ({ learned: i === 0, mastery: 0, auto: false, autoEff: BALANCE.autoEffInit })),
+    stats: { manual: 0, cover: 0, fail: 0 },
+    sessionStart: Date.now(),
+  };
+}
+let S = load() || freshState();
+const enemy = { hp: BALANCE.enemyHp, phase: 'idle', styleIdx: 0, tStart: 0, gapEnd: 0, autoFired: false, autoFailed: false };
+const master = { hp: BALANCE.masterHp };
+let input = [];
+const LOG = [];
+
+function load() { try { const j = JSON.parse(localStorage.getItem(SAVE_KEY)); if (j && j.styles) { j.sessionStart = Date.now(); return j; } } catch (e) {} return null; }
+function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) {} }
+function log(event, extra = {}) {
+  const e = Object.assign({ event, t_ms: Date.now() - S.sessionStart, coins: S.coins }, extra);
+  LOG.push(e); if (LOG.length > 500) LOG.shift();
+  console.log('[dojo]', JSON.stringify(e));
+}
+
+// ---------------------------------------------------------------- helpers
+const $ = id => document.getElementById(id);
+const learnedIdx = () => S.styles.map((s, i) => s.learned ? i : -1).filter(i => i >= 0);
+const gapMs = () => Math.max(BALANCE.gapMin, BALANCE.gapMs - BALANCE.gapStep * S.kills) / (S.formation ? BALANCE.formationSpeed : 1);
+const effOf = i => Math.min(1, S.styles[i].autoEff + (S.formation ? BALANCE.formationEffBonus : 0));
+const killReward = () => Math.round(BALANCE.killRewardBase * (1 + BALANCE.killRewardGrowth * S.kills));
+const fmtTime = ms => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+
+let toastTimer;
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 1100); }
+function flash(kind) { const f = $('flash'); f.className = ''; void f.offsetWidth; f.className = kind; }
+
+// ---------------------------------------------------------------- enemy loop
+function startGap(now) { enemy.phase = 'idle'; enemy.gapEnd = now + gapMs(); input = []; renderArena(); }
+function startTelegraph(now) {
+  const pool = learnedIdx();
+  enemy.styleIdx = pool[Math.floor(Math.random() * pool.length)];
+  enemy.phase = 'telegraph'; enemy.tStart = now; enemy.autoFired = false; enemy.autoFailed = false; input = [];
+  renderArena();
+}
+function resolveSuccess(source) {
+  const i = enemy.styleIdx, st = S.styles[i];
+  enemy.hp -= 1; S.coins += BALANCE.hitReward;
+  if (source === 'manual') {
+    if (st.auto) { st.autoEff = Math.min(1, st.autoEff + BALANCE.effGain); S.stats.cover++; toast(`사부가 받아냈다 — 제자 성공률 ${Math.round(effOf(i) * 100)}%`); }
+    else { st.mastery++; S.stats.manual++; if (st.mastery === BALANCE.styles[i].threshold) toast(`${BALANCE.styles[i].name} 숙련 — 전수 가능!`); }
+  }
+  log('hit', { style: BALANCE.styles[i].id, source, mastery: st.mastery, auto: st.auto });
+  flash('ok');
+  if (enemy.hp <= 0) {
+    S.kills++; S.coins += killReward(); master.hp = Math.min(BALANCE.masterHp, master.hp + 1);
+    enemy.hp = BALANCE.enemyHp; log('kill', { kills: S.kills });
+    toast(`도전자 격파 +${killReward()}元`);
+  }
+  save(); startGap(performance.now()); renderAll();
+}
+function resolveFail() {
+  const i = enemy.styleIdx;
+  master.hp -= 1; S.stats.fail++; flash('bad');
+  log('miss', { style: BALANCE.styles[i].id, auto: S.styles[i].auto });
+  if (master.hp <= 0) { master.hp = BALANCE.masterHp; enemy.hp = BALANCE.enemyHp; toast('밀렸다 — 도전자 재정비'); }
+  else toast(enemy.autoFailed ? '제자도 사부도 놓쳤다' : '놓쳤다');
+  startGap(performance.now()); renderAll();
+}
+function tick(now) {
+  if (enemy.phase === 'idle') { if (now >= enemy.gapEnd) startTelegraph(now); }
+  else {
+    const i = enemy.styleIdx, cfg = BALANCE.styles[i], st = S.styles[i];
+    const el = now - enemy.tStart, ratio = Math.min(1, el / cfg.windowMs);
+    $('barFill').style.width = `${(1 - ratio) * 100}%`;
+    if (st.auto && !enemy.autoFired && el >= cfg.windowMs * BALANCE.autoDelayRatio) {
+      enemy.autoFired = true;
+      if (Math.random() < effOf(i)) { toast(`제자가 ${cfg.name}으로 응수`); resolveSuccess('auto'); requestAnimationFrame(tick); return; }
+      enemy.autoFailed = true; toast('제자 실패 — 사부가 커버!'); renderArena();
+    }
+    if (ratio >= 1) resolveFail();
+  }
+  $('clock').textContent = fmtTime(Date.now() - S.sessionStart);
+  requestAnimationFrame(tick);
+}
+
+// ---------------------------------------------------------------- input
+function press(dir) {
+  if (enemy.phase !== 'telegraph') return;
+  const i = enemy.styleIdx, seq = BALANCE.styles[i].seq;
+  if (seq[input.length] === dir) {
+    input.push(dir);
+    if (input.length === seq.length) { resolveSuccess('manual'); return; }
+  } else {
+    input = [];
+    document.querySelectorAll('#seq .key').forEach(k => { k.classList.remove('miss'); void k.offsetWidth; k.classList.add('miss'); });
+  }
+  renderSeq();
+}
+window.addEventListener('keydown', e => {
+  const map = { ArrowLeft:'L', ArrowUp:'U', ArrowRight:'R', ArrowDown:'D', a:'L', w:'U', d:'R', s:'D' };
+  if (map[e.key]) { e.preventDefault(); press(map[e.key]); }
+});
+let sw = null;
+window.addEventListener('pointerdown', e => { if (e.target.closest('button')) return; sw = { x: e.clientX, y: e.clientY }; });
+window.addEventListener('pointerup', e => {
+  if (!sw) return; const dx = e.clientX - sw.x, dy = e.clientY - sw.y; sw = null;
+  if (Math.hypot(dx, dy) < 24) return;
+  press(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'R' : 'L') : (dy > 0 ? 'D' : 'U'));
+});
+
+// ---------------------------------------------------------------- dojo actions
+function transmit(i) {
+  const st = S.styles[i]; if (st.auto || st.mastery < BALANCE.styles[i].threshold) return;
+  st.auto = true; log('transmit', { style: BALANCE.styles[i].id });
+  toast(`${BALANCE.styles[i].name} 전수 — 이제 제자가 받는다`); flash('ok'); save(); renderAll();
+}
+function buyScroll(i) {
+  const cfg = BALANCE.styles[i]; if (S.styles[i].learned || S.coins < cfg.price) return;
+  S.coins -= cfg.price; S.styles[i].learned = true; log('scroll', { style: cfg.id });
+  toast(`${cfg.name} 두루마리 — 수동으로 익혀라`); save(); renderAll();
+}
+function buyFormation() {
+  if (S.formation || S.coins < BALANCE.formationPrice || !S.styles.every(s => s.auto)) return;
+  S.coins -= BALANCE.formationPrice; S.formation = true; log('formation');
+  if (!S.cycleDone) {
+    S.cycleDone = true; const ms = Date.now() - S.sessionStart;
+    $('bTime').textContent = fmtTime(ms); $('bManual').textContent = S.stats.manual; $('bCover').textContent = S.stats.cover; $('bKills').textContent = S.kills;
+    $('banner').classList.add('show'); log('cycle_done', { ms });
+  }
+  save(); renderAll();
+}
+function simulate() {
+  const autos = S.styles.map((s, i) => s.auto ? effOf(i) : 0).filter(Boolean);
+  if (!autos.length) return;
+  const learned = learnedIdx().length;
+  const avgWindow = learnedIdx().reduce((a, i) => a + BALANCE.styles[i].windowMs, 0) / learned;
+  const attacksPerHour = 3600000 / (gapMs() + avgWindow * BALANCE.autoDelayRatio);
+  const hitRate = autos.reduce((a, b) => a + b, 0) / learned;
+  const coins = Math.round(attacksPerHour * hitRate * (BALANCE.hitReward + BALANCE.killRewardBase / BALANCE.enemyHp) * BALANCE.simEfficiency * BALANCE.simHours);
+  S.coins += coins; log('simulate', { hours: BALANCE.simHours, gained: coins });
+  toast(`제자들이 ${BALANCE.simHours}시간 수련 — +${coins}元`); save(); renderAll();
+}
+$('formationBtn').onclick = buyFormation;
+$('simBtn').onclick = simulate;
+$('bClose').onclick = () => $('banner').classList.remove('show');
+$('resetBtn').onclick = () => { if (!confirm('도장을 초기화할까요?')) return; localStorage.removeItem(SAVE_KEY); location.reload(); };
+$('exportBtn').onclick = () => {
+  const blob = new Blob([JSON.stringify({ balance: BALANCE, state: S, log: LOG }, null, 1)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `dojo-log-${Date.now()}.json`; a.click();
+};
+
+// ---------------------------------------------------------------- render
+function hpBar(el, hp, max) { el.innerHTML = Array.from({ length: max }, (_, k) => `<i class="${k < hp ? 'on' : ''}"></i>`).join(''); }
+function renderSeq() {
+  const i = enemy.styleIdx, cfg = BALANCE.styles[i], st = S.styles[i];
+  const hint = st.auto || st.mastery < cfg.hintUntil;
+  $('seq').innerHTML = cfg.seq.map((d, k) => `<span class="key ${k < input.length ? 'done' : ''} ${hint ? '' : 'hidden'}">${ARROW[d]}</span>`).join('');
+}
+function renderArena() {
+  hpBar($('enemyHp'), enemy.hp, BALANCE.enemyHp); hpBar($('masterHp'), master.hp, BALANCE.masterHp);
+  $('enemyName').textContent = `도전자 ${S.kills + 1}${S.formation ? ' · 일자진' : ''}`;
+  $('masterLabel').textContent = S.styles.some(s => s.auto) ? `· 제자 ${S.formation ? 2 : 1}명` : '';
+  const a = $('attack');
+  if (enemy.phase === 'idle') { a.className = 'idle'; a.textContent = '도전자가 자세를 잡는다…'; $('counter').textContent = ''; $('seq').innerHTML = ''; $('barFill').style.width = '0%'; return; }
+  const i = enemy.styleIdx, cfg = BALANCE.styles[i], st = S.styles[i];
+  a.className = ''; a.textContent = `${cfg.attack}!`;
+  $('counter').innerHTML = st.auto ? (enemy.autoFailed ? `제자 실패 — <b>${cfg.name}</b>으로 커버` : `제자가 <b>${cfg.name}</b> 준비 중…`) : `<b>${cfg.name}</b> ${cfg.hanja}`;
+  $('barFill').className = st.auto ? 'auto' : '';
+  renderSeq();
+}
+function renderStyles() {
+  $('styles').innerHTML = BALANCE.styles.map((cfg, i) => {
+    const st = S.styles[i];
+    const cls = ['card', !st.learned && 'locked', st.auto && 'auto', enemy.phase === 'telegraph' && enemy.styleIdx === i && 'active'].filter(Boolean).join(' ');
+    const keys = cfg.seq.map(d => `<span>${ARROW[d]}</span>`).join('');
+    let action;
+    if (!st.learned) action = `<button data-buy="${i}" ${S.coins < cfg.price ? 'disabled' : 'class="primary"'}>두루마리 ${cfg.price}元</button>`;
+    else if (st.auto) action = `<span class="badge">전수 ${Math.round(effOf(i) * 100)}%</span>`;
+    else action = `<button data-tx="${i}" class="primary ${st.mastery >= cfg.threshold ? 'pulse' : ''}" ${st.mastery < cfg.threshold ? 'disabled' : ''}>전수</button>`;
+    const m = Math.min(st.mastery, cfg.threshold);
+    const label = st.auto ? `제자 성공률 ${Math.round(effOf(i) * 100)}% — 실패 시 사부가 커버하면 상승` : st.learned ? `숙련 ${m}/${cfg.threshold}${st.mastery >= cfg.hintUntil && st.mastery < cfg.threshold ? ' · 힌트 없이' : ''}` : `${cfg.attack}에 대응`;
+    return `<div class="${cls}">
+      <div class="name">${cfg.name}<small>${cfg.hanja} · vs ${cfg.attack}</small></div>
+      ${action}
+      <div class="keys">${keys}</div>
+      <div class="mbar ${st.auto ? 'auto' : ''}"><i style="width:${st.auto ? 100 : m / cfg.threshold * 100}%"></i></div>
+      <div class="mlabel">${label}</div>
+    </div>`;
+  }).join('');
+  document.querySelectorAll('[data-tx]').forEach(b => b.onclick = () => transmit(+b.dataset.tx));
+  document.querySelectorAll('[data-buy]').forEach(b => b.onclick = () => buyScroll(+b.dataset.buy));
+}
+function renderDojo() {
+  $('coins').textContent = S.coins;
+  const allAuto = S.styles.every(s => s.auto);
+  const fb = $('formationBtn');
+  fb.disabled = S.formation || !allAuto || S.coins < BALANCE.formationPrice;
+  fb.textContent = S.formation ? '일자진 배치 완료 — 제자 2명' : `진법 「일자진」 — ${BALANCE.formationPrice}元${allAuto ? '' : ' (초식 3종 전수 필요)'}`;
+  fb.className = !fb.disabled ? 'primary pulse' : '';
+  $('simBtn').disabled = !S.styles.some(s => s.auto);
+}
+function renderAll() { renderArena(); renderStyles(); renderDojo(); }
+
+// ---------------------------------------------------------------- boot
+log('session_start', { resumed: !!localStorage.getItem(SAVE_KEY) });
+renderAll(); startGap(performance.now()); requestAnimationFrame(tick);
+</script>
+</body>
+</html>
