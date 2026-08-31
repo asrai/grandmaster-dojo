@@ -69,12 +69,23 @@ jobs:
 
       - name: comment-lint (ratchet)
         env:
-          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          # base 를 싣는 필드가 이벤트마다 다르다 — workflow_dispatch 는 아예 없다
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          MG_BASE: ${{ github.event.merge_group.base_sha }}
+          PUSH_BASE: ${{ github.event.before }}
         run: |
-          # PR 에서는 base 가 반드시 존재한다 — 미해결이면 lint 가 fail-open 으로
-          # 무음 스킵되므로, required check 가 스스로 꺼지는 대신 여기서 죽는다.
-          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
-            git rev-parse --verify "$BASE^{commit}" >/dev/null \
-              || { echo "::error::ratchet base $BASE 미해결 — comment-lint 가 무음 스킵된다"; exit 1; }
+          case "$GITHUB_EVENT_NAME" in
+            pull_request) BASE="$PR_BASE" ;;
+            merge_group)  BASE="$MG_BASE" ;;
+            push)         BASE="$PUSH_BASE" ;;
+            *)            BASE="" ;;
+          esac
+          if [ -z "$BASE" ] || ! git rev-parse --verify "$BASE^{commit}" >/dev/null 2>&1; then
+            # PR 에서 base 가 없으면 lint 가 fail-open 으로 무음 스킵된다 —
+            # required check 가 스스로 꺼지는 대신 여기서 죽는다.
+            [ "$GITHUB_EVENT_NAME" != "pull_request" ] \
+              || { echo "::error::ratchet base '$BASE' 미해결 — comment-lint 가 무음 스킵된다"; exit 1; }
+            BASE=$(git rev-parse --verify HEAD^ 2>/dev/null || git rev-parse HEAD)
+            echo "::notice::$GITHUB_EVENT_NAME 에는 base 필드가 없다 — $BASE 로 대체"
           fi
           python3 scripts/comment-lint.py --root . --changed-only --base "$BASE"
