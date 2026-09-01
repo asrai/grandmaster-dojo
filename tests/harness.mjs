@@ -3,7 +3,8 @@
 
 import { readFileSync } from 'node:fs';
 import {
-  ART_SETS, BALANCE, CHALLENGERS, DISCIPLE, FOE_STYLES, STYLES,
+  ART_SETS, BALANCE, BALANCE_REV, CHALLENGERS, DISCIPLE, FOE_STYLES, STYLES,
+  validateBalance,
 } from '../src/balance.mjs';
 import { LOG_SCHEMA, TIME_FIELD, createLogBuffer, validate } from '../src/log.mjs';
 import {
@@ -1277,10 +1278,64 @@ suite('BALANCE 파라미터 census (REQ-606)', () => {
     '판정 표시 규약이 6단 전 등급을 덮는다');
 });
 
+suite('밸런스 데이터 스키마 (#45)', () => {
+  const source = JSON.parse(readFileSync(new URL('../src/balance.data.json', import.meta.url), 'utf8'));
+
+  // 정본은 JSON 하나다 — 로더가 내놓은 값이 파일 그대로여야 이관이 값 보존이다.
+  const { rev, ...values } = source;
+  eq(rev, BALANCE_REV, 'rev 가 BALANCE_REV 로 분리 export 된다');
+  deepEq(values, BALANCE, 'BALANCE 는 JSON 의 rev 를 뺀 나머지 그대로다');
+  deepEq(Object.keys(values), Object.keys(BALANCE), '필드 순서까지 정본을 따른다');
+  ok(Object.isFrozen(BALANCE) && Object.isFrozen(BALANCE.grades.crush), '산출물이 깊게 동결된다');
+
+  // 양성 대조 — 불량 데이터가 폴백 없이 죽고, 어느 필드가 왜 틀렸는지 문면에 실린다.
+  const clone = () => JSON.parse(JSON.stringify(source));
+  const throwsWith = (mutate, needle, label) => {
+    const raw = clone();
+    mutate(raw);
+    let message = null;
+    try {
+      validateBalance(raw);
+    } catch (err) {
+      message = err.message;
+    }
+    ok(message !== null, `${label} — throw 한다`);
+    ok(message !== null && message.startsWith('밸런스 데이터 불량 — src/balance.data.json'),
+      `${label} — 정본 경로가 문면에 실린다`);
+    ok(message !== null && message.includes(needle), `${label} — 문면에 ${needle} 가 실린다 (실제: ${message})`);
+  };
+
+  throwsWith((r) => { delete r.masteryFullPct; }, 'masteryFullPct: 필드 누락', '필드 누락');
+  throwsWith((r) => { r.telegraphMs = '1000'; }, 'telegraphMs: "1000" 는 유한 수가 아니다', '타입 불일치');
+  throwsWith((r) => { r.grades.clash.formula = 'pctt'; }, 'grades.clash.formula: "pctt" 는 ["pct","clash"] 밖', 'formula enum 밖');
+  throwsWith((r) => { r.grades.struck.order = 4; }, 'grades.*.order', 'order 중복 (0..5 순열 아님)');
+  throwsWith((r) => { delete r.hp['A-3']; }, 'hp: 키 "A-3" 누락 (CHALLENGERS 와 1:1)', 'hp 도전자 키 누락');
+  throwsWith((r) => { delete r.threshold['pa-un']; }, 'threshold: 키', 'threshold 초식 키 누락');
+  throwsWith((r) => { r.bot.reactionMs = [650, 450]; }, 'bot.reactionMs: [650,450] 는 [최소, 최대] 순서가 뒤집혔다', 'bot 배열 역순');
+  throwsWith((r) => { r.rev = ''; }, 'rev: "" 는 비어 있지 않은 판본 문자열이 아니다', 'rev 공백');
+  throwsWith((r) => { delete r.damageByLen['5']; }, 'damageByLen: 초식 길이 5 의 피해가 없다', 'damageByLen 이 초식 길이를 못 덮음');
+  throwsWith((r) => { r.nonesuch = 1; }, 'nonesuch: 스키마에 없는 필드', '스키마 밖 필드');
+
+  // 오류는 전건 수집 후 한 번에 보고한다 — 첫 건에서 멈추면 고칠 때마다 재실행이 필요하다.
+  const many = clone();
+  delete many.slots;
+  many.grades.clash.formula = 'pctt';
+  let batched = null;
+  try {
+    validateBalance(many);
+  } catch (err) {
+    batched = err.message;
+  }
+  ok(batched !== null && batched.includes('2건'), `불량 2건이 한 번에 보고된다 (실제: ${batched})`);
+  ok(batched !== null && batched.includes('slots') && batched.includes('grades.clash.formula'),
+    '전건 수집 — 두 오류가 모두 문면에 실린다');
+});
+
+
 // ------------------------------------------------------------------ 결과
 
 // suite() 가 예외를 삼키므로, 하한이 없으면 스위트가 통째로 건너뛰어도 실패 1건으로만 보인다.
-const MIN_CHECKS = 1750;
+const MIN_CHECKS = 1780;
 if (checks < MIN_CHECKS) {
   failures += 1;
   console.error(`  ✗ 단정 수 ${checks} < 하한 ${MIN_CHECKS} — 스위트가 조용히 건너뛰어졌다`);

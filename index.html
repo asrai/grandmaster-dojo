@@ -267,6 +267,19 @@ button.ghost { background: transparent; }
     <button id="botBtn" class="ghost">봇 v2 실행</button>
   </div>
 </div>
+<script>
+// 모듈 그래프 로드 실패(밸런스 JSON 구문 오류·검증 throw)는 화면에 백지로만 드러나므로 문면을 남긴다.
+function showFatal(text) {
+  const el = document.getElementById('screen');
+  if (!el) return;
+  el.style.whiteSpace = 'pre-wrap';
+  el.style.padding = '16px';
+  el.textContent = text;
+}
+addEventListener('error', (e) => showFatal(e.error ? e.error.message
+  : `모듈 로드 실패 — ${(e.target && e.target.src) || location.href}`), true);
+addEventListener('unhandledrejection', (e) => showFatal(String((e.reason && e.reason.message) || e.reason)));
+</script>
 <script type="module" src="src/ui/app.mjs"></script>
 </body>
 </html>

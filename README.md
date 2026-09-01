@@ -29,6 +29,12 @@ python3 -m http.server 8000
 - **순차 해금 → 입문 → 12성 → 전수 → 파견**: N식을 100% 로 채워야 N+1식을 배운다. 전 초식이 100% 가 되면 입문이 뜨고 그때부터 유효 성공마다 성 포인트가 쌓여 12성에 닿는다. 12성이면 그 무공이 제자에게 **무공 단위로 통째 복사**되고(사부는 그대로 보유), 제자는 전 초식을 1성부터 들고 파견에서 대신 구사한다.
 - 미완성 초식은 잔여 화살표가 키마다 0.5s 뒤 점등한다(수련 모드는 즉시).
 
+## 밸런스 수치 조정
+
+- 수치 정본은 `src/balance.data.json` 하나다 — 값을 고치고 브라우저를 새로고침(또는 `node tests/kill-readout.mjs` 재실행)하면 브라우저와 헤드리스가 같은 값을 본다. 불량 값은 폴백 없이 즉시 죽고, 어느 필드가 왜 틀렸는지가 화면(또는 stderr)에 뜬다.
+- 실험 변형은 최상위 `rev` 를 바꿔 구분한다 — 내보낸 로그의 밸런스 지문에 `rev` 가 박혀 어느 변형에서 나온 회차인지 드러난다.
+- 확정 반영만 커밋한다: JSON + `tests/harness.mjs` 의 파라미터 census 시드 + `docs/balance-log.md` 회차를 한 PR 로 (하네스가 강제한다).
+
 ## 검증
 
 ```bash
@@ -36,7 +42,7 @@ node tests/harness.mjs        # 헤드리스 회귀 — 판정 등급·피해 �
 node tests/kill-readout.mjs   # kill 판독 — 봇 1사이클을 만들어 (a)(b)(d)·ignore_rate 를 산출
 ```
 
-`src/balance.mjs`(데이터) · `src/core.mjs`(순수 로직) · `src/log.mjs`(로그 스키마) · `src/bot.mjs`(봇·헤드리스 사이클)는 DOM 을 모르므로 브라우저와 하네스가 같은 모듈을 쓴다. DOM 을 아는 코드는 `src/ui/` 아래에 있고, 그중 입력기 `src/ui/sequence-input.mjs` · 대련 루프 `src/ui/match.mjs` · 세션 상태 `src/ui/session.mjs` · 계측 배선 `src/ui/wiring.mjs` 는 DOM-free 라 하네스가 함께 회귀한다 — 파견 밸런스 게이트도 사본이 아니라 이 대련 루프를 가상 시계로 돌려 검증하고, 화면과 헤드리스 사이클은 같은 계측 배선 한 벌 위에 각자의 렌더·구동만 얹는다.
+`src/balance.mjs`(콘텐츠 테이블 + `balance.data.json` 로더) · `src/core.mjs`(순수 로직) · `src/log.mjs`(로그 스키마) · `src/bot.mjs`(봇·헤드리스 사이클)는 DOM 을 모르므로 브라우저와 하네스가 같은 모듈을 쓴다. DOM 을 아는 코드는 `src/ui/` 아래에 있고, 그중 입력기 `src/ui/sequence-input.mjs` · 대련 루프 `src/ui/match.mjs` · 세션 상태 `src/ui/session.mjs` · 계측 배선 `src/ui/wiring.mjs` 는 DOM-free 라 하네스가 함께 회귀한다 — 파견 밸런스 게이트도 사본이 아니라 이 대련 루프를 가상 시계로 돌려 검증하고, 화면과 헤드리스 사이클은 같은 계측 배선 한 벌 위에 각자의 렌더·구동만 얹는다.
 
 ### 로그 내보내기 · kill 판독
 
