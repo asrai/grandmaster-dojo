@@ -93,10 +93,13 @@ button.ghost { background: transparent; }
 .actions { display: flex; flex-direction: column; gap: 8px; }
 
 .rows { display: flex; flex-direction: column; gap: 8px; }
-.row { border: 1px solid var(--line); border-left: 3px solid var(--attr); border-radius: 8px; padding: 6px 8px; }
+.row {
+  /* 말풍선의 기준 상자 — 헤더에 걸면 말풍선이 바로 아래 시퀀스 화살표를 덮는다. */
+  position: relative;
+  border: 1px solid var(--line); border-left: 3px solid var(--attr); border-radius: 8px; padding: 6px 8px;
+}
 .row.locked { opacity: .55; }
-/* 말풍선의 기준 상자 — 가로로 선 줄에서는 버튼 하나가 좁아 줄 전체를 폭으로 물려준다. */
-.row-head { display: flex; gap: 6px; align-items: center; min-height: 44px; position: relative; }
+.row-head { display: flex; gap: 6px; align-items: center; min-height: 44px; }
 .row-head button { min-height: 40px; }
 /* 접기 토글은 진짜 버튼이라야 키보드로 닿는다 — 줄 이름 전체가 그 히트 영역이다. */
 .row-name {
@@ -110,7 +113,7 @@ button.ghost { background: transparent; }
 
 /* 흐름 밖 말풍선을 담을 뿐이라 앵커 자신의 크기는 안내 유무로 변하지 않는다. */
 .tip-anchor { position: relative; display: flex; }
-.row-head .tip-anchor { position: static; }
+.row .tip-anchor { position: static; }
 .tip {
   /* 아래 형제 위로 겹치므로, 포인터를 통과시켜야 그 형제의 탭을 가로채지 않는다. */
   position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 1;
