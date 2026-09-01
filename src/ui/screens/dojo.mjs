@@ -1,9 +1,12 @@
 // 도장 (REQ-303·305·306·308) — 배우기 · 수련 · 장착 · 전수 · 대련/파견 진입.
 
 import { BALANCE, STYLES } from '../../balance.mjs';
-import { artById, canLearn, discipleRankOf, discipleStyles } from '../../core.mjs';
+import {
+  artById, artStyles, canLearn, discipleRankOf, discipleStyles, isInitiated, ptsForRank, rankPtsOf,
+} from '../../core.mjs';
 import { arrowRow, attrMark, clear, el, tipAnchor } from '../dom.mjs';
 import { ATTR_VIEW } from '../theme.mjs';
+import { SFX } from '../audio.mjs';
 import {
   ART_ID, ART_NAME, DISPATCH_CHALLENGER, artRank, canEquip, canTransmitNow,
   challengerOfStage, consumeTooltip, equip, learnStyle, masteryOf, pickTooltip, simulateTraining,
@@ -42,6 +45,39 @@ const rowToggleId = (styleId) => `row-toggle-${styleId}`;
  * 세션이 아니라 모듈에 두는 것은 이것이 순수 뷰 상태라, 로그 내보내기 payload 에 실려서는 안 되기 때문이다.
  */
 let chosen = null;
+
+/** 입문은 사이클에 한 번뿐인 순간이라, 그것을 이미 보여 줬는지가 뷰 상태로 남는다 (#38). */
+let initiationSeen = false;
+
+/**
+ * 성 게이지 (REQ-306·310) — 열리지 않았다는 것과 무엇이 열어 주는지를 같은 자리에서 말한다.
+ * 잠금 사유가 보이지 않으면 성이 오르지 않는 이유를 화면 어디서도 알 수 없다.
+ */
+function rankGauge(session) {
+  const styles = artStyles(ART_ID);
+  if (!isInitiated(session.progress, ART_ID)) {
+    const done = styles.filter((s) => masteryOf(session, s.id) >= BALANCE.masteryFullPct).length;
+    return [
+      el('p', {}, [
+        el('span', { class: 'tag', text: `${artRank(session)}성 · 잠김` }),
+        el('span', { class: 'dim', text: ` 전 초식 숙련 100% 로 성 게이지가 열린다 — ${done}/${styles.length}` }),
+      ]),
+      el('div', { class: 'meter' }, [el('i', { style: `width:${Math.round((done / styles.length) * 100)}%` })]),
+    ];
+  }
+  const rank = artRank(session);
+  const pts = rankPtsOf(session.progress, ART_ID);
+  const spent = ptsForRank(rank);
+  const nextAt = ptsForRank(Math.min(rank + 1, BALANCE.rankMax));
+  const filled = rank >= BALANCE.rankMax ? 100 : Math.round(((pts - spent) / (nextAt - spent)) * 100);
+  return [
+    el('p', {}, [
+      el('span', { class: `badge${rank >= BALANCE.rankMax ? ' max' : ''}`, text: rankLabel(rank) }),
+      el('span', { class: 'dim', text: ` 성 포인트 ${pts}` }),
+    ]),
+    el('div', { class: 'meter' }, [el('i', { style: `width:${filled}%` })]),
+  ];
+}
 
 /**
  * 펼칠 행 하나 — 세로 예산이 초식 4행을 다 펼칠 만큼 넓지 않아 아코디언으로 접는다 (#37).
@@ -203,7 +239,12 @@ export function renderDojo(ctx) {
   ctx.pad.detach();
   clear(root);
 
-  const rank = artRank(session);
+  // 입문 직후 첫 렌더가 그 순간이다 — 이 화면 밖에서는 게이지가 열린 것을 볼 자리가 없다.
+  const initiating = isInitiated(session.progress, ART_ID) && !initiationSeen;
+  if (initiating) {
+    initiationSeen = true;
+    SFX.rank();
+  }
   const rowActions = STYLES.map((s) => styleActions(ctx, s));
   const band = bandActions(ctx);
   // 후보를 버튼과 같은 서술자에서 뽑으므로 `disabled` 술어가 두 벌로 갈리지 않는다 (#15).
@@ -216,10 +257,11 @@ export function renderDojo(ctx) {
   root.append(
     el('section', { class: 'card' }, [
       el('h2', { text: `${ART_NAME} ${artById(ART_ID).hanja}` }),
-      el('p', {}, [
-        el('span', { class: `badge${rank >= BALANCE.rankMax ? ' max' : ''}`, text: rankLabel(rank) }),
-        el('span', { class: 'dim', text: ` 성 포인트 ${session.progress.arts[ART_ID].rankPts}` }),
-      ]),
+      initiating ? el('p', {}, [
+        el('span', { class: 'badge max', text: '입문' }),
+        el('span', { class: 'dim', text: ` ${ART_NAME}의 전 초식을 익혔다 — 이제 성이 오른다` }),
+      ]) : null,
+      ...rankGauge(session),
       el('div', { class: 'rows' }, STYLES.map((s, i) => styleRow(ctx, s, rowActions[i], target, guidedRow, s.id === openId))),
       session.slots.some(Boolean) ? null : el('p', {
         class: 'dim', text: '초식을 수련해 숙련 30% 를 넘기면 실전 슬롯에 자동으로 장착된다.',

@@ -16,6 +16,20 @@ export const foeStyleById = (id) => FOE_STYLE_BY_ID.get(id) ?? null;
 export const artById = (id) => ART_BY_ID.get(id) ?? null;
 export const challengerById = (id) => CHALLENGER_BY_ID.get(id) ?? null;
 
+/**
+ * 무공에 속한 초식 (REQ-502) — 무공 정의의 목록이 원본이고, 전수 복사와 적립 게이트가 같은
+ * 이 자리를 읽는다. 초식 단위로 갈라진 목록이 두 벌 생기면 둘 중 하나가 조용히 낡는다.
+ */
+export function artStyles(setId) {
+  const art = artById(setId);
+  if (!art) throw new Error(`알 수 없는 무공: ${setId}`);
+  return art.styles.map((id) => {
+    const style = styleById(id);
+    if (!style) throw new Error(`무공에 미존재 초식: ${setId} → ${id}`);
+    return style;
+  });
+}
+
 /** 도전자가 보유한 절초 (없으면 null) — 역파 판정과 제자 회피의 입력. */
 export function finisherOf(challenger) {
   const found = challenger.styles.map(foeStyleById).find((s) => s && s.finisher);
@@ -186,8 +200,19 @@ export function ptsForRank(rank, { max = BALANCE.rankMax } = {}) {
   return pts;
 }
 
+/**
+ * 입문 완료 (REQ-310) — 무공의 전 초식이 숙련 100%. 성 포인트 적립의 선행 조건이므로,
+ * 배우지 않은 초식이 하나라도 남아 있는 동안 그 무공은 성 1 에 머문다 (#38).
+ */
+export const isInitiated = (progress, setId) =>
+  artStyles(setId).every((s) => masteryPct(progress, s.id) >= BALANCE.masteryFullPct);
+
+/** 입문 전 무공의 성 포인트는 없는 것과 같다 — 성 조회가 포인트를 읽는 유일한 경로다. */
+export const rankPtsOf = (progress, setId) =>
+  (isInitiated(progress, setId) ? progress.arts[setId].rankPts : 0);
+
 export const rankOf = (progress, setId, { max = BALANCE.rankMax } = {}) =>
-  rankForPts(progress.arts[setId].rankPts, { max });
+  rankForPts(rankPtsOf(progress, setId), { max });
 
 /** 순차 해금 (REQ-303) — 직전 식이 숙련 100% 여야 다음 식을 배울 수 있다. */
 export function canLearn(progress, styleId) {
@@ -218,10 +243,11 @@ export function applyEffectiveSuccess(progress, styleId, { mode }) {
   if (!progress.styles[styleId].learned) throw new Error(`학습하지 않은 초식에 적립: ${styleId}`);
 
   const setId = style.set;
+  const initiated = isInitiated(progress, setId);
   const before = {
     mastery: masteryPct(progress, styleId),
     rank: rankOf(progress, setId),
-    pts: progress.arts[setId].rankPts,
+    pts: rankPtsOf(progress, setId),
   };
   const hits = progress.styles[styleId];
   const next = {
@@ -236,13 +262,19 @@ export function applyEffectiveSuccess(progress, styleId, { mode }) {
     },
     arts: {
       ...progress.arts,
-      [setId]: { ...progress.arts[setId], rankPts: before.pts + BALANCE.rankPtsPerStyle[styleId] },
+      // 입문 전 발동이 성 축에 남기는 것은 없다 — 그 구간의 보상은 숙련이고, 성은 그 뒤에 열린다.
+      [setId]: {
+        ...progress.arts[setId],
+        rankPts: progress.arts[setId].rankPts + (initiated ? BALANCE.rankPtsPerStyle[styleId] : 0),
+      },
     },
   };
 
-  const after = { mastery: masteryPct(next, styleId), rank: rankOf(next, setId), pts: next.arts[setId].rankPts };
+  const after = { mastery: masteryPct(next, styleId), rank: rankOf(next, setId), pts: rankPtsOf(next, setId) };
   const changes = {};
   if (after.mastery !== before.mastery) changes.mastery = { styleId, from: before.mastery, to: after.mastery };
+  // 개방 그 자체는 적립이 아니다 — 이 수가 성 게이지를 열고, 다음 유효 성공부터 쌓인다.
+  if (!initiated && isInitiated(next, setId)) changes.initiate = { style_set: setId };
   if (after.rank !== before.rank) {
     changes.rank = { style_set: setId, from: before.rank, to: after.rank, pts: after.pts };
   }
@@ -275,7 +307,9 @@ export function canTransmit(progress, setId, disciple) {
 /** 전수 = 복사 (REQ-307). 사부의 progress 는 인자 그대로 남고 제자만 새로 만들어진다. */
 export function transmit(progress, disciple, setId) {
   if (!canTransmit(progress, setId, disciple)) throw new Error(`전수 조건 미충족: ${setId}`);
-  const styles = STYLES.filter((s) => s.set === setId && progress.styles[s.id].learned).map((s) => s.id);
+  // 전수의 최소 단위는 초식이 아니라 무공이다 — 12성이 전 초식 숙련 100% 를 함의하므로
+  // 「사부가 학습한 것만 고른다」는 필터가 성립할 상태 자체가 없다 (#38).
+  const styles = artStyles(setId).map((s) => s.id);
   return {
     ...disciple,
     arts: { ...disciple.arts, [setId]: { rankPts: 0, styles } },

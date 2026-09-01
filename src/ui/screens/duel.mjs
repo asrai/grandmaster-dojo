@@ -112,7 +112,11 @@ export function startDuel(ctx) {
         (verdict.grade === 'crush' ? SFX.crush : verdict.dmgIn > 0 ? SFX.hit : SFX.fire)();
 
         if (!changes) return;
-        if (changes.rank) {
+        // 입문은 실전 유효 성공으로만 100% 가 채워지므로 반드시 이 화면에서 일어난다 (REQ-310).
+        if (changes.initiate) {
+          SFX.rank();
+          toast(`${ART_NAME} 입문 — 이제 성이 오른다`, 'rank');
+        } else if (changes.rank) {
           SFX.rank();
           toast(changes.rank.to >= BALANCE.rankMax
             ? `${ART_NAME} — 완벽히 깨달음`

@@ -143,14 +143,22 @@ export function unequip(session, slotIdx) {
   return true;
 }
 
-/** 빈 슬롯 채우기에는 선택이 없다 — 선택은 4식 해금으로 4 > 3 이 될 때 처음 생긴다 (REQ-305). */
+/**
+ * 빈 슬롯 채우기 + 입문 전 자리 양보 (REQ-305·310). 입문 전 구간에서는 장착이 선택이 아니다 —
+ * 전 초식 숙련 100% 가 성 게이지를 여는 필수 경로라, 아직 덜 찬 초식이 이미 100% 인 초식의
+ * 자리를 받는다 (#38). 전부 100% 가 되면 교체가 멈추고 그때부터 슬롯 구성이 진짜 선택이 된다.
+ */
 export function autoEquip(session) {
   for (const style of STYLES) {
     if (session.slots.includes(style.id)) continue;
     if (!session.progress.styles[style.id].learned) continue;
     if (!canEquip(session, style.id)) continue;
-    if (!session.slots.includes(null)) return;
-    equip(session, style.id);
+    if (session.slots.includes(null)) { equip(session, style.id); continue; }
+    if (masteryOf(session, style.id) >= BALANCE.masteryFullPct) continue;
+    // 자리를 내주는 것은 이미 100% 인 초식뿐 — 미완성끼리는 서로의 진행을 뺏지 않는다.
+    const full = session.slots.findIndex((id) => id && masteryOf(session, id) >= BALANCE.masteryFullPct);
+    if (full < 0) continue;
+    equip(session, style.id, full);
   }
 }
 
@@ -164,6 +172,7 @@ export function recordEffectiveSuccess(session, styleId, mode) {
   const { progress, changes } = applyEffectiveSuccess(session.progress, styleId, { mode });
   session.progress = progress;
   if (changes.mastery) logEvent(session, 'mastery', changes.mastery);
+  if (changes.initiate) logEvent(session, 'initiate', changes.initiate);
   if (changes.rank) logEvent(session, 'rank', changes.rank);
   if (changes.unlock) logEvent(session, 'unlock', changes.unlock);
   autoEquip(session);

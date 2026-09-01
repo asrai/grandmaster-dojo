@@ -2,10 +2,13 @@
 // 화면 전환마다 `cycle{phase}` 를 남겨, 로그만으로 구간 예산과 실전 창을 분리 판독할 수 있다.
 
 import { BALANCE } from '../balance.mjs';
+import { isInitiated } from '../core.mjs';
 import { createBot } from '../bot.mjs';
 import { $, clear } from './dom.mjs';
 import { createPad } from './pad.mjs';
-import { ART_NAME, artRank, createSession, exportPayload, logEvent, logSessionMeta } from './session.mjs';
+import {
+  ART_ID, ART_NAME, artRank, createSession, exportPayload, logEvent, logSessionMeta,
+} from './session.mjs';
 import { renderDojo } from './screens/dojo.mjs';
 import { renderPreview, startDispatch } from './screens/dispatch.mjs';
 import { startDuel } from './screens/duel.mjs';
@@ -42,7 +45,9 @@ let phase = null;
 
 function refreshTop() {
   $('label').textContent = session.label;
-  $('rank').textContent = `${ART_NAME} ${artRank(session)}성`;
+  // 도장과 헤더가 같은 수를 다른 진실성으로 말하면 헤더가 낡은 것으로 읽힌다 (REQ-310).
+  $('rank').textContent = isInitiated(session.progress, ART_ID)
+    ? `${ART_NAME} ${artRank(session)}성` : `${ART_NAME} 입문 전`;
   $('coins').textContent = `元 ${session.coins}`;
 }
 
