@@ -1,0 +1,65 @@
+{
+  "rev": "2026-09-01-a",
+
+  "telegraphMs": 1000,
+  "windowBaseMs": 2600,
+  "windowStepMs": 500,
+  "windowBaseLen": 3,
+  "openingWindowPenalty": 0.4,
+  "accessibilityWindowMult": 1.3,
+  "accessibilityWindow": false,
+  "resolveMs": 500,
+  "maxExchanges": 12,
+
+  "damageByLen": { "3": 10, "4": 14, "5": 20 },
+  "powerBase": 1,
+  "powerPerRank": 0.05,
+  "initiativeBase": 1,
+  "initiativePerRatio": 0.3,
+  "clashK": 0.5,
+
+  "grades": {
+    "crush":        { "order": 0, "label": "완파", "formula": "pct",   "outPct": 1,    "inPct": 0,    "opening": "foe" },
+    "advantage":    { "order": 1, "label": "우세", "formula": "pct",   "outPct": 0.6,  "inPct": 0.2,  "opening": null },
+    "clash":        { "order": 2, "label": "상쇄", "formula": "clash", "outPct": null, "inPct": null, "opening": null },
+    "disadvantage": { "order": 3, "label": "열세", "formula": "pct",   "outPct": 0.2,  "inPct": 0.6,  "opening": null },
+    "reversal":     { "order": 4, "label": "역파", "formula": "pct",   "outPct": 0,    "inPct": 1,    "opening": "self" },
+    "struck":       { "order": 5, "label": "피격", "formula": "pct",   "outPct": 0,    "inPct": 1,    "opening": null }
+  },
+  "effectiveSuccessMaxOrder": 2,
+
+  "trainGraduateHits": 2,
+  "masteryTrainPct": 30,
+  "masteryFullPct": 100,
+  "hintDelayMs": { "duel": 500, "train": 0 },
+  "ignoreHighlightAt": 3,
+  "threshold": { "yuun-bo": 2, "jeok-un": 2, "haeng-un": 2, "pa-un": 2 },
+  "rankPtsPerStyle": { "yuun-bo": 1, "jeok-un": 2, "haeng-un": 3, "pa-un": 4 },
+  "rankStep": 2,
+  "rankStepMult": { "11": 2, "12": 4 },
+  "rankMax": 12,
+  "slots": 3,
+  "equipMasteryPct": 30,
+
+  "discipleStartRank": 1,
+  "discipleRankMax": 10,
+  "discipleFireRatio": 0.6,
+
+  "winColorHintExchanges": 9007199254740991,
+  "simEfficiency": 0.1,
+  "simTrainSeconds": 3600,
+  "buttonHitPx": 56,
+  "reward": { "duelWin": 30, "dispatchWin": 50 },
+
+  "bot": {
+    "reactionMs": [450, 650],
+    "keyMs": [260, 380],
+    "navMs": [300, 600],
+    "missRate": 0.15,
+    "misHitRate": 0.06,
+    "pollMs": 30
+  },
+
+  "hp": { "user": 100, "disciple": 100, "A-1": 30, "A-2": 45, "A-3": 80, "B": 80 },
+  "challengerPower": { "A": 1, "B": 1.1 }
+}

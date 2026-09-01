@@ -1,5 +1,7 @@
-// 밸런스 파라미터 + 데이터 테이블. 튜닝은 이 파일의 값만 바꾼다 — 판정·성장 로직은
-// src/core.mjs 의 순수 함수에만 있고 수치를 갖지 않는다 (spec REQ-205·501~503·606).
+// 콘텐츠 테이블 + 수치 정본(src/balance.data.json) 로더. 튜닝은 JSON 만 고치면 되고, 판정·성장
+// 로직은 src/core.mjs 의 순수 함수에만 있어 수치를 갖지 않는다 (spec REQ-205·501~503·606).
+
+import data from './balance.data.json' with { type: 'json' };
 
 /** 속성 삼각 — 쾌 > 강 > 정 > 쾌. `beats` 가 삼각의 유일한 표현이다. */
 export const ATTRS = {
@@ -10,79 +12,6 @@ export const ATTRS = {
 
 /** 시퀀스 원소 → 표시용 화살표. */
 export const ARROW = { U: '↑', D: '↓', L: '←', R: '→' };
-
-export const BALANCE = {
-  // 한 수의 타임라인 (REQ-201·204·210)
-  telegraphMs: 1000,
-  windowBaseMs: 2600,
-  windowStepMs: 500,
-  windowBaseLen: 3,
-  openingWindowPenalty: 0.4,
-  accessibilityWindowMult: 1.3,
-  accessibilityWindow: false,
-  resolveMs: 500,
-  maxExchanges: 12,
-
-  // 피해 (REQ-203)
-  damageByLen: { 3: 10, 4: 14, 5: 20 },
-  powerBase: 1,
-  powerPerRank: 0.05,
-  initiativeBase: 1,
-  initiativePerRatio: 0.3,
-  clashK: 0.5,
-
-  // 6단 판정표 (REQ-202) — `order` 가 등급 서열이고, 유효 성공은 그 서열의 절단선이다.
-  grades: {
-    crush:        { order: 0, label: '완파', formula: 'pct',   outPct: 1,   inPct: 0,   opening: 'foe' },
-    advantage:    { order: 1, label: '우세', formula: 'pct',   outPct: 0.6, inPct: 0.2, opening: null },
-    clash:        { order: 2, label: '상쇄', formula: 'clash', outPct: null, inPct: null, opening: null },
-    disadvantage: { order: 3, label: '열세', formula: 'pct',   outPct: 0.2, inPct: 0.6, opening: null },
-    reversal:     { order: 4, label: '역파', formula: 'pct',   outPct: 0,   inPct: 1,   opening: 'self' },
-    struck:       { order: 5, label: '피격', formula: 'pct',   outPct: 0,   inPct: 1,   opening: null },
-  },
-  effectiveSuccessMaxOrder: 2,
-
-  // 숙련·성·슬롯 (REQ-301~305)
-  trainGraduateHits: 2,
-  masteryTrainPct: 30,
-  masteryFullPct: 100,
-  hintDelayMs: { duel: 500, train: 0 },
-  ignoreHighlightAt: 3,
-  threshold: { 'yuun-bo': 2, 'jeok-un': 2, 'haeng-un': 2, 'pa-un': 2 },
-  rankPtsPerStyle: { 'yuun-bo': 1, 'jeok-un': 2, 'haeng-un': 3, 'pa-un': 4 },
-  rankStep: 2,
-  rankStepMult: { 11: 2, 12: 4 },
-  rankMax: 12,
-  slots: 3,
-  equipMasteryPct: 30,
-
-  // 제자 (REQ-401·402)
-  discipleStartRank: 1,
-  discipleRankMax: 10,
-  discipleFireRatio: 0.6,
-
-  // 노출·재화·입력 (REQ-206·604 · REQ-101).
-  // `winColorHintExchanges` 는 프로토 상시(∞) 지만 JSON 왕복에서 Infinity 가 null 이 되므로 유한 상한을 쓴다.
-  winColorHintExchanges: Number.MAX_SAFE_INTEGER,
-  simEfficiency: 0.1,
-  simTrainSeconds: 3600,
-  buttonHitPx: 56,
-  reward: { duelWin: 30, dispatchWin: 50 },
-
-  // 봇 v2 사람 속도 모델 (REQ-605). `misHitRate` 는 spec 미지정분 — 없으면 선행 게이트가 공허해진다.
-  bot: {
-    reactionMs: [450, 650],
-    keyMs: [260, 380],
-    navMs: [300, 600],
-    missRate: 0.15,
-    misHitRate: 0.06,
-    pollMs: 30,
-  },
-
-  // HP·내공 시드 — 도전자 키는 CHALLENGERS.id 와 1:1 (REQ-506 게이트가 하향 조정한다)
-  hp: { user: 100, disciple: 100, 'A-1': 30, 'A-2': 45, 'A-3': 80, B: 80 },
-  challengerPower: { A: 1, B: 1.1 },
-};
 
 /**
  * 유운검법 4식 (REQ-501). 첫 키 `↓` 공유 + 2번째 키 분기 = prefix-free.
@@ -144,3 +73,150 @@ export const CHALLENGERS = [
   { id: 'A-3', group: 'A', name: '떠돌이 무인', hanja: '流浪武人', mode: 'duel', stage: 3, styles: ['alpha', 'beta', 'gamma'] },
   { id: 'B',   group: 'B', name: '월영문', hanja: '月影門', mode: 'dispatch', stage: 1, styles: ['alpha', 'gamma', 'delta'] },
 ];
+
+// ------------------------------------------------------- 수치 정본 로더 (#45)
+
+const SOURCE = 'src/balance.data.json';
+
+/**
+ * 수치 정본의 형(型) 표 — 값은 JSON 이 지고 이 표는 필드 집합과 타입만 진다.
+ * JSON 은 주석을 실을 수 없으므로 값 옆에 있던 사유는 이 표와 아래 검증기가 대신 진다:
+ * `winColorHintExchanges` 는 프로토 상시(∞) 지만 Infinity 가 JSON 왕복에서 null 이 되므로
+ * 유한 상한을 쓰고, `bot.misHitRate` 는 spec 미지정분이라 없으면 선행 게이트가 공허해진다.
+ * 종류: `num` 유한 수 · `bool` 불리언 · `numMap` 값이 전부 유한 수인 map · 나머지는 전용 검사기.
+ */
+const SHAPE = {
+  telegraphMs: 'num', windowBaseMs: 'num', windowStepMs: 'num', windowBaseLen: 'num',
+  openingWindowPenalty: 'num', accessibilityWindowMult: 'num', accessibilityWindow: 'bool',
+  resolveMs: 'num', maxExchanges: 'num',
+  damageByLen: 'numMap', powerBase: 'num', powerPerRank: 'num',
+  initiativeBase: 'num', initiativePerRatio: 'num', clashK: 'num',
+  grades: 'grades', effectiveSuccessMaxOrder: 'num',
+  trainGraduateHits: 'num', masteryTrainPct: 'num', masteryFullPct: 'num',
+  hintDelayMs: 'numMap', ignoreHighlightAt: 'num',
+  threshold: 'numMap', rankPtsPerStyle: 'numMap', rankStep: 'num', rankStepMult: 'numMap',
+  rankMax: 'num', slots: 'num', equipMasteryPct: 'num',
+  discipleStartRank: 'num', discipleRankMax: 'num', discipleFireRatio: 'num',
+  winColorHintExchanges: 'num', simEfficiency: 'num', simTrainSeconds: 'num', buttonHitPx: 'num',
+  reward: 'numMap', bot: 'bot', hp: 'numMap', challengerPower: 'numMap',
+};
+
+/** 6단 판정표의 구조 축 — 등급 id 집합과 수식 분기 키는 튜닝 대상이 아니라 코드가 분기하는 값이다. */
+const GRADE_IDS = ['crush', 'advantage', 'clash', 'disadvantage', 'reversal', 'struck'];
+const GRADE_FORMULAS = ['pct', 'clash'];
+const GRADE_OPENINGS = [null, 'foe', 'self'];
+const BOT_RANGES = ['reactionMs', 'keyMs', 'navMs'];
+const BOT_SCALARS = ['missRate', 'misHitRate', 'pollMs'];
+
+const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
+const isPlain = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+const show = (v) => JSON.stringify(v) ?? String(v);
+const setEq = (a, b) => a.length === b.length && a.every((k, i) => k === b[i]);
+
+function checkNumMap(path, value, bad) {
+  if (!isPlain(value)) return bad(path, `${show(value)} 는 map 이 아니다`);
+  for (const [k, v] of Object.entries(value)) if (!isNum(v)) bad(`${path}.${k}`, `${show(v)} 는 유한 수가 아니다`);
+  return undefined;
+}
+
+function checkGrades(value, bad) {
+  if (!isPlain(value)) return bad('grades', `${show(value)} 는 map 이 아니다`);
+  const ids = Object.keys(value);
+  if (!setEq(ids.slice().sort(), GRADE_IDS.slice().sort())) {
+    bad('grades', `등급 키 ${show(ids)} 가 6단 ${show(GRADE_IDS)} 와 다르다`);
+  }
+  const orders = [];
+  for (const [id, g] of Object.entries(value)) {
+    if (!isPlain(g)) { bad(`grades.${id}`, `${show(g)} 는 등급 객체가 아니다`); continue; }
+    if (typeof g.label !== 'string' || g.label === '') bad(`grades.${id}.label`, `${show(g.label)} 는 표시 문자열이 아니다`);
+    if (!GRADE_FORMULAS.includes(g.formula)) bad(`grades.${id}.formula`, `${show(g.formula)} 는 ${show(GRADE_FORMULAS)} 밖`);
+    if (!GRADE_OPENINGS.includes(g.opening)) bad(`grades.${id}.opening`, `${show(g.opening)} 는 ${show(GRADE_OPENINGS)} 밖`);
+    for (const key of ['outPct', 'inPct']) {
+      if (g[key] !== null && !isNum(g[key])) bad(`grades.${id}.${key}`, `${show(g[key])} 는 수도 null 도 아니다`);
+    }
+    if (!isNum(g.order)) bad(`grades.${id}.order`, `${show(g.order)} 는 유한 수가 아니다`);
+    else orders.push(g.order);
+  }
+  const expected = GRADE_IDS.map((_, i) => i);
+  if (orders.length === GRADE_IDS.length && !setEq(orders.slice().sort((a, b) => a - b), expected)) {
+    bad('grades.*.order', `서열 ${show(orders.slice().sort((a, b) => a - b))} 가 ${show(expected)} 의 순열이 아니다`);
+  }
+  return undefined;
+}
+
+function checkBot(value, bad) {
+  if (!isPlain(value)) return bad('bot', `${show(value)} 는 map 이 아니다`);
+  for (const key of BOT_RANGES) {
+    const r = value[key];
+    if (!Array.isArray(r) || r.length !== 2 || !r.every(isNum)) bad(`bot.${key}`, `${show(r)} 는 [최소, 최대] 두 수가 아니다`);
+    else if (r[0] > r[1]) bad(`bot.${key}`, `${show(r)} 는 [최소, 최대] 순서가 뒤집혔다`);
+  }
+  for (const key of BOT_SCALARS) if (!isNum(value[key])) bad(`bot.${key}`, `${show(value[key])} 는 유한 수가 아니다`);
+  return undefined;
+}
+
+/** 콘텐츠 테이블과의 결합 — 이 세 축이 어긋나면 화면·판정이 조용히 빈 값을 읽는다. */
+function checkContentJoins(values, bad) {
+  const hpKeys = ['user', 'disciple', ...CHALLENGERS.map((c) => c.id)];
+  if (isPlain(values.hp)) {
+    for (const k of hpKeys) if (!(k in values.hp)) bad('hp', `키 ${show(k)} 누락 (CHALLENGERS 와 1:1)`);
+    for (const k of Object.keys(values.hp)) if (!hpKeys.includes(k)) bad('hp', `키 ${show(k)} 는 CHALLENGERS 에 없다`);
+  }
+  if (isPlain(values.damageByLen)) {
+    for (const len of new Set(STYLES.map((s) => s.seq.length))) {
+      if (!(String(len) in values.damageByLen)) bad('damageByLen', `초식 길이 ${len} 의 피해가 없다`);
+    }
+  }
+  const styleIds = STYLES.map((s) => s.id).sort();
+  for (const key of ['threshold', 'rankPtsPerStyle']) {
+    if (!isPlain(values[key])) continue;
+    if (!setEq(Object.keys(values[key]).sort(), styleIds)) {
+      bad(key, `키 ${show(Object.keys(values[key]))} 가 초식 id ${show(styleIds)} 와 다르다`);
+    }
+  }
+}
+
+/**
+ * 수치 정본 검증기 — 오류를 전건 모아 한 번에 throw 한다 (폴백 없음: 잘못된 값으로 도는 것보다
+ * 로드 시점에 죽는 편이 「값을 바꿨는데 안 바뀐다」를 막는다).
+ * @returns {{ rev: string, values: object }}
+ */
+export function validateBalance(raw) {
+  const errors = [];
+  const bad = (path, message) => { errors.push(`${path}: ${message}`); };
+
+  if (!isPlain(raw)) {
+    throw new Error(`밸런스 데이터 불량 — ${SOURCE} 1건:\n  (root): ${show(raw)} 는 객체가 아니다`);
+  }
+  const { rev, ...values } = raw;
+  if (typeof rev !== 'string' || rev.trim() === '') bad('rev', `${show(rev)} 는 비어 있지 않은 판본 문자열이 아니다`);
+
+  for (const [key, kind] of Object.entries(SHAPE)) {
+    if (!(key in values)) { bad(key, '필드 누락'); continue; }
+    const v = values[key];
+    if (kind === 'num' && !isNum(v)) bad(key, `${show(v)} 는 유한 수가 아니다`);
+    else if (kind === 'bool' && typeof v !== 'boolean') bad(key, `${show(v)} 는 불리언이 아니다`);
+    else if (kind === 'numMap') checkNumMap(key, v, bad);
+    else if (kind === 'grades') checkGrades(v, bad);
+    else if (kind === 'bot') checkBot(v, bad);
+  }
+  for (const key of Object.keys(values)) if (!(key in SHAPE)) bad(key, '스키마에 없는 필드');
+
+  checkContentJoins(values, bad);
+
+  if (errors.length > 0) {
+    throw new Error(`밸런스 데이터 불량 — ${SOURCE} ${errors.length}건:\n${errors.map((e) => `  ${e}`).join('\n')}`);
+  }
+  return { rev, values };
+}
+
+function deepFreeze(value) {
+  if (value && typeof value === 'object') for (const v of Object.values(value)) deepFreeze(v);
+  return Object.freeze(value);
+}
+
+const loaded = validateBalance(data);
+
+/** 실험 변형 지문 — 내보낸 로그의 밸런스 digest 에 실려 회차 귀속을 가능하게 한다. */
+export const BALANCE_REV = loaded.rev;
+export const BALANCE = deepFreeze(loaded.values);
