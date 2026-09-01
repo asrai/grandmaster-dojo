@@ -118,7 +118,11 @@ function paintBotButton() {
 }
 
 // 치트 패널은 게임 화면 밖의 도구 영역에 산다 — 기본 숨김이고 명시 토글만이 그것을 연다 (REQ-781).
-const refreshCheat = mountCheatPanel({ session, refresh: () => { refreshTop(); go(phase); } });
+// 재렌더를 도장으로 좁힌다 — 결과·전수 화면의 렌더는 정산·전수를 함께 실행해 비멱등이다.
+const refreshCheat = mountCheatPanel({
+  session,
+  refresh: () => { refreshTop(); if (phase === 'dojo') go('dojo'); },
+});
 
 $('exportBtn').addEventListener('click', exportLog);
 $('botBtn').addEventListener('click', () => {

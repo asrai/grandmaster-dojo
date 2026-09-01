@@ -490,6 +490,28 @@ suite('케이스 2 — 11·12성 계단 (REQ-704)', () => {
   const finish = session.log.entries.find((e) => e.event === 'finish');
   deepEq({ style: finish.style, challenger: finish.challenger, intended: finish.intended },
     { style: 'yuun-bo', challenger: 'A-1', intended: true }, 'finish 로그 (REQ-708)');
+
+  /**
+   * 적립과 계단이 같은 수의 *같은* 성을 보는지 — 이 자리가 「한 수 최대 1계단」의 실제 파손점이다.
+   * 계단을 적립보다 뒤에 두면 적립이 만든 성을 계단이 다시 보고 두 계단이 오른다.
+   */
+  const partial = (rank, pts, grade) => {
+    const s = createSession();
+    const base = setStyleRank(createProgress(), 'yuun-bo', rank);
+    s.progress = { ...base, styles: { ...base.styles, 'yuun-bo': { ...base.styles['yuun-bo'], pts } } };
+    recordDuelVerdict(s, {
+      verdict: { grade, dmgOut: 9, dmgIn: 0, opening: null },
+      fire: { style: styleById('yuun-bo') },
+      challenger: challengerById('A-1'),
+      outcome: { over: true, win: true, by: 'hp' },
+    });
+    return { rank: styleRank(s.progress, 'yuun-bo'), steps: s.log.entries.filter((e) => e.event === 'rank') };
+  };
+  const carried = partial(HIGH.maxRank - 1, HIGH.cost - LADDER.gain.duel, 'advantage');
+  eq(carried.rank, HIGH.maxRank, `${HIGH.maxRank - 1}성에 적립이 반쯤 찬 채 낸 결정타도 ${HIGH.maxRank}성에서 멈춘다`);
+  eq(carried.steps.length, 1, '그 수의 성 전이는 1건뿐');
+  eq(partial(LADDER.finishRank, 0, 'crush').rank, LADDER.crushRank, '11성 완파 결정타는 12성까지');
+  eq(partial(LADDER.finishRank - 1, 0, 'crush').steps.length, 1, '10성 완파 결정타도 전이 1건');
 });
 
 suite('케이스 4 — 해금 · 장착 · 원터치 계단 (REQ-711~713)', () => {
@@ -528,6 +550,44 @@ suite('케이스 4 — 해금 · 장착 · 원터치 계단 (REQ-711~713)', () =
   deepEq(changes.unlock, { style: 'jeok-un', prev_style_rank: gate.unlock }, 'unlock 변화분 (REQ-711)');
   const unlock = unlocking.log.entries.find((e) => e.event === 'unlock');
   eq(unlock.sv, 2, 'unlock 은 뜻이 바뀐 이벤트라 sv 2 를 단다');
+});
+
+// ---------------------------------- 6-a. 케이스 14 — 개발자 치트 (REQ-781~783)
+
+suite('케이스 14 — 개발자 치트 (REQ-781~783)', () => {
+  const session = createSession();
+  eq(session.cheat.enabled, false, '기본은 숨김 — 명시 토글만이 연다 (REQ-781)');
+  eq(cheatSetStyleRank(session, 'yuun-bo', 5), false, '꺼져 있으면 주입 자체가 없던 일이다');
+  eq(styleRank(session.progress, 'yuun-bo'), 1, '상태도 그대로');
+  eq(isCheatFlagged(session), false, '플래그도 켜지지 않는다');
+
+  setCheatEnabled(session, true);
+  eq(cheatSetStyleRank(session, 'yuun-bo', BALANCE.rankMax), true, '켠 뒤 주입 성공');
+  eq(styleRank(session.progress, 'yuun-bo'), BALANCE.rankMax, '성이 계단을 건너뛰고 주입된다');
+  const cheat = session.log.entries.find((e) => e.event === 'cheat');
+  deepEq({ action: cheat.action, session_flagged: cheat.session_flagged },
+    { action: `rank:yuun-bo=${BALANCE.rankMax}`, session_flagged: true }, 'cheat 로그 (REQ-782)');
+  eq(isCheatFlagged(session), true, '세션 플래그는 지워지지 않는다');
+  eq(exportPayload(session).cheat_flagged, true, '내보내기가 플래그를 실어 판독기가 표본을 뺄 수 있다');
+
+  // 범위 밖 주입은 화면 핸들러 밖으로 새는 throw 가 아니라 거절이다.
+  for (const bad of [0, -1, BALANCE.rankMax + 1, 1.5, Number.NaN]) {
+    eq(cheatSetStyleRank(session, 'jeok-un', bad), false, `${bad} 주입은 거절된다`);
+  }
+  eq(styleRank(session.progress, 'jeok-un'), 1, '거절된 주입은 상태를 건드리지 않는다');
+
+  // 봇 구동 중 강제 off (REQ-783) — 페이스 표본에 주입이 섞이면 그 회차가 무엇을 잰 것인지 알 수 없다.
+  setBotRunning(session, true);
+  eq(session.cheat.enabled, false, '봇이 돌기 시작하면 그 자리에서 닫힌다');
+  eq(setCheatEnabled(session, true), false, '봇이 도는 동안에는 열리지 않는다');
+  eq(cheatSetStyleRank(session, 'jeok-un', 5), false, '따라서 주입도 불가');
+  setBotRunning(session, false);
+  eq(setCheatEnabled(session, true), true, '봇이 멈추면 다시 열 수 있다');
+
+  // 헤드리스 사이클도 같은 계약을 진다 — 봇 축의 유일한 진입점이 이 플래그를 세운다.
+  const botRun = runHeadlessCycle({ random: createSeededRandom(20260902) });
+  eq(isCheatFlagged(botRun.session), false, '봇 사이클은 치트 없이 완주한다');
+  eq(botRun.session.botRunning, false, '사이클이 끝나면 구동 표식이 내려간다');
 });
 
 // ------------------------------------------- 6-b. 케이스 3 — 제자 동형 (REQ-705)

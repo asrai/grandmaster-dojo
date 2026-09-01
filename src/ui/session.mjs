@@ -245,18 +245,23 @@ export function logTimeout(session, input) {
 
 /**
  * 한 수의 판정을 로그와 성장에 함께 반영한다 — 대련 화면과 헤드리스 봇이 이 한 자리를 공유한다.
- * 적립과 계단을 한 수에 한 번씩만 부르는 것이 REQ-704 의 「한 수 최대 1계단」이다.
+ *
+ * **계단을 적립보다 먼저 판정하는 것이 REQ-704 의 「한 수 최대 1계단」이다.** 두 판정은 그 수의
+ * *같은* 성을 봐야 하고, 계단은 적립이 멈춘 성(10·11)에서만 열리므로 순서를 그렇게 두면 둘 중
+ * 하나만 발화하는 것이 구조로 보장된다. 반대로 두면 적립이 9→10 을 만든 뒤 결정타가 그 10 을
+ * 보고 11 을 열어 한 수에 두 계단이 오른다.
  */
 export function recordDuelVerdict(session, view) {
   logVerdict(session, view.verdict, 'user');
   if (!view.fire) return null;
   const styleId = view.fire.style.id;
   const finish = Boolean(view.outcome?.over && view.outcome.win);
-  const crush = view.verdict.grade === 'crush';
   if (finish) logFinish(session, view, styleId);
+  const promoted = recordOutcomeRank(session, styleId, {
+    finish, crush: view.verdict.grade === 'crush',
+  });
   const accrued = isEffectiveSuccess(view.verdict.grade)
     ? recordEffectiveSuccess(session, styleId, 'duel') : null;
-  const promoted = recordOutcomeRank(session, styleId, { finish, crush });
   return promoted.rank ? promoted : accrued;
 }
 
@@ -301,7 +306,8 @@ export function setBotRunning(session, running) {
 /**
  * 치트 주입 (REQ-781·782) — 세션에 지워지지 않는 플래그를 남긴다. 주입은 축적을 건너뛰므로
  * 그 세션은 balance-log 회차와 kill (b)(c)(d) 표본에서 통째로 빠진다.
- * @param {() => void} mutate 세션 상태를 실제로 바꾸는 일 — 로그·플래그와 원자적으로 묶인다
+ * @param {() => void} mutate 세션 상태를 실제로 바꾸는 일 — 던지면 플래그도 로그도 남지 않으므로
+ *   호출부가 인자를 먼저 검증해야 한다 (「바꿨는데 표식이 없다」는 REQ-782 의 구멍이다)
  */
 export function applyCheat(session, action, mutate) {
   if (!session.cheat.enabled) return false;
@@ -311,8 +317,12 @@ export function applyCheat(session, action, mutate) {
   return true;
 }
 
+/** 주입 가능한 성인지 — 화면이 던지는 값을 먼저 거른다 (핸들러 밖으로 새는 throw 는 무음 실패다). */
+export const isInjectableRank = (rank) => Number.isInteger(rank) && rank >= 1 && rank <= BALANCE.rankMax;
+
 /** 초식 성 직접 주입 — 전수 직전 등 임의 시점에서 플레이를 시작하기 위한 개발·QA 경로다. */
 export function cheatSetStyleRank(session, styleId, rank) {
+  if (!isInjectableRank(rank)) return false;
   return applyCheat(session, `rank:${styleId}=${rank}`, () => {
     session.progress = setStyleRank(session.progress, styleId, rank);
     autoEquip(session);

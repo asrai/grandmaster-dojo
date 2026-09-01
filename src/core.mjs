@@ -82,8 +82,15 @@ export function responseWindowMs(len, { selfOpen = false, accessibility = BALANC
 /** 내공 N (REQ-203·721) — 입력은 무공이 아니라 그 초식의 성이다. */
 export const powerOf = (rank) => BALANCE.powerBase + BALANCE.powerPerRank * rank;
 
-/** 도전자 내공 (REQ-722) — 도전자별 성 1개가 그 도전자의 전 초식에 걸린다. */
-export const foePowerOf = (challengerId) => powerOf(BALANCE.challengerRank[challengerId]);
+/**
+ * 도전자 내공 (REQ-722) — 도전자별 성 1개가 그 도전자의 전 초식에 걸린다.
+ * 미등록 id 를 접으면 `powerOf(undefined)` 가 NaN 으로 흘러 응수 창 안에서야 죽는다.
+ */
+export function foePowerOf(challengerId) {
+  const rank = BALANCE.challengerRank[challengerId];
+  if (rank === undefined) throw new Error(`도전자 성이 없다: ${challengerId}`);
+  return powerOf(rank);
+}
 
 /** 선기 배수 — `r` = 응수 창 잔여 비율 (REQ-203). */
 export const initiativeOf = (r) => BALANCE.initiativeBase + BALANCE.initiativePerRatio * r;

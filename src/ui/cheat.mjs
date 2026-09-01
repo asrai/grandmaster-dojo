@@ -4,7 +4,7 @@
 
 import { BALANCE, STYLES } from '../balance.mjs';
 import { $, clear, el } from './dom.mjs';
-import { cheatSetStyleRank, isCheatFlagged, setCheatEnabled } from './session.mjs';
+import { cheatSetStyleRank, isCheatFlagged, isInjectableRank, setCheatEnabled } from './session.mjs';
 
 /**
  * 치트 패널을 도구 영역에 건다.
@@ -16,6 +16,8 @@ export function mountCheatPanel({ session, refresh }) {
   const host = $('cheat');
   const toggle = $('cheatBtn');
   if (!host || !toggle) return () => {};
+
+  const note = el('p', { class: 'dim' });
 
   function render() {
     host.hidden = !session.cheat.enabled;
@@ -38,6 +40,8 @@ export function mountCheatPanel({ session, refresh }) {
           text: '성 주입',
           onclick: () => {
             const raw = Number($(`cheat-rank-${style.id}`).value);
+            // 빈 칸은 0, 글자는 NaN 이 된다 — 걸러 두지 않으면 클릭 핸들러 밖으로 throw 가 샌다.
+            note.textContent = isInjectableRank(raw) ? '' : `1~${BALANCE.rankMax} 정수만 주입할 수 있다`;
             if (!cheatSetStyleRank(session, style.id, raw)) return;
             render();
             refresh();
@@ -53,6 +57,7 @@ export function mountCheatPanel({ session, refresh }) {
           refresh();
         },
       }),
+      note,
     );
   }
 
