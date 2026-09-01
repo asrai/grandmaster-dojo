@@ -70,10 +70,42 @@ export function createSession({ now } = {}) {
     accessibilityAtDone: null,
     label: '문하생',
     transmitted: false,
+    tooltip: createTooltipState(),
   };
 }
 
 export const logEvent = (session, event, fields) => session.log.log(event, fields);
+
+/** 도장 유도 툴팁 상태 (#15) — `locked` 가 null 인 것이 「첫 렌더」의 표식이다. */
+export const createTooltipState = () => ({ locked: null, target: null, announced: [] });
+
+/**
+ * 우선순위 순 후보에서 안내 대상 하나를 고르고 잠금 스냅샷을 갱신한다. 첫 렌더는 최초 진입
+ * 유도(`start`), 그 뒤로는 직전 렌더에서 잠겨 있다가 풀린 버튼의 고지(`unlocked`)이며, 둘 다
+ * 없으면 직전 안내가 그 대상이 눌릴 수 있는 동안 남는다 — 다른 화면을 한 번 다녀왔다고
+ * 안내가 사라지면 그 자리에서 다시 헤매게 된다.
+ * @param {{id: string, disabled: boolean, kind?: string}[]} candidates 우선순위 오름차순
+ */
+export function pickTooltip(state, candidates) {
+  const wasLocked = state.locked;
+  state.locked = candidates.filter((c) => c.disabled).map((c) => c.id);
+
+  const fresh = candidates.find((c) => !c.disabled && !state.announced.includes(c.id)
+    && (wasLocked === null || wasLocked.includes(c.id)));
+  if (fresh) {
+    // 안내는 버튼마다 1회다 — 장착·해제로 잠금이 오가도 같은 말풍선이 다시 뜨지 않는다.
+    state.announced.push(fresh.id);
+    state.target = { id: fresh.id, kind: wasLocked === null ? 'start' : 'unlocked' };
+  }
+  // 다시 잠기거나 사라진 대상은 그 축이 이미 소비된 것이라 안내를 남겨 둘 이유가 없다.
+  if (state.target && !candidates.some((c) => c.id === state.target.id && !c.disabled)) state.target = null;
+  return state.target;
+}
+
+/** 안내한 버튼을 누른 순간 — 그 안내는 역할을 다했으므로 다음 렌더부터 사라진다. */
+export function consumeTooltip(state, id) {
+  if (state.target?.id === id) state.target = null;
+}
 
 export const masteryOf = (session, styleId) => masteryPct(session.progress, styleId);
 export const artRank = (session) => rankOf(session.progress, ART_ID);

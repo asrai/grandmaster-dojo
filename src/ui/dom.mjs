@@ -50,6 +50,15 @@ export function arrowRow(seq, done, revealed) {
   })));
 }
 
+/**
+ * 유도 툴팁 앵커 (#15) — 말풍선은 설명일 뿐이라 리스너도 포커스도 갖지 않고 포인터도
+ * 통과시킨다(`.tip { pointer-events: none }`). 버튼은 `aria-describedby` 로 그것을 가리킨다.
+ */
+export function tipAnchor(button, text, id) {
+  button.setAttribute('aria-describedby', id);
+  return el('div', { class: 'tip-anchor' }, [button, el('span', { class: 'tip', id, role: 'note', text })]);
+}
+
 /** 오입력 무시 피드백 (REQ-103) — CSS 애니메이션 재시작을 위해 클래스를 한 프레임 떼어낸다. */
 export function shake(node, cls = 'shake') {
   if (!node) return;

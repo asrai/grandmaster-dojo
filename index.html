@@ -17,7 +17,7 @@ body {
 }
 #app { display: flex; flex-direction: column; height: 100%; max-width: 520px; margin: 0 auto; }
 /* 플렉스 자식의 기본 min-width:auto 가 긴 한글 줄을 뷰포트 밖으로 밀어낸다. */
-#app, #screen, .card, .row, .telegraph, .head, .row-foot > * { min-width: 0; }
+#app, #screen, .card, .row, .telegraph, .head, .row-foot > *, .tip-anchor { min-width: 0; }
 
 #top {
   display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; padding: 10px 14px;
@@ -61,7 +61,18 @@ button.ghost { background: transparent; }
 .row.locked { opacity: .55; }
 .row-head { display: flex; gap: 6px; align-items: center; }
 .row-foot { display: flex; flex-direction: column; gap: 2px; }
-.row-actions { display: flex; gap: 6px; margin-top: 6px; }
+/* 앵커가 툴팁만큼 높아지므로 stretch 를 끊어 형제 버튼이 함께 늘어나지 않게 한다. */
+.row-actions { display: flex; gap: 6px; margin-top: 6px; align-items: flex-start; }
+
+/* 유도 툴팁 — 안내만 하는 말풍선이라 포커스 대상이 아니고 포인터도 그대로 통과시킨다. */
+.tip-anchor { display: flex; flex-direction: column; gap: 4px; }
+/* 가로로 선 줄에서는 앵커가 툴팁 폭까지 늘어나므로, 그 안의 버튼까지 함께 늘리지 않는다. */
+.row-actions .tip-anchor { align-items: flex-start; }
+.tip {
+  pointer-events: none; font-size: 12px;
+  color: var(--gold); background: #201a0c; border: 1px solid var(--gold);
+  border-radius: 6px; padding: 2px 8px;
+}
 .meter { height: 5px; background: #0b0e13; border-radius: 3px; margin: 6px 0; overflow: hidden; }
 .meter i { display: block; height: 100%; background: var(--gold); }
 
