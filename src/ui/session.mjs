@@ -255,7 +255,8 @@ export function recordDuelVerdict(session, view) {
   logVerdict(session, view.verdict, 'user');
   if (!view.fire) return null;
   const styleId = view.fire.style.id;
-  const finish = Boolean(view.outcome?.over && view.outcome.win);
+  // 수 상한의 잔여 HP 비교승은 그 타격이 확정한 승리가 아니다 — 결정타는 상대를 쓰러뜨린 수뿐이다.
+  const finish = view.outcome?.win === true && view.outcome.by === 'hp';
   if (finish) logFinish(session, view, styleId);
   const promoted = recordOutcomeRank(session, styleId, {
     finish, crush: view.verdict.grade === 'crush',

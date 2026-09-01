@@ -507,6 +507,18 @@ suite('케이스 2 — 11·12성 계단 (REQ-704)', () => {
     });
     return { rank: styleRank(s.progress, 'yuun-bo'), steps: s.log.entries.filter((e) => e.event === 'rank') };
   };
+  // 수 상한 판정승은 결정타가 아니다 — 그 수가 승리를 확정한 것이 아니라 시계가 끝난 것이다.
+  const byExchanges = createSession();
+  byExchanges.progress = setStyleRank(createProgress(), 'yuun-bo', LADDER.finishRank - 1);
+  recordDuelVerdict(byExchanges, {
+    verdict: { grade: 'advantage', dmgOut: 9, dmgIn: 0, opening: null },
+    fire: { style: styleById('yuun-bo') },
+    challenger: challengerById('A-1'),
+    outcome: { over: true, win: true, by: 'exchanges' },
+  });
+  eq(styleRank(byExchanges.progress, 'yuun-bo'), LADDER.finishRank - 1, '수 상한 판정승은 11성을 열지 않는다');
+  eq(byExchanges.log.entries.some((e) => e.event === 'finish'), false, 'finish 로그도 남지 않는다');
+
   const carried = partial(HIGH.maxRank - 1, HIGH.cost - LADDER.gain.duel, 'advantage');
   eq(carried.rank, HIGH.maxRank, `${HIGH.maxRank - 1}성에 적립이 반쯤 찬 채 낸 결정타도 ${HIGH.maxRank}성에서 멈춘다`);
   eq(carried.steps.length, 1, '그 수의 성 전이는 1건뿐');
