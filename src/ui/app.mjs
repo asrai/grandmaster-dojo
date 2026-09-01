@@ -7,7 +7,7 @@ import { $, clear } from './dom.mjs';
 import { mountCheatPanel } from './cheat.mjs';
 import { createPad } from './pad.mjs';
 import {
-  ART_NAME, createSession, exportPayload, logEvent, logSessionMeta, setBotRunning,
+  ART_NAME, createSession, enterPhase, exportPayload, logSessionMeta, setBotRunning,
 } from './session.mjs';
 import { renderDojo } from './screens/dojo.mjs';
 import { renderPreview, startDispatch } from './screens/dispatch.mjs';
@@ -61,7 +61,7 @@ function go(nextPhase, params = {}) {
   if (!route) throw new Error(`알 수 없는 화면: ${nextPhase}`);
   ctx.params = params;
   phase = nextPhase;
-  logEvent(session, 'cycle', { phase });
+  enterPhase(session, phase);
   teardown = route(ctx) ?? null;
   refreshTop();
 }

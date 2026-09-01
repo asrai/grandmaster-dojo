@@ -2,14 +2,15 @@
 
 import { BALANCE, STYLES } from '../../balance.mjs';
 import {
-  artById, canLearn, discipleStyleRank, discipleStyles, ladderBandAt,
+  artById, canLearn, discipleStyleRank, discipleStyles, ladderBandAt, styleById,
 } from '../../core.mjs';
 import { arrowRow, attrMark, clear, el, tipAnchor } from '../dom.mjs';
 import { ATTR_VIEW } from '../theme.mjs';
 import {
-  ART_ID, ART_NAME, DISPATCH_CHALLENGER, beatenChallengers, canEquip, canTransmitNow,
-  challengerOfStage, consumeTooltip, duelAttemptOf, equip, learnStyle, pickTooltip,
-  rematchBonusOf, simulateTraining, unequip,
+  ART_ID, ART_NAME, DISPATCH_CHALLENGER, beatenChallengers, canDiscipleTrain, canDispatch,
+  canEquip, canTransmitNow, challengerOfStage, consumeTooltip, designateDiscipleTraining,
+  discipleTrainProgress, duelAttemptOf, equip, learnStyle, missionLockRankOf, pickTooltip,
+  rematchBonusOf, settleDiscipleTraining, simulateTraining, unequip,
 } from '../session.mjs';
 
 const rankLabel = (rank) => (rank >= BALANCE.rankMax ? `${rank}성 · 완벽히 깨달음` : `${rank}성`);
@@ -143,8 +144,10 @@ function bandActions(ctx) {
     },
     {
       id: 'dispatch', text: '파견',
-      sub: DISPATCH_CHALLENGER.name, lockedSub: '전수 후 열린다',
-      disabled: !session.transmitted,
+      sub: `${DISPATCH_CHALLENGER.name} B-${session.dispatchStage}`,
+      lockedSub: session.transmitted
+        ? `제자 전 초식 ${missionLockRankOf(session)}성 필요` : '전수 후 열린다',
+      disabled: !canDispatch(session),
       onclick: () => ctx.go('preview'),
     },
   ];
@@ -223,23 +226,80 @@ function rematchCard(ctx) {
   ]);
 }
 
-function discipleCard(session) {
+const trainLeftLabel = (leftMs) => {
+  const minutes = Math.ceil(leftMs / 60000);
+  return minutes >= 60 ? `${Math.floor(minutes / 60)}시간 ${minutes % 60}분 남음` : `${minutes}분 남음`;
+};
+
+/**
+ * 제자 카드 (REQ-751·752) — 수련 지정 · 진척 막대 1 · 초식별 성 4 를 한 카드에 나란히 둔다.
+ * 전용 화면으로 가르지 않는 것이 결정이다: 어느 초식이 뒤처졌는지는 넷을 붙여 놓아야 보이고,
+ * 그 비교가 곧 지정의 근거다.
+ */
+function discipleCard(ctx, bar) {
+  const { session } = ctx;
   const styles = discipleStyles(session.disciple, ART_ID);
+  if (!styles.length) {
+    return el('section', { class: 'card' }, [
+      el('h2', { text: '제자' }),
+      el('p', { class: 'dim', text: `아직 전수한 무공이 없다 — 전 초식을 ${artById(ART_ID).transmitRank}성으로 깨달으면 전수할 수 있다.` }),
+    ]);
+  }
+  const progress = discipleTrainProgress(session);
   return el('section', { class: 'card' }, [
     el('h2', { text: '제자' }),
-    styles.length === 0
-      ? el('p', { class: 'dim', text: `아직 전수한 무공이 없다 — 전 초식을 ${artById(ART_ID).transmitRank}성으로 깨달으면 전수할 수 있다.` })
-      : el('div', {}, [
-        el('p', {}, [el('b', { text: ART_NAME })]),
-        el('div', { class: 'icons' }, styles.map((s) => el('span', {
-          class: 'cand mini', style: `--attr:${ATTR_VIEW[s.attr].color}`,
-        }, [
-          attrMark(s.attr),
-          el('span', { class: 'cand-name', text: s.name }),
-          el('span', { class: 'tag', text: `${discipleStyleRank(session.disciple, ART_ID, s.id)}성` }),
-        ]))),
-      ]),
-  ]);
+    el('p', {}, [el('b', { text: ART_NAME })]),
+    el('div', { class: 'rows' }, styles.map((s) => {
+      const rank = discipleStyleRank(session.disciple, ART_ID, s.id);
+      const designated = progress?.styleId === s.id;
+      return el('div', { class: `row${designated ? ' open' : ''}`, style: `--attr:${ATTR_VIEW[s.attr].color}` }, [
+        el('div', { class: 'row-head' }, [
+          el('div', { class: 'row-name' }, [
+            attrMark(s.attr),
+            el('b', { text: s.name }),
+            el('span', { class: 'tag', text: `${rank}성` }),
+            designated ? el('span', { class: 'tag', text: '수련 중' }) : null,
+          ]),
+          el('button', {
+            class: 'small', text: designated ? '수련 중' : '수련',
+            // 8성 벽 위는 파견 전용이라 지정 자체가 열리지 않는다 (REQ-706).
+            disabled: designated || !canDiscipleTrain(session, s.id),
+            onclick: () => { designateDiscipleTraining(session, s.id); ctx.go('dojo'); },
+          }),
+        ]),
+      ]);
+    })),
+    // 막대는 하나다 — 지정이 배타적이라 두 개가 동시에 차오르는 상태가 규칙에 없다.
+    progress ? el('div', { class: 'meter-line' }, [bar]) : el('p', {
+      class: 'dim',
+      text: `초식을 지정해 걸어 두면 사부가 다른 일을 하는 동안에도 성이 오른다 (1성당 ${Math.round(BALANCE.discipleTrain.secondsPerRank / 60)}분, ${BALANCE.rankGate.oneTap}성까지).`,
+    }),
+  ].filter(Boolean));
+}
+
+/**
+ * 걸어 둔 수련은 화면 전이와 무관하게 흐르므로 (REQ-752) 도장에 머무는 동안 막대만 따로 민다.
+ * 성이 실제로 오른 순간에는 초식별 성 표시도 함께 낡으므로 그때만 화면을 다시 그린다.
+ */
+function trackDiscipleTraining(ctx, bar) {
+  const timer = setInterval(() => {
+    const before = discipleTrainProgress(ctx.session);
+    settleDiscipleTraining(ctx.session);
+    const after = discipleTrainProgress(ctx.session);
+    if (!before || !after || before.rank !== after.rank || before.styleId !== after.styleId) {
+      ctx.go('dojo');
+      return;
+    }
+    paintTrainBar(bar, after);
+  }, 1000);
+  return () => clearInterval(timer);
+}
+
+function paintTrainBar(bar, progress) {
+  clear(bar).append(
+    el('div', { class: 'meter' }, [el('i', { style: `width:${progress.ratio * 100}%` })]),
+    el('span', { class: 'dim', text: ` ${styleById(progress.styleId).name} ${progress.rank}성 → ${progress.rank + 1}성 · ${trainLeftLabel(progress.leftMs)}` }),
+  );
 }
 
 /** 스크롤 흐름 밖의 바닥 밴드 — 주요 액션이 진입 첫 화면에서 엄지 도달 범위 안에 상시 노출된다. */
@@ -277,6 +337,7 @@ export function renderDojo(ctx) {
   const openId = openRowOf(session, guidedRow);
 
   // 재대련 카드는 이긴 도전자가 생기기 전까지 없다 — `append(null)` 은 "null" 텍스트 노드가 된다.
+  const bar = el('div', { class: 'train-bar' });
   root.append(...[
     el('section', { class: 'card' }, [
       el('h2', { text: `${ART_NAME} ${artById(ART_ID).hanja}` }),
@@ -286,7 +347,12 @@ export function renderDojo(ctx) {
       }),
     ]),
     rematchCard(ctx),
-    discipleCard(session),
+    discipleCard(ctx, bar),
   ].filter(Boolean));
   renderBand(ctx, band, target);
+
+  const progress = discipleTrainProgress(session);
+  if (!progress) return undefined;
+  paintTrainBar(bar, progress);
+  return trackDiscipleTraining(ctx, bar);
 }

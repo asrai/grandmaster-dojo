@@ -6,17 +6,19 @@
 
 import { BALANCE, STYLES } from './balance.mjs';
 import {
-  canEquipRank, canLearn, discipleStyleRank, discipleStyles, selectDiscipleStyle, styleById,
+  canEquipRank, canLearn, discipleStyleRank, discipleStyles, discipleTrainMsPerRank,
+  selectDiscipleStyle, styleById,
 } from './core.mjs';
 import { createMatch, createVirtualTimer, pumpToEnd } from './ui/match.mjs';
 import { createSequenceInput } from './ui/sequence-input.mjs';
 import {
-  ART_ID, DISPATCH_CHALLENGER, DUEL_STAGES, canTransmitNow, challengerOfStage, createSession,
-  equip, equippedStyles, learnStyle, logEvent, logSessionMeta, rankOfStyle, runTransmit,
+  ART_ID, DUEL_STAGES, advanceDiscipleTraining, beginMission, canDiscipleTrain, canDispatch,
+  canTransmitNow, challengerOfStage, createSession, currentMission, designateDiscipleTraining,
+  enterPhase, equip, equippedStyles, learnStyle, logEvent, logSessionMeta, rankOfStyle, runTransmit,
   setBotRunning, settleDispatch, settleDuel, simulateTraining, trainVisitDone,
 } from './ui/session.mjs';
 import {
-  composeHooks, dispatchWiring, duelWiring, logDispatchStart, logDuelStart, trainWiring,
+  composeHooks, dispatchWiring, duelWiring, logDispatchResult, logDuelStart, trainWiring,
 } from './ui/wiring.mjs';
 
 const DIRS = ['U', 'D', 'L', 'R'];
@@ -443,14 +445,15 @@ function headlessDuel({ session, stage, pace, timer, random }) {
 }
 
 function headlessDispatch({ session, timer }) {
-  const challenger = DISPATCH_CHALLENGER;
+  const mission = currentMission(session);
   const styles = discipleStyles(session.disciple, ART_ID);
   let ended = null;
   let match = null;
 
   const disciple = createDiscipleHand({ session, styles, fire: (fired) => match.fire(fired) });
   match = createMatch({
-    challenger,
+    challenger: mission.challenger,
+    foeRank: mission.foeRank,
     selfHpMax: BALANCE.hp.disciple,
     rankOf: (style) => discipleStyleRank(session.disciple, ART_ID, style.id),
     openLen: () => Math.max(...styles.map((s) => s.seq.length)),
@@ -458,13 +461,53 @@ function headlessDispatch({ session, timer }) {
     timer,
     // 파견 무지시 — 배선에 지시 콜백을 주지 않는 것이 REQ-605 의 관전 조건이다.
     hooks: composeHooks(dispatchWiring(session, { disciple }), {
-      onEnd(view) { ended = view; },
+      onEnd(view) {
+        ended = view;
+        logDispatchResult(session, { win: view.outcome.win });
+      },
     }),
   });
 
-  logDispatchStart(session, challenger);
   pumpToEnd(match, timer);
   return ended;
+}
+
+/**
+ * B-2 이후 임무 + 제자 수련 (REQ-742·751~753) — 판정 범위 밖이라 셀프 관측용이다 (REQ-792).
+ * 1사이클과 분리된 별개 구동인 것이 그 경계다: `cycle_done` 은 B-1 에서 이미 닫혔고 여기서
+ * 나오는 항목은 판독기의 첫 사이클 밖이다. 실시간 방치를 기다리지 않고 주입 시계를 앞당겨 돈다.
+ * @param {object} p.timer `runHeadlessCycle` 이 돌려준 가상 시계
+ * @param {number} [p.stages] 이어서 돌 임무 수
+ * @returns {{stage: string, foeSet: string[], foeRank: number, win: boolean}[]}
+ */
+export function runHeadlessMissions({
+  session, timer, stages = 1, random = Math.random, maxTrainSteps = 80,
+}) {
+  const results = [];
+  for (let i = 0; i < stages; i += 1) {
+    enterPhase(session, 'dojo');
+    // 뒤처진 초식부터 건다 — 잠금을 쥐는 것이 최소 성이라 그 초식이 곧 다음 임무의 열쇠다 (REQ-743).
+    for (let step = 0; step < maxTrainSteps && !canDispatch(session); step += 1) {
+      const behind = discipleStyles(session.disciple, ART_ID)
+        .filter((s) => canDiscipleTrain(session, s.id))
+        .map((s) => ({ id: s.id, rank: discipleStyleRank(session.disciple, ART_ID, s.id) }))
+        .sort((a, b) => a.rank - b.rank)[0];
+      if (!behind) break;
+      designateDiscipleTraining(session, behind.id);
+      advanceDiscipleTraining(session, discipleTrainMsPerRank());
+    }
+    if (!canDispatch(session)) break;
+    enterPhase(session, 'preview');
+    const mission = beginMission(session, { random });
+    enterPhase(session, 'dispatch');
+    const view = headlessDispatch({ session, timer });
+    enterPhase(session, 'result');
+    settleDispatch(session, { win: view.outcome.win });
+    results.push({
+      stage: mission.label, foeSet: mission.foeSet, foeRank: mission.foeRank, win: view.outcome.win,
+    });
+  }
+  return results;
 }
 
 /**
@@ -503,7 +546,7 @@ export function runHeadlessCycle({
   function runScreens() {
   while (screens < maxScreens) {
     screens += 1;
-    logEvent(session, 'cycle', { phase });
+    enterPhase(session, phase);
     advance(timer, pace.navMs());
 
     if (phase === 'dojo') {
@@ -549,7 +592,8 @@ export function runHeadlessCycle({
         continue;
       }
       settleDispatch(session, { win: params.win });
-      return { session, elapsedMs: timer.now(), screens };
+      // 시계를 함께 돌려준다 — B-2 이후 임무·제자 수련의 셀프 관측이 같은 가상 시계 위에서 이어진다.
+      return { session, elapsedMs: timer.now(), screens, timer };
     }
     throw new Error(`알 수 없는 화면: ${phase}`);
   }

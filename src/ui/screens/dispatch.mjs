@@ -3,14 +3,17 @@
 
 import { BALANCE } from '../../balance.mjs';
 import { createDiscipleHand } from '../../bot.mjs';
-import { discipleStyleRank, discipleStyles, finisherOf } from '../../core.mjs';
+import { discipleStyleRank, discipleStyles, finisherOf, foeStyleById } from '../../core.mjs';
 import { attrMark, clear, el, hpBar } from '../dom.mjs';
 import { ATTR_VIEW, attrLabel, winAttrOf } from '../theme.mjs';
 import { SFX } from '../audio.mjs';
 import { createMatch } from '../match.mjs';
-import { ART_ID, ART_NAME, DISPATCH_CHALLENGER } from '../session.mjs';
+import {
+  ART_ID, ART_NAME, DISPATCH_CHALLENGER, beginMission, canDispatch, currentMission,
+  missionLockRankOf, missionShortfallOf,
+} from '../session.mjs';
 import { hideVerdict, showGradeVerdict } from '../verdict-overlay.mjs';
-import { composeHooks, dispatchWiring, logDispatchStart } from '../wiring.mjs';
+import { composeHooks, dispatchWiring, logDispatchResult } from '../wiring.mjs';
 
 const styleIcon = (style, extra = '', rankTag = null) => el('div', {
   class: `cand${extra ? ` ${extra}` : ''}`, style: `--attr:${ATTR_VIEW[style.attr].color}`,
@@ -22,35 +25,73 @@ const styleIcon = (style, extra = '', rankTag = null) => el('div', {
   extra.includes('picked') ? el('span', { class: 'tag', text: '지시' }) : null,
 ]);
 
-export function renderPreview(ctx) {
-  const { session, root } = ctx;
-  const challenger = DISPATCH_CHALLENGER;
-  const finisher = finisherOf(challenger);
-  const styles = discipleStyles(session.disciple, ART_ID);
-  ctx.pad.detach();
-  clear(root);
-
-  root.append(el('section', { class: 'card' }, [
-    el('h2', { text: `도전자 예고 — ${challenger.name} ${challenger.hanja}` }),
-    el('p', { class: 'dim', text: '문파가 절초 하나를 미리 드러냈다. 제자의 세팅을 확인하고 내보내라.' }),
+/**
+ * 절초 공개 (REQ-732·742) — 절초는 역파라는 특별 벌칙을 가진 유일한 초식이라 답을 미리 가르친다.
+ * B-2 부터는 조합이 랜덤이라 절초가 없는 임무도 있고, 그때는 공개할 것 자체가 없다.
+ */
+function finisherTell(finisher) {
+  if (!finisher) return el('p', { class: 'dim', text: '이번 임무에 절초는 없다 — 역파가 나올 자리가 없다.' });
+  return el('div', {}, [
     el('div', { class: 'icons' }, [styleIcon(finisher, 'big-icon')]),
     el('p', {}, [
       el('b', { text: `절초 ${finisher.name} ${finisher.hanja}` }),
       el('span', { class: 'dim', text: ` · ${attrLabel(finisher.attr)} · ${finisher.len}수 · 이기는 색 ${attrLabel(winAttrOf(finisher.attr))}` }),
     ]),
+  ]);
+}
+
+/**
+ * 하드 잠금 표시 (REQ-743) — 버튼 비활성 + 권장 성 + **부족한 초식**. 확인 팝업이 아닌 것이 결정이다:
+ * 팝업은 습관적으로 넘겨져 유저가 실패를 고를 경로를 남긴다.
+ */
+function lockNotice(need, shortfall) {
+  return el('div', { class: 'card lock' }, [
+    el('p', {}, [el('b', { text: `임무 잠김 — 제자의 전 초식이 ${need}성이어야 한다` })]),
+    el('p', { class: 'dim', text: `모자란 초식: ${shortfall.map((s) => `${s.name} ${s.rank}성`).join(' · ')}` }),
+    el('p', { class: 'dim', text: '도장 제자 카드에서 그 초식을 지정해 수련시켜라.' }),
+  ]);
+}
+
+export function renderPreview(ctx) {
+  const { session, root } = ctx;
+  const unlocked = canDispatch(session);
+  // 잠긴 차수는 조합을 뽑지 않는다 — 나갈 수 없는 상대를 미리 굴리면 그 판이 무엇이었는지가 흐려진다.
+  const mission = unlocked ? beginMission(session) : null;
+  const challenger = mission ? mission.challenger : DISPATCH_CHALLENGER;
+  const stageLabel = `B-${session.dispatchStage}`;
+  const finisher = finisherOf(challenger);
+  const styles = discipleStyles(session.disciple, ART_ID);
+  const shortfall = missionShortfallOf(session);
+  ctx.pad.detach();
+  clear(root);
+
+  root.append(el('section', { class: 'card' }, [
+    el('h2', { text: `임무 ${stageLabel} — ${challenger.name} ${challenger.hanja}` }),
+    el('p', {
+      class: 'dim',
+      text: session.dispatchStage <= 1
+        ? '첫 임무는 고정 상대다 — 갓 전수받은 제자도 이긴다.'
+        : '임무마다 상대 구성이 새로 짜인다 — 같은 자리에 눌러앉을 수 없다.',
+    }),
+    finisherTell(finisher),
+    el('div', { class: 'icons' }, challenger.styles.map((id) => styleIcon(foeStyleById(id), 'mini'))),
     el('h2', { text: `제자 — ${ART_NAME}` }),
     el('div', { class: 'icons' }, styles.map((s) => styleIcon(s,
       '', `${discipleStyleRank(session.disciple, ART_ID, s.id)}성`))),
+    unlocked ? null : lockNotice(missionLockRankOf(session), shortfall),
     el('div', { class: 'actions' }, [
-      el('button', { class: 'primary', text: '파견 보내기', onclick: () => ctx.go('dispatch') }),
+      el('button', {
+        class: 'primary', text: '파견 보내기', disabled: !unlocked, onclick: () => ctx.go('dispatch'),
+      }),
       el('button', { class: 'small ghost', text: '도장으로', onclick: () => ctx.go('dojo') }),
     ]),
-  ]));
+  ].filter(Boolean)));
 }
 
 export function startDispatch(ctx) {
   const { session, root } = ctx;
-  const challenger = DISPATCH_CHALLENGER;
+  const mission = currentMission(session);
+  const challenger = mission.challenger;
   const styles = discipleStyles(session.disciple, ART_ID);
   ctx.pad.detach();
   clear(root);
@@ -107,6 +148,7 @@ export function startDispatch(ctx) {
 
   const match = createMatch({
     challenger,
+    foeRank: mission.foeRank,
     selfHpMax: BALANCE.hp.disciple,
     rankOf: (style) => discipleStyleRank(session.disciple, ART_ID, style.id),
     openLen: () => Math.max(...styles.map((s) => s.seq.length)),
@@ -145,12 +187,12 @@ export function startDispatch(ctx) {
         if (ranked) SFX.rank();
       },
       onEnd(view) {
+        logDispatchResult(session, { win: view.outcome.win });
         ctx.go('result', { kind: 'dispatch', win: view.outcome.win, view });
       },
     }),
   });
 
-  logDispatchStart(session, challenger);
   match.start();
   return () => { match.stop(); hideVerdict(); };
 }
