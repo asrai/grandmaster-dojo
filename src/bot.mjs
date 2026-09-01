@@ -179,7 +179,7 @@ function nextSwap(session) {
 }
 
 /**
- * 계단이 요구하는 무대 (REQ-731·734) — 완파는 파해 대상을 예고하는 도전자에게서만 나므로
+ * 계단이 요구하는 무대 (REQ-731·734) — 파해 완파는 그 대상을 예고하는 도전자에게서만 나므로
  * (파운현월은 A-4 뿐), 최고 차수만 반복하는 손은 나머지 초식의 계단을 영영 열지 못한다.
  * 결정타도 같은 자리를 쓴다 — 그 초식이 최대 피해를 내는 무대가 쓰러뜨리기도 가장 쉽다.
  * 해금한 차수 중 가장 낮은 무대를 고르는 것이 재대련 강화를 가장 적게 물고 가는 경로다.
@@ -458,8 +458,9 @@ function headlessDispatch({ session, timer }) {
  * @returns {{session: object, elapsedMs: number, screens: number}}
  */
 export function runHeadlessCycle({
-  // 11·12성이 적립이 아니라 결정타·완파로 열려 화면 수의 꼬리가 길다 — 손 정확도 50% 시나리오
-  // 12시드 실측 상계가 500화면이라 그 두 배를 상한으로 둔다 (REQ-704, #64).
+  // 11·12성이 결정타·완파라는 사건으로만 열려 화면 수의 꼬리가 길고, 그 사건이 떨어질 초식은
+  // 확률적이라 시드마다 흔들린다 — 손 정확도 50% 시나리오 12시드 실측 상계 150화면의 8배를
+  // 상한으로 둬, 밸런스 값 한 칸이 그 꼬리를 늘려도 상한이 먼저 울지 않게 한다 (REQ-704).
   session: given = null, random = Math.random, stepMs = 16, maxScreens = 1200, device = 'keyboard',
   paceSeed = BALANCE.bot,
 } = {}) {

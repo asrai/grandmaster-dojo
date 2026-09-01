@@ -97,8 +97,9 @@ export const foePowerOf = (challengerId) => powerOf(foeRankOf(challengerId));
 
 /**
  * 재대련 강화 성 (REQ-734) — 이긴 횟수만큼 +1 씩 오르되 상한이 있다. 상한은 편의 파라미터가
- * 아니라 도달 가능성 불변식이다: 파운현월 완파는 A-4 에서만 나므로, 무한 누적은 A-4 반복
- * 실패가 그 초식의 12성을 영구 봉쇄하는 상태를 만든다.
+ * 아니라 도달 가능성 불변식이다: 파운현월의 **파해** 완파 무대가 A-4 뿐이라, 무한 누적은 A-4
+ * 반복 실패가 그 초식의 12성 주 경로를 닫는 상태를 만든다 (빈틈 완파 경로는 남는다 — 하네스
+ * 「빈틈 완파도 12성 자격이다」 단정).
  * @param {number} baseRank 그 도전자의 초회 성
  * @param {number} priorWins 그 도전자를 이미 이긴 횟수 (초회 대면은 0)
  */
@@ -142,7 +143,7 @@ function gradeOf({ selfStyle, foeStyle, foeOpen }) {
  * @param {?object} p.foeStyle  상대 예고 초식 (상대 빈틈이면 무의미)
  * @param {number} p.selfRank   그 초식의 성 (REQ-721)
  * @param {number} p.foeRank    상대 성 — 내공의 출처이자 역파 감쇠의 기준이다 (REQ-722·771)
- * @param {number} [p.foePower] 상대 내공. 기본값이 `foeRank` 파생이라 둘이 갈릴 자리가 없다
+ * @param {number} [p.foePower] 상대 내공. 기본값이 `foeRank` 파생이라 명시하지 않는 한 갈리지 않는다
  * @param {number} [p.r]        발동 시점의 창 잔여 비율
  * @param {boolean} [p.foeOpen] 이 수가 상대 빈틈인가
  */

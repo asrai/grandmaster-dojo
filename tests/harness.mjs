@@ -791,10 +791,19 @@ suite('재대련 성 누적 (REQ-734)', () => {
   eq(session.coins, BALANCE.reward.duelWin, `재대련 ${rankCap + 1}회를 이겨도 재화는 첫 승리분 그대로다`);
   eq(duelFoeRank(session, stage.id), foeRankOf(stage.id) + rankCap, '4회째부터는 상한 강화가 유지된다');
 
+  // 중단·패배 후 재진입은 승수를 올리지 않으므로 같은 서수가 다시 찍힌다 — 항목 수가 진입 수이고
+  // 서수의 최댓값이 중단 지점이다. 이 단정이 그 성질을 결정으로 고정한다 (L5 지적 대응).
+  const reentryAt = session.log.entries.length;
+  beginDuel(session, stage.id);
+  beginDuel(session, stage.id);
+  const reentries = session.log.entries.slice(reentryAt).filter((e) => e.event === 'rematch');
+  deepEq(reentries.map((e) => e.attempt_n), [duelAttemptOf(session, stage.id), duelAttemptOf(session, stage.id)],
+    '이기지 않은 재진입은 같은 서수로 다시 찍힌다');
+
   const logged = session.log.entries.filter((e) => e.event === 'rematch');
-  deepEq(logged.map((e) => e.attempt_n), [2, 3, 4, 5], 'rematch 는 재대련 회차마다 남는다');
+  deepEq(logged.map((e) => e.attempt_n), [2, 3, 4, 5, 6, 6], 'rematch 는 재대련 진입마다 남는다');
   deepEq(logged.map((e) => e.foe_rank),
-    [1, 2, 3, 3].map((b) => foeRankOf(stage.id) + b), 'rematch.foe_rank 가 그 대면의 강화를 싣는다');
+    [1, 2, 3, 3, 3, 3].map((b) => foeRankOf(stage.id) + b), 'rematch.foe_rank 가 그 대면의 강화를 싣는다');
   deepEq([...new Set(logged.map((e) => e.challenger))], [stage.id], 'rematch.challenger 는 그 도전자다');
 
   // 패배는 승수를 올리지 않는다 — 「이미 이긴 도전자를 다시 치는 것」이 재대련의 정의다.

@@ -259,4 +259,3 @@ export function startDuel(ctx) {
   match.start();
   return () => { match.stop(); hideVerdict(); ctx.pad.detach(); };
 }
-

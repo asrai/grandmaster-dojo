@@ -131,16 +131,15 @@ export function advanceStage(session, clearedStage) {
   return challengerOfStage(session.stage);
 }
 
-/**
- * @param {?string} [challenger] 그 교체가 일어난 도전자 예고 화면의 도전자 (도장에서는 null) —
- *   「A-4 를 앞두고 진짜 슬롯 판단을 했는가」가 REQ-736 의 지표라 장소가 곧 그 판별자다.
- */
 // ------------------------------------------------------- 재대련 (REQ-734)
 
 /** 그 도전자를 이미 이긴 횟수 — 초회 대면은 0 이라 강화도 무보상도 걸리지 않는다. */
 export const duelWinsOf = (session, challengerId) => session.duelWins[challengerId] ?? 0;
 
-/** 몇 번째 대면인가 — 초회 1, 재대련부터 2·3·4… (`rematch.attempt_n` 의 정의). */
+/**
+ * 몇 번째 대면인가 — 초회 1, 재대련부터 2·3·4… (`rematch.attempt_n` 의 정의). 승수에서 파생하므로
+ * 중단·패배 후 재진입은 **같은 서수를 다시 낸다**: 항목 수가 진입 수이고 서수의 최댓값이 중단 지점이다.
+ */
 export const duelAttemptOf = (session, challengerId) => duelWinsOf(session, challengerId) + 1;
 
 export const isRematch = (session, challengerId) => duelWinsOf(session, challengerId) > 0;
@@ -166,6 +165,10 @@ export function beginDuel(session, challengerId) {
   return { foeRank, attemptN };
 }
 
+/**
+ * @param {?string} [challenger] 그 교체가 일어난 도전자 예고 화면의 도전자 (도장에서는 null) —
+ *   「A-4 를 앞두고 진짜 슬롯 판단을 했는가」가 REQ-736 의 지표라 장소가 곧 그 판별자다.
+ */
 export function equip(session, styleId, slotIdx, { challenger = null } = {}) {
   if (!canEquip(session, styleId)) return false;
   const at = slotIdx ?? session.slots.indexOf(null);
