@@ -393,6 +393,105 @@ export function accrueDiscipleStyle(disciple, setId, styleId, { mode = 'duel' } 
   return { disciple: next, from: result.from, to: result.to, wall: result.wall };
 }
 
+// ------------------------------------------------------------ 임무 (REQ-742·743)
+
+/**
+ * 제자의 전 초식 최소 성 (REQ-743) — 잠금을 쥐는 것은 평균이 아니라 뒤처진 초식이다.
+ * 평균이면 한 초식을 방치한 채 나머지로 평균을 채우는 경로가 남고, 그것이 수련 지정과 어긋난다.
+ */
+export function discipleMinRank(disciple, setId) {
+  const styles = discipleStyles(disciple, setId);
+  if (!styles.length) return null;
+  return Math.min(...styles.map((s) => discipleStyleRank(disciple, setId, s.id)));
+}
+
+/** B-1 은 잠금이 없다 (REQ-741) — 전수 직후의 통쾌함이 지연 없이 오는 것이 무패 보장의 목적이다. */
+export const missionLockRank = (stage) => (stage <= 1 ? null : BALANCE.mission.unlockRank);
+
+/** 권장 성에 못 미치는 초식 — 하드 잠금이 「무엇이 모자란가」를 화면에서 대는 자리다 (REQ-743). */
+export function missionShortfall(disciple, setId, stage) {
+  const need = missionLockRank(stage);
+  if (need === null) return [];
+  return discipleStyles(disciple, setId)
+    .filter((s) => discipleStyleRank(disciple, setId, s.id) < need)
+    .map((s) => ({ id: s.id, name: s.name, rank: discipleStyleRank(disciple, setId, s.id) }));
+}
+
+export function isMissionUnlocked(disciple, setId, stage) {
+  const need = missionLockRank(stage);
+  if (need === null) return true;
+  const min = discipleMinRank(disciple, setId);
+  return min !== null && min >= need;
+}
+
+/** 임무 도전자 성 (REQ-742) — 난이도 곡선은 성으로만 오른다 (HP 는 파견 무대 하나를 공유한다). */
+export const missionFoeRank = (stage, baseRank) =>
+  Math.min(BALANCE.rankMax, baseRank + BALANCE.mission.rankStep * (stage - 1));
+
+/**
+ * 임무 상대 구성 (REQ-742) — 아키타입 풀에서 중복 없이 뽑는다. 절초 δ 를 배제하지 않는 것은
+ * 역파의 제자 무대가 곧 제자 수련의 보상이 드러나는 자리이기 때문이다 (REQ-772).
+ * 주입 난수가 유일한 입력이라 시드를 고정하면 같은 조합이 재현된다.
+ */
+export function missionFoeSet(random = Math.random, count = BALANCE.mission.foeCount) {
+  const pool = FOE_STYLES.map((s) => s.id);
+  for (let i = pool.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, count);
+}
+
+// -------------------------------------------------- 제자 수련 (REQ-751~754·706)
+
+/** 제자 수련 1성당 실경과 — 방치 루프의 길이 자체가 검증 대상이라 분 단위로 줄이지 않는다 (REQ-753). */
+export const discipleTrainMsPerRank = () => BALANCE.discipleTrain.secondsPerRank * 1000;
+
+/**
+ * 걸어 둔 시간이 여는 계단 (REQ-751·753·706) — 수련이 무효인 구간에 닿으면 거기서 멈춘다.
+ * 상한(제자 10성)은 벽이 아니다: 오를 계단 자체가 없는 것과 수련만 거부되는 것은 다른 사건이다.
+ * @returns {{steps: number, restMs: number, wall: boolean}} `wall` = 남은 시간이 그 계단에서 무효였다
+ */
+export function discipleTrainSteps(rank, elapsedMs, { max = BALANCE.discipleRankMax } = {}) {
+  const per = discipleTrainMsPerRank();
+  let at = rank;
+  let rest = Math.max(0, elapsedMs);
+  let steps = 0;
+  while (rest >= per) {
+    const band = at < max ? ladderBandAt(at) : null;
+    if (!band) return { steps, restMs: rest, wall: false };
+    if (!band.train) return { steps, restMs: rest, wall: true };
+    at += 1;
+    steps += 1;
+    rest -= per;
+  }
+  return { steps, restMs: rest, wall: false };
+}
+
+/**
+ * 지정 초식에 걸어 둔 시간을 성으로 바꾼다 (REQ-751·754). 지정하지 않은 초식은 움직이지 않는 것이
+ * 「어느 초식이 뒤처졌는지」를 유저가 통제한다는 뜻이다.
+ * 파견 적립분(`pts`)은 그대로 남긴다 — 시간축 상승이 실전 적립을 대신 소모하면 두 축이 서로를 갉는다.
+ * @returns {{disciple: object, from: ?number, to: ?number, consumedMs: number, restMs: number, wall: boolean}}
+ */
+export function applyDiscipleTraining(disciple, setId, styleId, elapsedMs) {
+  const state = disciple.arts[setId]?.styles[styleId] ?? null;
+  if (!state) return { disciple, from: null, to: null, consumedMs: 0, restMs: 0, wall: false };
+  const { steps, restMs, wall } = discipleTrainSteps(state.rank, elapsedMs);
+  const to = state.rank + steps;
+  const art = disciple.arts[setId];
+  const next = steps === 0 ? disciple : {
+    ...disciple,
+    arts: {
+      ...disciple.arts,
+      [setId]: { ...art, styles: { ...art.styles, [styleId]: { rank: to, pts: state.pts } } },
+    },
+  };
+  return {
+    disciple: next, from: state.rank, to, consumedMs: Math.max(0, elapsedMs) - restMs, restMs, wall,
+  };
+}
+
 /**
  * 제자 초식 자동 선택 (REQ-403) — 우세 → 상쇄 → 잔여, 예고된 절초의 파해 대상은 제외.
  * @param {object} p

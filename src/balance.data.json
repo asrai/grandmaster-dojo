@@ -1,5 +1,5 @@
 {
-  "rev": "2026-09-02-b/50480cbd",
+  "rev": "2026-09-02-c/309c143a",
 
   "telegraphMs": 1000,
   "windowBaseMs": 2600,
@@ -48,6 +48,9 @@
   "discipleStartRank": 1,
   "discipleRankMax": 10,
   "discipleFireRatio": 0.6,
+  "discipleTrain": { "secondsPerRank": 1800 },
+  "mission": { "unlockRank": 5, "foeCount": 3, "rankStep": 1 },
+  "killReadout": { "minManualWindows": 20 },
 
   "winColorHintExchanges": 9007199254740991,
   "simEfficiency": 0.1,

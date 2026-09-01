@@ -97,6 +97,7 @@ const SHAPE = {
   hintDelayMs: 'map:int+', ignoreHighlightAt: 'int1+',
   rankLadder: 'rankLadder', rankGate: 'map:int1+', rankMax: 'int1+', slots: 'int1+',
   discipleStartRank: 'int1+', discipleRankMax: 'int1+', discipleFireRatio: 'ratio',
+  discipleTrain: 'map:int1+', mission: 'map:int+', killReadout: 'map:int1+',
   winColorHintExchanges: 'int1+', simEfficiency: 'pos', simTrainSeconds: 'int1+', buttonHitPx: 'int1+',
   reward: 'map:int+', bot: 'bot', hp: 'map:int1+', challengerRank: 'map:int1+',
   rematch: 'map:int+', reversalDecay: 'reversalDecay',
@@ -138,6 +139,9 @@ const REQUIRED_MAP_KEYS = {
   reward: ['duelWin', 'dispatchWin'],
   rankGate: ['equip', 'unlock', 'oneTap'],
   rematch: ['rankGain', 'rankCap'],
+  discipleTrain: ['secondsPerRank'],
+  mission: ['unlockRank', 'foeCount', 'rankStep'],
+  killReadout: ['minManualWindows'],
 };
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
@@ -280,6 +284,22 @@ function checkRankOrder(values, bad) {
     ? Object.values(values.challengerRank).reduce((m, v) => Math.max(m, isNum(v) ? v : 0), 0) : 0;
   if (isNum(cap) && isNum(values.rankMax) && topFoe + cap > values.rankMax) {
     bad('rematch.rankCap', `최고 도전자 성 ${topFoe} 에 ${cap} 를 더하면 성 상한 ${values.rankMax} 를 넘는다`);
+  }
+  checkMission(values, bad);
+}
+
+/**
+ * 임무 축 (REQ-742·743) — B-2 하드 잠금은 「도달할 수 있는 성」을 요구해야 잠금이지 봉인이 아니고,
+ * 아키타입 풀보다 큰 `foeSet` 은 중복 없는 조합 자체가 성립하지 않는다.
+ */
+function checkMission(values, bad) {
+  const mission = values.mission;
+  if (!isPlain(mission)) return;
+  if (isNum(mission.unlockRank) && isNum(values.discipleRankMax) && mission.unlockRank > values.discipleRankMax) {
+    bad('mission.unlockRank', `${mission.unlockRank} 가 제자 성 상한 ${values.discipleRankMax} 를 넘어 잠금이 영구 봉인이 된다`);
+  }
+  if (isNum(mission.foeCount) && (mission.foeCount < 1 || mission.foeCount > FOE_STYLES.length)) {
+    bad('mission.foeCount', `${mission.foeCount} 가 적 초식 아키타입 ${FOE_STYLES.length} 종의 1~전량 범위 밖이다`);
   }
 }
 
