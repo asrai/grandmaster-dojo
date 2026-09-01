@@ -19,6 +19,7 @@ import {
 import {
   composeHooks, dispatchWiring, duelWiring, trainWiring,
 } from '../src/ui/wiring.mjs';
+import { GRADE_VIEW } from '../src/ui/theme.mjs';
 import { KILL, readout } from './kill-readout.mjs';
 import {
   applyEffectiveSuccess, artById, artStyles, assertCounterIntegrity, assertPrefixFree, canLearn,
@@ -1271,6 +1272,9 @@ suite('BALANCE 파라미터 census (REQ-606)', () => {
     ['reversal', '역파', 4, 0, 1, 'self'],
     ['struck', '피격', 5, 0, 1, null],
   ], '6단 판정표 시드');
+  // 표시 규약이 빠진 등급은 화면에 빈 판정으로 나가므로, 판정표와 같은 키 집합이어야 한다.
+  deepEq(Object.keys(GRADE_VIEW).sort(), Object.keys(BALANCE.grades).sort(),
+    '판정 표시 규약이 6단 전 등급을 덮는다');
 });
 
 // ------------------------------------------------------------------ 결과
