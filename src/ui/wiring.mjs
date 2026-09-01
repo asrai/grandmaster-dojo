@@ -5,8 +5,8 @@
 
 import { responseWindowMs, styleById } from '../core.mjs';
 import {
-  beginDuel, beginTrainVisit, discipleRanks, equippedStyles, logEvent, logTimeout,
-  missionLockRankOf, recordDispatchVerdict, recordDuelVerdict, recordEffectiveSuccess,
+  beginDuel, beginTrainVisit, equippedStyles, logEvent, logTimeout, missionLockRankOf,
+  recordDispatchVerdict, recordDuelVerdict, recordEffectiveSuccess,
 } from './session.mjs';
 
 /**
@@ -54,7 +54,7 @@ export function logDispatchResult(session, { mission, win }) {
   return logEvent(session, 'dispatch', {
     stage: mission.label,
     foe_set: mission.foeSet.slice(),
-    disciple_ranks: discipleRanks(session),
+    disciple_ranks: mission.ranks,
     locked_until: missionLockRankOf(session),
     result: win ? 'win' : 'loss',
   });

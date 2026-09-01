@@ -62,8 +62,9 @@ function createPlayLog(violations, now) {
 }
 
 /**
- * @param {object} [opts] `now` 는 `t_ms` 와 제자 수련 경과의 공통 출처 — 헤드리스 봇은 가상
- *   시계를 주고, 그것이 방치 루프를 실시간 대기 없이 회귀시키는 유일한 축이다 (REQ-605·751).
+ * @param {object} [opts] `now` 는 `t_ms` 와 제자 수련 경과의 공통 출처이므로 **단조**여야 한다 —
+ *   뒤로 뛰는 시계는 걸어 둔 수련을 0 으로 자른다. 화면은 `performance.now`, 헤드리스는 가상 시계를
+ *   주고, 후자가 방치 루프를 실시간 대기 없이 회귀시키는 유일한 축이다 (REQ-605·751).
  */
 export function createSession({ now = () => Date.now() } = {}) {
   // 위반은 게임을 멈추지 않되 여기 쌓여, 로그 내보내기가 결손을 그대로 실어 나르지 않는다.
@@ -273,11 +274,11 @@ export function accrueDiscipleRank(session, styleId, { via = 'mission' } = {}) {
 
 // ------------------------------------------------- 제자 수련 (REQ-751~754·706)
 
-/** 지정 초식에 지금까지 걸린 시간 — 지정을 옮겨도 이전 초식의 미완분이 남는다. */
-function trainElapsedMs(session) {
+/** 지정 초식에 그 시각까지 걸린 시간 — 지정을 옮겨도 이전 초식의 미완분이 남는다. */
+function trainElapsedMs(session, at) {
   const { styleId, sinceMs, carryMs } = session.discipleTrain;
   if (!styleId) return 0;
-  return (carryMs[styleId] ?? 0) + Math.max(0, session.now() - sinceMs);
+  return (carryMs[styleId] ?? 0) + Math.max(0, at - sinceMs);
 }
 
 /** 수련이 성을 올릴 수 있는 초식인가 (REQ-706) — 8성 벽 위는 파견 전용이라 지정 자체가 열리지 않는다. */
@@ -296,10 +297,12 @@ export function settleDiscipleTraining(session) {
   const timer = session.discipleTrain;
   const styleId = timer.styleId;
   if (!styleId) return null;
-  const result = applyDiscipleTraining(session.disciple, ART_ID, styleId, trainElapsedMs(session));
+  // 시각은 한 번만 읽는다 — 경과 계산과 기준시각 갱신이 다른 순간을 보면 그 사이가 정산마다 증발한다.
+  const at = session.now();
+  const result = applyDiscipleTraining(session.disciple, ART_ID, styleId, trainElapsedMs(session, at));
   session.disciple = result.disciple;
   timer.carryMs[styleId] = result.restMs;
-  timer.sinceMs = session.now();
+  timer.sinceMs = at;
   if (result.to > result.from) {
     logEvent(session, 'disciple_train', {
       style: styleId,
@@ -343,7 +346,7 @@ export function discipleTrainProgress(session) {
   const styleId = session.discipleTrain.styleId;
   if (!styleId) return null;
   const per = discipleTrainMsPerRank();
-  const elapsed = trainElapsedMs(session);
+  const elapsed = trainElapsedMs(session, session.now());
   return {
     styleId,
     rank: discipleStyleRank(session.disciple, ART_ID, styleId),
@@ -390,6 +393,9 @@ export function beginMission(session, { random = Math.random } = {}) {
     label: `B-${stage}`,
     foeSet,
     foeRank: missionFoeRank(stage, foeRankOf(DISPATCH_CHALLENGER.id)),
+    // 그 임무에 **투입된** 성 — 파견 중에도 성이 오르므로, 종료 시점에 읽으면 승패가 실제보다
+    // 여문 성에 귀속돼 「어느 조합을 어느 성으로 이겼는가」(REQ-744)가 조용히 틀린다.
+    ranks: discipleRanks(session),
     challenger: { ...DISPATCH_CHALLENGER, styles: foeSet },
   };
   return session.mission;

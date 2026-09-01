@@ -1164,6 +1164,18 @@ suite('제자 수련 — 병렬 · 지정 초식만 · 7성 정지 (REQ-751~754�
   clock += 1;
   settleDiscipleTraining(session);
   eq(discipleStyleRank(session.disciple, ART, 'yuun-bo'), 2, '1성당 시간이 차면 한 계단 오른다');
+
+  // 정산이 시각을 두 번 읽으면 그 사이가 매번 증발한다 — 흐르는 시계로 여러 번 정산해도 총량이 보존된다.
+  // 읽을 때마다 전진하는 시계 — 정산이 시각을 두 번 읽으면 읽는 간격만큼이 정산마다 증발한다.
+  // 바깥 `clock` 과 분리해야 뒤 단정의 기준이 함께 밀리지 않는다.
+  const step = per / 8;
+  let ticks = 0;
+  const ticking = createSession({ now: () => { ticks += step; return ticks; } });
+  ticking.disciple = discipleAt(BALANCE.discipleStartRank);
+  designateDiscipleTraining(ticking, 'haeng-un');
+  for (let i = 0; i < 24; i += 1) settleDiscipleTraining(ticking);
+  eq(discipleStyleRank(ticking.disciple, ART, 'haeng-un'), 4,
+    '잦은 정산이 경과를 갉아먹지 않는다 — 시각은 한 정산에 한 번만 읽는다');
   eq(discipleStyleRank(session.disciple, ART, 'jeok-un'), BALANCE.discipleStartRank,
     '지정하지 않은 초식은 그대로다 — 그 통제권이 요구의 핵심이다');
 
@@ -1302,6 +1314,11 @@ suite('헤드리스 파견 2단 · 제자 수련 셀프 관측 (REQ-742·744·75
   deepEq(Object.keys(dispatches[0].disciple_ranks).sort(), artStyles(ART).map((s) => s.id).sort(),
     '그 시점 제자 성이 초식별로 실린다');
   eq(dispatches[0].result, 'win', '1성 제자가 무지시 자동으로 B-1 을 이긴다 — 무패 보장 (REQ-741)');
+  // 파견 중에도 성이 오르므로, 종료 시점 성을 찍으면 승패가 실제보다 여문 성에 귀속된다 (REQ-744).
+  deepEq(Object.values(dispatches[0].disciple_ranks), artStyles(ART).map(() => BALANCE.discipleStartRank),
+    '기록된 성은 그 임무에 투입된 성이다 — 싸우며 오른 성이 아니다');
+  ok(artStyles(ART).some((st) => discipleStyleRank(run.session.disciple, ART, st.id) > BALANCE.discipleStartRank),
+    '실제로 그 파견에서 제자 성이 올랐다 — 위 단정이 공허하지 않다');
 
   const missions = runHeadlessMissions({
     session: run.session, timer: run.timer, stages: 2, random: createSeededRandom(31337),
