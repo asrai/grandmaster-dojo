@@ -284,7 +284,8 @@ function main(argv) {
 
   let failures = 0;
   // 주입은 축적을 건너뛰므로 그 오차가 재설계 근거를 뒤집는 방향(과소평가)이다 — 판독 자체를 막는다 (REQ-782).
-  if (payload.cheat_flagged) {
+  // 봉투를 벗겨 낸 배열도 같은 판정을 받는다 — 플래그만 보면 봉투를 버리는 것이 세탁 경로가 된다.
+  if (payload.cheat_flagged || payload.entries.some((e) => e.event === 'cheat')) {
     console.error('✗ 치트 플래그 세션 — kill (b)(c)(d) 표본과 balance-log 회차에서 제외된다 (REQ-782)');
     failures += 1;
   }

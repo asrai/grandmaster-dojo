@@ -596,6 +596,10 @@ suite('케이스 14 — 개발자 치트 (REQ-781~783)', () => {
   setBotRunning(session, false);
   eq(setCheatEnabled(session, true), true, '봇이 멈추면 다시 열 수 있다');
 
+  // 봉투를 벗겨 낸 배열도 제외된다 — 플래그만 보면 `entries` 만 남기는 것이 세탁 경로가 된다 (REQ-782).
+  const flagged = exportPayload(session);
+  ok(flagged.entries.some((e) => e.event === 'cheat'), '봉투를 벗겨도 cheat 이벤트는 로그에 남는다');
+
   // 헤드리스 사이클도 같은 계약을 진다 — 봇 축의 유일한 진입점이 이 플래그를 세운다.
   const botRun = runHeadlessCycle({ random: createSeededRandom(20260902) });
   eq(isCheatFlagged(botRun.session), false, '봇 사이클은 치트 없이 완주한다');
