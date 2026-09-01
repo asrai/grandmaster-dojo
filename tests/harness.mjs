@@ -914,6 +914,15 @@ suite('도장 유도 툴팁 대상 (#15)', () => {
   deepEq(render(state, []), { id: 'learn:jeok-un', kind: 'unlocked' },
     '한 렌더에서 둘이 함께 풀리면 우선순위가 앞선 쪽이 안내된다');
 
+  // 수용 기준 2 는 「활성화되는 렌더에서 그 버튼에 뜬다」라, 새 해금이 서 있던 안내를 밀어낸다.
+  const shift = createTooltipState();
+  deepEq(pickTooltip(shift, [{ id: 'learn:jeok-un', disabled: false }, { id: 'transmit', disabled: true }]),
+    { id: 'learn:jeok-un', kind: 'start' }, '먼저 뜬 안내');
+  deepEq(pickTooltip(shift, [{ id: 'learn:jeok-un', disabled: false }, { id: 'transmit', disabled: false }]),
+    { id: 'transmit', kind: 'unlocked' }, '누르지 않은 안내라도 새로 풀린 버튼이 그 자리를 가져간다');
+  eq(pickTooltip(shift, [{ id: 'learn:jeok-un', disabled: false }, { id: 'transmit', disabled: true }]), null,
+    '밀려난 안내는 이미 고지된 것이라 되돌아오지 않는다');
+
   // 안내는 우선순위표가 아니라 잠금 전이에서 나온다 — 직전 렌더에 없던 버튼은 고지 대상이 아니다.
   const late = createTooltipState();
   deepEq(pickTooltip(late, [{ id: 'duel', disabled: true }]), null, '전부 잠긴 첫 렌더는 안내가 없다');

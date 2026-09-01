@@ -154,8 +154,9 @@ export function renderDojo(ctx) {
   const rowActions = STYLES.map((s) => styleActions(ctx, s));
   const card = cardActions(ctx);
   // 후보를 버튼과 같은 서술자에서 뽑으므로 `disabled` 술어가 두 벌로 갈리지 않는다 (#15).
+  // 문구표에 없는 종류는 정렬 자리를 못 얻으므로 후보에서 빠진다 — 조용한 오정렬이 생기지 않는다.
   const target = pickTooltip(session.tooltip, [...rowActions.flat(), ...card]
-    .filter((a) => a.kind)
+    .filter((a) => tipRank(a.kind) >= 0)
     .sort((a, b) => tipRank(a.kind) - tipRank(b.kind)));
 
   root.append(

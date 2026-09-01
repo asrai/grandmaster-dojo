@@ -76,11 +76,7 @@ export function createSession({ now } = {}) {
 
 export const logEvent = (session, event, fields) => session.log.log(event, fields);
 
-/**
- * 도장 유도 툴팁 상태 (#15). `locked` 는 직전 렌더에서 잠겨 있던 버튼 id 목록이고(첫 렌더는
- * null), `announced` 는 이미 한 번 안내한 버튼, `target` 은 지금 떠 있는 안내다 — 화면이 주는
- * 술어만 보므로 DOM 을 모른다.
- */
+/** 도장 유도 툴팁 상태 (#15) — `locked` 가 null 인 것이 「첫 렌더」의 표식이다. */
 export const createTooltipState = () => ({ locked: null, target: null, announced: [] });
 
 /**
@@ -97,7 +93,7 @@ export function pickTooltip(state, candidates) {
   const fresh = candidates.find((c) => !c.disabled && !state.announced.includes(c.id)
     && (wasLocked === null || wasLocked.includes(c.id)));
   if (fresh) {
-    // 안내는 축마다 1회다 — 장착·해제로 잠금이 오가도 같은 말풍선이 다시 뜨지 않는다.
+    // 안내는 버튼마다 1회다 — 장착·해제로 잠금이 오가도 같은 말풍선이 다시 뜨지 않는다.
     state.announced.push(fresh.id);
     state.target = { id: fresh.id, kind: wasLocked === null ? 'start' : 'unlocked' };
   }
