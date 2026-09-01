@@ -22,7 +22,6 @@ function paintDisciple(side, { rank, styles }) {
   clear(side);
   // 이 무공을 아직 받지 않은 제자에게는 성이 없다 — `null성` 은 결손으로 읽힌다.
   side.append(el('h2', { text: rank === null ? '제자' : `제자 — ${rank}성` }), icons(styles, 'lit'));
-  return side;
 }
 
 export function renderTransmit(ctx) {
@@ -37,7 +36,9 @@ export function renderTransmit(ctx) {
 
   // 사부·제자가 같은 무공 정의를 읽는다 — 전수 단위가 초식이 아니라 무공이라는 뜻이다 (#38).
   const mastered = artStyles(ART_ID);
-  const discipleSide = paintDisciple(el('div', { class: 'side dark' }), before);
+  // 목록이 뒤늦게 도착하므로, 그 도착을 낭독으로도 알 수 있어야 전이가 화면 밖에서도 성립한다.
+  const discipleSide = el('div', { class: 'side dark', 'aria-live': 'polite' });
+  paintDisciple(discipleSide, before);
 
   ctx.pad.detach();
   clear(root);
@@ -61,8 +62,9 @@ export function renderTransmit(ctx) {
   ]));
 
   // 사부 쪽이 먼저 켜지고 제자 쪽이 뒤따라 켜져야 "옮겨 갔다" 로 읽힌다.
-  requestAnimationFrame(() => setTimeout(() => {
+  const arriveTimer = setTimeout(() => {
     paintDisciple(discipleSide, after);
     discipleSide.classList.add('arrived');
-  }, 400));
+  }, 400);
+  return () => clearTimeout(arriveTimer);
 }
