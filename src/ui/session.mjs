@@ -11,8 +11,12 @@ import {
   styleById, styleRank, trainHitsToNext, transmit,
 } from '../core.mjs';
 
-/** 내보낸 로그의 판독 계약 이름 — `tests/kill-readout.mjs` 가 이 값으로 파일을 받아들인다. */
-export const EXPORT_SCHEMA = 'grandmaster-dojo/log-export@1';
+/**
+ * 내보낸 로그의 판독 계약 이름 — `tests/kill-readout.mjs` 가 이 값으로 파일을 받아들인다.
+ * 항목 스키마가 비호환으로 바뀌면 함께 오른다: 구 판본을 봉투에서 거절하는 것이, 다섯 이벤트의
+ * `sv` 를 일일이 대조해야 드러나는 결손보다 먼저 그리고 분명하게 말한다 (REQ-791).
+ */
+export const EXPORT_SCHEMA = 'grandmaster-dojo/log-export@2';
 
 /**
  * 판독기가 로그 밖에서 끌어다 쓰는 밸런스 값 — 창 길이·유효 성공 절단선.
@@ -308,11 +312,14 @@ export function settleDiscipleTraining(session) {
       actor: 'disciple', style: styleId, from: result.from, to: result.to, via: 'train',
     });
   }
-  // 벽에 닿으면 지정을 놓는다 — 더 걸어도 무효인 시간을 계속 태우면 8성 벽이 유저를 파견으로 밀지 못한다.
   if (result.wall) {
     logEvent(session, 'rank_wall', {
       actor: 'disciple', style: styleId, at_rank: result.to, attempted: 'train',
     });
+  }
+  // 더 오를 수 없게 된 초식은 지정을 놓는다 — 벽이면 무효인 시간을 계속 태우게 되고(8성 벽이 유저를
+  // 파견으로 밀지 못한다), 상한이면 막대가 규칙에 없는 다음 성을 영구히 가리킨다.
+  if (!canDiscipleTrain(session, styleId)) {
     timer.styleId = null;
     timer.carryMs[styleId] = 0;
   }

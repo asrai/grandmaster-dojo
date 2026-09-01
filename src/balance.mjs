@@ -295,8 +295,11 @@ function checkRankOrder(values, bad) {
 function checkMission(values, bad) {
   const mission = values.mission;
   if (!isPlain(mission)) return;
-  if (isNum(mission.unlockRank) && isNum(values.discipleRankMax) && mission.unlockRank > values.discipleRankMax) {
-    bad('mission.unlockRank', `${mission.unlockRank} 가 제자 성 상한 ${values.discipleRankMax} 를 넘어 잠금이 영구 봉인이 된다`);
+  // 잠긴 제자가 스스로 올릴 수 있는 성은 수련 상한까지다 — 그 위는 파견 유효 성공뿐이고 그 파견이 잠겨 있다.
+  const bands = Array.isArray(values.rankLadder?.bands) ? values.rankLadder.bands : [];
+  const trainCap = bands.filter((b) => b?.train).reduce((m, b) => Math.max(m, b.maxRank ?? 0), 0);
+  if (isNum(mission.unlockRank) && trainCap > 0 && mission.unlockRank > trainCap) {
+    bad('mission.unlockRank', `${mission.unlockRank} 가 수련 적립 상한 ${trainCap} 를 넘어 잠금이 영구 봉인이 된다`);
   }
   if (isNum(mission.foeCount) && (mission.foeCount < 1 || mission.foeCount > FOE_STYLES.length)) {
     bad('mission.foeCount', `${mission.foeCount} 가 적 초식 아키타입 ${FOE_STYLES.length} 종의 1~전량 범위 밖이다`);

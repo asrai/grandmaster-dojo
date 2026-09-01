@@ -239,7 +239,8 @@ function metricsOf(cycle, all) {
     rank_wall: cycle.filter((e) => e.event === 'rank_wall' && e.actor === 'master').length,
     disciple_rank_wall: all.filter((e) => e.event === 'rank_wall' && e.actor === 'disciple').length,
     disciple_train_events: trains.length,
-    disciple_train_ranks: trains.reduce((acc, e) => acc + (e.to - e.from), 0),
+    // 구 판본 파일은 필드가 없을 수 있다 — 판독은 그 사실을 이미 위에서 보고했고 여기서 죽으면 안 된다.
+    disciple_train_ranks: trains.reduce((acc, e) => acc + (Number(e.to) - Number(e.from) || 0), 0),
     // 병렬성의 유일한 증거 — 사부가 그동안 무엇을 하고 있었는가 (REQ-754).
     disciple_train_activity: count(trains, 'master_activity'),
     dispatch_by_stage: all.filter((e) => e.event === 'dispatch')
@@ -301,7 +302,7 @@ function report(result) {
   console.log(`    사부 축  재대련 회차 ${JSON.stringify(metrics.rematch_attempts)} (최심 ${metrics.rematch_deepest})`
     + ` · 슬롯 교체 ${JSON.stringify(metrics.slot_by_challenger)} · 결정타 ${JSON.stringify(metrics.finish_by_style)}`
     + ` (의도 일치 ${pct(metrics.finish_intended_rate)}) · 8성 벽 ${metrics.rank_wall}회`);
-  console.log(`    제자 축  파견 ${metrics.dispatch_by_stage.map((m) => `${m.stage}:${m.result}[${m.foe_set.join('+')}]`).join(' · ') || '—'}`
+  console.log(`    제자 축  파견 ${metrics.dispatch_by_stage.map((m) => `${m.stage}:${m.result}[${m.foe_set?.join('+') ?? '?'}]`).join(' · ') || '—'}`
     + ` · 수련 ${metrics.disciple_train_events}회 ${metrics.disciple_train_ranks}성`
     + ` · 8성 벽 ${metrics.disciple_rank_wall}회 · 병렬 ${JSON.stringify(metrics.disciple_train_activity)}`);
   return { a, b, d, gate: g };

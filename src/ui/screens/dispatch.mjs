@@ -45,6 +45,12 @@ function finisherTell(finisher) {
  * 팝업은 습관적으로 넘겨져 유저가 실패를 고를 경로를 남긴다.
  */
 function lockNotice(need, shortfall) {
+  // 전수 전에는 요구 성도 제자 초식도 없다 — 그 상태에 잠금 문구를 쓰면 「null 성이어야 한다」가 뜬다.
+  if (need === null || !shortfall.length) {
+    return el('div', { class: 'card lock' }, [
+      el('p', {}, [el('b', { text: '아직 내보낼 제자가 없다 — 전수 후 열린다' })]),
+    ]);
+  }
   return el('div', { class: 'card lock' }, [
     el('p', {}, [el('b', { text: `임무 잠김 — 제자의 전 초식이 ${need}성이어야 한다` })]),
     el('p', { class: 'dim', text: `모자란 초식: ${shortfall.map((s) => `${s.name} ${s.rank}성`).join(' · ')}` }),
@@ -191,7 +197,7 @@ export function startDispatch(ctx) {
         if (ranked) SFX.rank();
       },
       onEnd(view) {
-        logDispatchResult(session, { win: view.outcome.win });
+        logDispatchResult(session, { mission, win: view.outcome.win });
         ctx.go('result', { kind: 'dispatch', win: view.outcome.win, view });
       },
     }),

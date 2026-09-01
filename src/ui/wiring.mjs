@@ -5,7 +5,7 @@
 
 import { responseWindowMs, styleById } from '../core.mjs';
 import {
-  beginDuel, beginTrainVisit, currentMission, discipleRanks, equippedStyles, logEvent, logTimeout,
+  beginDuel, beginTrainVisit, discipleRanks, equippedStyles, logEvent, logTimeout,
   missionLockRankOf, recordDispatchVerdict, recordDuelVerdict, recordEffectiveSuccess,
 } from './session.mjs';
 
@@ -48,9 +48,9 @@ export function trainWiring(session, { styleId, input }) {
 /**
  * 파견 결과 기록 (REQ-744) — 진입이 아니라 종료에서 찍는 것은 스키마가 승패를 함께 지기 때문이고,
  * 구간의 시작점은 `cycle{phase}` 가 이미 진다. B-1 무패 보장·B-2 잠금·조합별 승패가 한 항목에서 갈린다.
+ * @param {object} p.mission 실제로 싸운 그 임무 — 여기서 다시 도출하면 싸운 적 없는 조합이 기록될 수 있다.
  */
-export function logDispatchResult(session, { win }) {
-  const mission = currentMission(session);
+export function logDispatchResult(session, { mission, win }) {
   return logEvent(session, 'dispatch', {
     stage: mission.label,
     foe_set: mission.foeSet.slice(),

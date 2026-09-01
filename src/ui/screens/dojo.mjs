@@ -2,7 +2,7 @@
 
 import { BALANCE, STYLES } from '../../balance.mjs';
 import {
-  artById, canLearn, discipleStyleRank, discipleStyles, ladderBandAt, styleById,
+  artById, canLearn, discipleStyleRank, discipleStyles, ladderBandAt, styleById, trainAccrualCap,
 } from '../../core.mjs';
 import { arrowRow, attrMark, clear, el, tipAnchor } from '../dom.mjs';
 import { ATTR_VIEW } from '../theme.mjs';
@@ -274,7 +274,7 @@ function discipleCard(ctx, bar) {
     // 막대는 하나다 — 지정이 배타적이라 두 개가 동시에 차오르는 상태가 규칙에 없다.
     progress ? el('div', { class: 'meter-line' }, [bar]) : el('p', {
       class: 'dim',
-      text: `초식을 지정해 걸어 두면 사부가 다른 일을 하는 동안에도 성이 오른다 (1성당 ${Math.round(BALANCE.discipleTrain.secondsPerRank / 60)}분, ${BALANCE.rankGate.oneTap}성까지).`,
+      text: `초식을 지정해 걸어 두면 사부가 다른 일을 하는 동안에도 성이 오른다 (1성당 ${Math.round(BALANCE.discipleTrain.secondsPerRank / 60)}분, ${trainAccrualCap()}성까지).`,
     }),
   ].filter(Boolean));
 }
@@ -289,7 +289,10 @@ function trackDiscipleTraining(ctx, bar) {
     settleDiscipleTraining(ctx.session);
     const after = discipleTrainProgress(ctx.session);
     if (!before || !after || before.rank !== after.rank || before.styleId !== after.styleId) {
+      // 사용자 조작 없이 도는 재렌더라, 포커스를 되돌리지 않으면 30분마다 예고 없이 자리를 잃는다.
+      const focused = document.activeElement?.id;
       ctx.go('dojo');
+      if (focused) document.getElementById(focused)?.focus();
       return;
     }
     paintTrainBar(bar, after);
@@ -319,7 +322,8 @@ function renderBand(ctx, actions, target) {
     el('button', {
       class: 'small ghost band-sim',
       text: `1시간 수련 시뮬 — +${Math.round(BALANCE.simEfficiency * BALANCE.simTrainSeconds)} 元`,
-      onclick: () => { simulateTraining(ctx.session); ctx.refreshTop(); },
+      // 압축이 걸어 둔 제자 성까지 올리므로 상단 표시만으로는 카드의 배지·잠금이 낡은 채 남는다.
+      onclick: () => { simulateTraining(ctx.session); ctx.go('dojo'); },
     }),
   );
 }

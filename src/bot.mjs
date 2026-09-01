@@ -315,7 +315,7 @@ export function createBot({
       designateDiscipleTraining(session, next.styleId);
       // 방치 압축 버튼이 걸어 둔 시계를 앞당기는 그 자리다 — 봇도 사람과 같은 손잡이를 쓴다.
       simulateTraining(session);
-      screen.refresh();
+      screen.go('dojo');
       return;
     }
     screen.go(next.kind, next.params);
@@ -485,7 +485,7 @@ function headlessDispatch({ session, timer }) {
     hooks: composeHooks(dispatchWiring(session, { disciple }), {
       onEnd(view) {
         ended = view;
-        logDispatchResult(session, { win: view.outcome.win });
+        logDispatchResult(session, { mission, win: view.outcome.win });
       },
     }),
   });

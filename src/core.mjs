@@ -444,6 +444,10 @@ export function missionFoeSet(random = Math.random, count = BALANCE.mission.foeC
 
 // -------------------------------------------------- 제자 수련 (REQ-751~754·706)
 
+/** 수련만으로 닿을 수 있는 성 — 원터치 계단(`rankGate.oneTap`)과는 다른 축이라 그 상수를 대신 쓰면 튜닝에서 갈린다. */
+export const trainAccrualCap = () =>
+  BALANCE.rankLadder.bands.filter((b) => b.train).reduce((m, b) => Math.max(m, b.maxRank), 0);
+
 /** 제자 수련 1성당 실경과 — 방치 루프의 길이 자체가 검증 대상이라 분 단위로 줄이지 않는다 (REQ-753). */
 export const discipleTrainMsPerRank = () => BALANCE.discipleTrain.secondsPerRank * 1000;
 

@@ -36,8 +36,8 @@ import {
   foePowerOf, foeRankOf, foeStyleById, initiativeOf, isEffectiveSuccess, isMissionUnlocked,
   isOneTapRank, judge, ladderBandAt, learn, missionFoeRank, missionFoeSet, missionLockRank,
   missionShortfall, powerOf, promoteByOutcome, rematchFoeRank, resolveMatch, responseWindowMs,
-  reversalDecayFactor, selectDiscipleStyle, setStyleRank, styleById, styleRank, trainHitsToNext,
-  transmit,
+  reversalDecayFactor, selectDiscipleStyle, setStyleRank, styleById, styleRank, trainAccrualCap,
+  trainHitsToNext, transmit,
 } from '../src/core.mjs';
 
 /** 성 축 재설계가 폐기한 BALANCE 키 (#64) — 잔존 참조 1개가 판정 수식을 조용히 오염시킨다. */
@@ -1220,12 +1220,24 @@ suite('제자 수련 — 병렬 · 지정 초식만 · 7성 정지 (REQ-751~754�
     ['disciple', BALANCE.rankGate.oneTap, 'train'], '벽 로그는 사부와 같은 형이되 actor 로 갈린다');
   eq(discipleTrainProgress(walled), null, '벽에 닿으면 지정이 풀린다 — 무효인 시간을 계속 태우지 않는다');
   eq(canDiscipleTrain(walled, 'yuun-bo'), false, '벽 위 초식은 다시 지정할 수도 없다');
+  eq(trainAccrualCap(), BALANCE.rankGate.oneTap, '수련 상한은 지금 원터치 계단과 같은 수이지만 다른 축이다');
   // 벽 위 구간의 유일한 경로는 파견 유효 성공이고, 그마저 상한 10 에서 멈춘다 (REQ-705).
   for (let i = 0; i < 60; i += 1) accrueDiscipleRank(walled, 'yuun-bo');
   eq(discipleStyleRank(walled.disciple, ART, 'yuun-bo'), BALANCE.discipleRankMax,
     `벽 위는 파견 유효 성공으로 ${BALANCE.discipleRankMax}성까지 오른다`);
   eq(discipleStyleRank(walled.disciple, ART, 'yuun-bo') < BALANCE.rankLadder.finishRank, true,
     '제자는 11성에 진입하지 않는다 — 결정타·완파는 자동 전투가 하지 않는 판단이다');
+
+  // 상한(제자 10성)에 닿은 초식도 지정이 풀린다 — 놓지 않으면 막대가 규칙에 없는 11성을 가리킨다.
+  const capped = createSession({ now: () => clock });
+  capped.disciple = discipleAt(BALANCE.discipleStartRank, { 'yuun-bo': BALANCE.rankGate.oneTap - 1 });
+  designateDiscipleTraining(capped, 'yuun-bo');
+  capped.disciple.arts[ART].styles['yuun-bo'] = { rank: BALANCE.discipleRankMax, pts: 0 };
+  clock += per;
+  settleDiscipleTraining(capped);
+  eq(discipleTrainProgress(capped), null, '상한에 닿으면 지정이 풀린다 — 오를 계단이 없다');
+  eq(capped.log.entries.filter((e) => e.event === 'rank_wall').length, 0,
+    '상한은 벽이 아니다 — 무효 적립 시도가 아니므로 rank_wall 을 남기지 않는다');
 
   // 시간 주입 — 걸어 둔 시각을 앞당길 뿐, 게임 수치(1성당 시간)는 그대로다 (REQ-792).
   const injected = createSession({ now: () => clock });
@@ -2163,9 +2175,13 @@ suite('밸런스 데이터 스키마 (#45)', () => {
     'rematch.rankCap: 최고 도전자 성 4 에 12 를 더하면 성 상한 12 를 넘는다', '재대련 상한이 성 상한을 넘김');
 
   // 임무 축 (REQ-742·743) — 잠금은 도달 가능한 성을 요구해야 잠금이지 봉인이 아니다.
-  throwsWith((r) => { r.mission.unlockRank = BALANCE.discipleRankMax + 1; },
-    `mission.unlockRank: ${BALANCE.discipleRankMax + 1} 가 제자 성 상한 ${BALANCE.discipleRankMax} 를 넘어 잠금이 영구 봉인이 된다`,
-    'B-2 잠금 기준이 제자 상한을 넘김');
+  // 잠금이 봉인이 되는 경계는 제자 성 상한이 아니라 **수련으로 닿는 성**이다 — 그 위는 파견뿐인데
+  // 그 파견이 잠겨 있어, 8~10 을 요구하면 B-2 가 영원히 열리지 않는다.
+  throwsWith((r) => { r.mission.unlockRank = trainAccrualCap() + 1; },
+    `mission.unlockRank: ${trainAccrualCap() + 1} 가 수련 적립 상한 ${trainAccrualCap()} 를 넘어 잠금이 영구 봉인이 된다`,
+    'B-2 잠금 기준이 수련 상한을 넘김');
+  eq(validateBalance(restamp((() => { const r = clone(); r.mission.unlockRank = trainAccrualCap(); return r; })())).values.mission.unlockRank,
+    trainAccrualCap(), '수련으로 닿는 성까지는 잠금 기준으로 쓸 수 있다');
   throwsWith((r) => { r.mission.foeCount = FOE_STYLES.length + 1; },
     `mission.foeCount: ${FOE_STYLES.length + 1} 가 적 초식 아키타입 ${FOE_STYLES.length} 종의 1~전량 범위 밖이다`,
     '임무 조합이 아키타입 풀보다 큼');
