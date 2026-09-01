@@ -30,6 +30,12 @@ import {
   selectDiscipleStyle, styleById, transmit,
 } from '../src/core.mjs';
 
+/** 성 축 재설계가 폐기한 BALANCE 키 (#64) — 잔존 참조 1개가 판정 수식을 조용히 오염시킨다. */
+const RETIRED_KEYS = [
+  'masteryTrainPct', 'masteryFullPct', 'threshold', 'rankPtsPerStyle',
+  'rankStep', 'rankStepMult', 'equipMasteryPct', 'challengerPower',
+];
+
 // --------------------------------------------------------------- 단정 도구
 
 let failures = 0;
@@ -1257,8 +1263,7 @@ suite('BALANCE 파라미터 census (REQ-606)', () => {
     openingWindowPenalty: 0.4, accessibilityWindowMult: 1.3, accessibilityWindow: false,
     resolveMs: 500, maxExchanges: 12, powerBase: 1, powerPerRank: 0.05,
     initiativeBase: 1, initiativePerRatio: 0.3, clashK: 0.5, effectiveSuccessMaxOrder: 2,
-    trainGraduateHits: 2, masteryTrainPct: 30, masteryFullPct: 100, ignoreHighlightAt: 3,
-    rankStep: 2, rankMax: 12, slots: 3, equipMasteryPct: 30,
+    trainGraduateHits: 2, ignoreHighlightAt: 3, rankMax: 12, slots: 3,
     discipleStartRank: 1, discipleRankMax: 10, discipleFireRatio: 0.6,
     winColorHintExchanges: Number.MAX_SAFE_INTEGER, simEfficiency: 0.1, simTrainSeconds: 3600,
     buttonHitPx: 56,
@@ -1266,11 +1271,16 @@ suite('BALANCE 파라미터 census (REQ-606)', () => {
   for (const [key, value] of Object.entries(SEEDS)) eq(BALANCE[key], value, `BALANCE.${key}`);
   deepEq(BALANCE.damageByLen, { 3: 10, 4: 14, 5: 20 }, 'BALANCE.damageByLen');
   deepEq(BALANCE.hintDelayMs, { duel: 500, train: 0 }, 'BALANCE.hintDelayMs');
-  deepEq(BALANCE.threshold, { 'yuun-bo': 2, 'jeok-un': 2, 'haeng-un': 2, 'pa-un': 2 }, 'BALANCE.threshold');
-  deepEq(BALANCE.rankPtsPerStyle, { 'yuun-bo': 1, 'jeok-un': 2, 'haeng-un': 3, 'pa-un': 4 }, 'BALANCE.rankPtsPerStyle');
-  deepEq(BALANCE.rankStepMult, { 11: 2, 12: 4 }, 'BALANCE.rankStepMult (spec rank11Mult·rank12Mult)');
+  deepEq(BALANCE.rankGate, { equip: 2, unlock: 5, oneTap: 7 }, 'BALANCE.rankGate (REQ-711·713 계단)');
+  deepEq(BALANCE.rankLadder, {
+    gain: { train: 1, duel: 3 },
+    bands: [{ maxRank: 7, cost: 3, train: true }, { maxRank: 10, cost: 6, train: false }],
+    finishRank: 11, crushRank: 12,
+  }, 'BALANCE.rankLadder (REQ-702 적립 3단)');
   deepEq(BALANCE.hp, { user: 100, disciple: 100, 'A-1': 30, 'A-2': 45, 'A-3': 80, B: 80 }, 'BALANCE.hp');
-  deepEq(BALANCE.challengerPower, { A: 1, B: 1.1 }, 'BALANCE.challengerPower');
+  deepEq(BALANCE.challengerRank, { 'A-1': 1, 'A-2': 2, 'A-3': 3, B: 2 }, 'BALANCE.challengerRank (REQ-722)');
+  // 폐기 8키가 하나라도 되살아나면 그 값이 무음 `undefined` 로 판정 수식에 흘러든다 (#64).
+  for (const key of RETIRED_KEYS) ok(!(key in BALANCE), `폐기 키 ${key} 가 BALANCE 에 없다`);
   deepEq(BALANCE.reward, { duelWin: 30, dispatchWin: 50 }, 'BALANCE.reward');
   deepEq(BALANCE.bot, {
     reactionMs: [450, 650], keyMs: [260, 380], navMs: [300, 600],
