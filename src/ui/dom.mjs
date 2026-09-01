@@ -54,7 +54,7 @@ export function arrowRow(seq, done, revealed) {
  * 유도 툴팁 앵커 (#15) — 말풍선은 설명일 뿐이라 리스너도 포커스도 갖지 않고 포인터도
  * 통과시킨다(`.tip { pointer-events: none }`). 버튼은 `aria-describedby` 로 그것을 가리킨다.
  */
-export function tipAnchor(button, text, id = 'dojo-tip') {
+export function tipAnchor(button, text, id) {
   button.setAttribute('aria-describedby', id);
   return el('div', { class: 'tip-anchor' }, [button, el('span', { class: 'tip', id, role: 'note', text })]);
 }
