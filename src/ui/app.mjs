@@ -3,7 +3,7 @@
 
 import { BALANCE } from '../balance.mjs';
 import { createBot } from '../bot.mjs';
-import { $ } from './dom.mjs';
+import { $, clear } from './dom.mjs';
 import { createPad } from './pad.mjs';
 import { ART_NAME, artRank, createSession, exportPayload, logEvent, logSessionMeta } from './session.mjs';
 import { renderDojo } from './screens/dojo.mjs';
@@ -31,6 +31,7 @@ const session = createSession({ now: () => performance.now() });
 const ctx = {
   session,
   root: $('screen'),
+  band: $('band'),
   pad: createPad(),
   params: {},
   go,
@@ -49,6 +50,8 @@ function refreshTop() {
 function go(nextPhase, params = {}) {
   if (teardown) teardown();
   teardown = null;
+  // 바닥 밴드의 주인은 화면이다 — 다음 화면이 채우지 않으면 그 자리는 남지 않는다.
+  clear(ctx.band);
   const route = ROUTES[nextPhase];
   if (!route) throw new Error(`알 수 없는 화면: ${nextPhase}`);
   ctx.params = params;
