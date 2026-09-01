@@ -179,10 +179,10 @@ button.ghost { background: transparent; }
   position: absolute; inset: 0; z-index: 2; pointer-events: none;
   display: flex; align-items: center; justify-content: center;
 }
-.verdict-pop { padding: 0 12px; text-align: center; text-shadow: 0 2px 16px #000, 0 0 32px #000; animation: verdict-pop ease-out forwards; }
+.verdict-pop { padding: 0 12px; text-align: center; text-shadow: 0 2px 16px #000, 0 0 32px #000; animation: verdict-pop .5s ease-out forwards; }
 .verdict-mark { display: block; font-size: 88px; font-weight: 800; line-height: 1; }
 .verdict-label { display: block; margin-top: 8px; font-size: 22px; font-weight: 800; letter-spacing: 3px; }
-/* 재생 시간은 showVerdict 가 BALANCE.resolveMs 로 준다 — 다음 예고가 열릴 때 이미 사라져 있어야 한다. */
+/* 위 .5s 는 폴백이고 실제 재생 시간은 showVerdict 가 인라인으로 덮는다 — 주입이 비어도 판정은 보여야 한다. */
 @keyframes verdict-pop {
   0% { opacity: 0; transform: scale(.6) }
   20% { opacity: 1; transform: scale(1.1) }

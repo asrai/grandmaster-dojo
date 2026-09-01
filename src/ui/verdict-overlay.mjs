@@ -17,7 +17,12 @@ export function showVerdict({ mark, label, color }) {
   ]));
 }
 
-export const showGradeVerdict = (grade) => showVerdict({ ...GRADE_VIEW[grade], label: gradeLabel(grade) });
+export function showGradeVerdict(grade) {
+  const view = GRADE_VIEW[grade];
+  // 표시 규약이 빠진 등급은 조용히 빈 판정으로 그려지므로, 그 자리에서 터뜨린다.
+  if (!view) throw new Error(`표시 규약이 없는 등급: ${grade}`);
+  showVerdict({ ...view, label: gradeLabel(grade) });
+}
 
 /** 화면 teardown·다음 예고가 부르는 자리 — 남겨 두면 판정이 다음 화면 위에 겹쳐 남는다. */
 export function hideVerdict() {
