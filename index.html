@@ -7,7 +7,7 @@
 <style>
 :root {
   --bg: #0e1116; --panel: #161b23; --line: #262d38; --fg: #e6eaf0; --dim: #8d97a5;
-  --gold: #ffd166; --hit: 56px;
+  --gold: #ffd166; --hit: 56px; --letterbox: #05070a;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; height: 100dvh; overflow: hidden; }
@@ -20,7 +20,7 @@ body {
   --k: min(tan(atan2(100vw, 393px)), tan(atan2(100dvh, 852px)), 1);
   position: relative; width: 100vw; height: 100dvh;
   display: grid; place-content: center; overflow: hidden;
-  background: #05070a;
+  background: var(--letterbox);
 }
 /* 논리 해상도를 393x852 로 못박고 창에는 축소로만 맞춘다 — 내부 좌표가 창·기기와 무관해진다. */
 #stage {
@@ -39,7 +39,8 @@ body {
   height: 56px; padding: 0 14px; border-bottom: 1px solid var(--line); font-size: 13px;
   overflow: hidden;
 }
-.top-row { display: flex; gap: 10px; align-items: center; min-width: 0; }
+.top-row { display: flex; gap: 10px; align-items: center; min-width: 0; white-space: nowrap; }
+.top-row > span { overflow: hidden; text-overflow: ellipsis; }
 #top #label { font-weight: 700; color: var(--gold); }
 #top #coins { margin-left: auto; }
 #top label { display: flex; gap: 4px; align-items: center; color: var(--dim); }
@@ -142,9 +143,9 @@ button.ghost { background: transparent; }
 .toast { min-height: 20px; text-align: center; color: var(--gold); opacity: 0; transition: opacity .2s; }
 .toast.show { opacity: 1; }
 
-#pad { border-top: 1px solid var(--line); padding: 8px 12px; background: var(--panel); height: 272px; }
+#pad { border-top: 1px solid var(--line); padding: 8px 12px; background: var(--panel); height: calc(var(--hit) * 2 + 160px); }
 /* 감춰도 자리는 지킨다 — display:none 이면 화면 전환마다 #screen 높이가 튄다. */
-#pad.detached { visibility: hidden; }
+#pad.detached { visibility: hidden; pointer-events: none; }
 #pad.idle { opacity: .4; }
 #pad.idle #dpad button { pointer-events: none; }
 /* 봇 점유 중 사람 입력은 무시되므로, 눌러도 되는 것처럼 보이지 않게 한다. */
