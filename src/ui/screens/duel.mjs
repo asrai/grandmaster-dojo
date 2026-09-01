@@ -1,13 +1,14 @@
-// 사부 대련 (REQ-201·206~211) — 유저가 시퀀스를 치는 유일한 실전 화면.
+// 사부 대련 (REQ-201·206~211·708) — 유저가 시퀀스를 치는 유일한 실전 화면.
 
 import { BALANCE } from '../../balance.mjs';
 import { attrMark, clear, el, hpBar } from '../dom.mjs';
 import { ATTR_VIEW, attrLabel, winAttrOf } from '../theme.mjs';
 import { SFX } from '../audio.mjs';
+import { styleById } from '../../core.mjs';
 import { PHASE, createMatch } from '../match.mjs';
 import { createSequenceInput } from '../sequence-input.mjs';
 import {
-  ART_NAME, artRank, challengerOfStage, equippedStyles, logEvent, masteryOf,
+  ART_NAME, challengerOfStage, equippedStyles, logEvent, rankOfStyle,
 } from '../session.mjs';
 import { hideVerdict, showGradeVerdict } from '../verdict-overlay.mjs';
 import { composeHooks, duelWiring } from '../wiring.mjs';
@@ -54,11 +55,15 @@ export function startDuel(ctx) {
     el('div', { class: 'window' }, [windowFill]),
     el('div', { class: 'head' }, [
       el('b', { text: '사부' }),
-      el('span', { class: 'dim', text: `${ART_NAME} ${artRank(session)}성` }),
+      el('span', { class: 'dim', text: ART_NAME }),
     ]),
     selfHpEl,
     banner,
   ]));
+
+  // 결과 화면이 「어느 초식이 끝냈는가」를 말하려면 그 수의 발동을 여기서 붙잡아 두어야 한다 (REQ-708).
+  let lastFire = null;
+  const finisher = () => lastFire?.style.id ?? null;
 
   const toast = (text, cls = '') => {
     banner.className = `toast show ${cls}`.trim();
@@ -67,7 +72,7 @@ export function startDuel(ctx) {
 
   const input = createSequenceInput({
     pool: equippedStyles(session),
-    masteryOf: (style) => masteryOf(session, style.id),
+    rankOf: (style) => rankOfStyle(session, style.id),
     hintDelayMs: BALANCE.hintDelayMs.duel,
     now: () => performance.now(),
     remainingRatio: () => match.windowRatio,
@@ -82,7 +87,7 @@ export function startDuel(ctx) {
   const match = createMatch({
     challenger,
     selfHpMax: BALANCE.hp.user,
-    rankOf: () => artRank(session),
+    rankOf: (style) => rankOfStyle(session, style.id),
     openLen: () => Math.max(...equippedStyles(session).map((s) => s.seq.length)),
     accessibility: () => session.accessibility,
     hooks: composeHooks(duelWiring(session, { input }), {
@@ -102,21 +107,21 @@ export function startDuel(ctx) {
       },
       onVerdict(view, changes) {
         const { verdict } = view;
+        lastFire = view.fire ?? null;
         ctx.pad.render();
         renderHp(view);
         showGradeVerdict(verdict.grade);
         (verdict.grade === 'crush' ? SFX.crush : verdict.dmgIn > 0 ? SFX.hit : SFX.fire)();
 
         if (!changes) return;
-        // 입문은 실전 유효 성공으로만 100% 가 채워지므로 반드시 이 화면에서 일어난다 (REQ-310).
-        if (changes.initiate) {
+        if (changes.rank) {
           SFX.rank();
-          toast(`${ART_NAME} 입문 — 이제 성이 오른다`, 'rank');
-        } else if (changes.rank) {
-          SFX.rank();
+          const name = styleById(changes.rank.style).name;
           toast(changes.rank.to >= BALANCE.rankMax
-            ? `${ART_NAME} — 완벽히 깨달음`
-            : `${ART_NAME} ${changes.rank.to}성`, 'rank');
+            ? `${name} — 완벽히 깨달음`
+            : `${name} ${changes.rank.to}성`, 'rank');
+        } else if (changes.wall) {
+          toast(`${styleById(changes.wall.style).name} — 수련으로는 여기까지, 실전으로 민다`);
         } else if (changes.unlock) {
           toast('새 초식을 배울 수 있다 — 도장에서');
         }
@@ -124,14 +129,16 @@ export function startDuel(ctx) {
       },
       onEnd(view) {
         ctx.pad.detach();
-        ctx.go('result', { kind: 'duel', win: view.outcome.win, stage: params.stage, view });
+        ctx.go('result', {
+          kind: 'duel', win: view.outcome.win, stage: params.stage, view, finisher: finisher(),
+        });
       },
     }),
   });
 
   ctx.pad.attach({
     input,
-    masteryOf: (style) => masteryOf(session, style.id),
+    rankOf: (style) => rankOfStyle(session, style.id),
     accepting: () => match.phase === PHASE.WINDOW,
     // 봇이 「이기는 색」을 화면과 같은 근거로 고를 수 있게 그 수의 예고를 함께 건넨다 (REQ-605).
     foeStyle: () => match.view().telegraphed,

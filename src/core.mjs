@@ -1,4 +1,4 @@
-// 판정·성장·전수·제자 선택의 순수 함수 층 (spec REQ-202~205·301~304·307·401~403·505).
+// 판정·성장·전수·제자 선택의 순수 함수 층 (spec REQ-202~205·701~708·711~715·721~723).
 // 상태는 전부 인자로만 오간다 — 이 모듈은 DOM 도 저장소도 알지 못해 헤드리스로 회귀된다.
 
 import {
@@ -79,13 +79,23 @@ export function responseWindowMs(len, { selfOpen = false, accessibility = BALANC
   return Math.round(ms);
 }
 
-/** 내공 N (REQ-203). */
+/** 내공 N (REQ-203·721) — 입력은 무공이 아니라 그 초식의 성이다. */
 export const powerOf = (rank) => BALANCE.powerBase + BALANCE.powerPerRank * rank;
+
+/**
+ * 도전자 내공 (REQ-722) — 도전자별 성 1개가 그 도전자의 전 초식에 걸린다.
+ * 미등록 id 를 접으면 `powerOf(undefined)` 가 NaN 으로 흘러 응수 창 안에서야 죽는다.
+ */
+export function foePowerOf(challengerId) {
+  const rank = BALANCE.challengerRank[challengerId];
+  if (rank === undefined) throw new Error(`도전자 성이 없다: ${challengerId}`);
+  return powerOf(rank);
+}
 
 /** 선기 배수 — `r` = 응수 창 잔여 비율 (REQ-203). */
 export const initiativeOf = (r) => BALANCE.initiativeBase + BALANCE.initiativePerRatio * r;
 
-/** 판정 ≥ 상쇄 = 유효 성공, 숙련 threshold 와 성 포인트의 공통 적립 단위 (REQ-302). */
+/** 판정 ≥ 상쇄 = 유효 성공 — 성 적립의 유일한 단위다 (REQ-703). */
 export const isEffectiveSuccess = (grade) => BALANCE.grades[grade].order <= BALANCE.effectiveSuccessMaxOrder;
 
 function gradeOf({ selfStyle, foeStyle, foeOpen }) {
@@ -105,7 +115,7 @@ function gradeOf({ selfStyle, foeStyle, foeOpen }) {
  * @param {object} p
  * @param {?object} p.selfStyle 창 안에 완주한 내 초식 (미완주 = null)
  * @param {?object} p.foeStyle  상대 예고 초식 (상대 빈틈이면 무의미)
- * @param {number} p.selfRank   내 무공의 성
+ * @param {number} p.selfRank   그 초식의 성 (REQ-721)
  * @param {number} [p.foePower] 도전자 내공 시드
  * @param {number} [p.r]        발동 시점의 창 잔여 비율
  * @param {boolean} [p.foeOpen] 이 수가 상대 빈틈인가
@@ -156,71 +166,81 @@ export function resolveMatch({ selfHp, foeHp, exchanges, maxExchanges = BALANCE.
   return { over: false, win: null, by: null };
 }
 
-// -------------------------------------------------------------------- 숙련 · 성
+// ------------------------------------------------------------------ 성 (成) 축
 
-/** 초식 진행도 0 상태. `learned` 기본값 = 각 무공의 1식. */
-export function createProgress() {
-  const styles = {};
-  for (const s of STYLES) styles[s.id] = { learned: s.order === 1, trainHits: 0, duelHits: 0 };
-  const arts = {};
-  for (const a of ART_SETS) arts[a.id] = { rankPts: 0 };
-  return { styles, arts };
-}
+/**
+ * 그 성에서 다음 계단으로 오르는 적립 구간 (REQ-702). 적립 상한 위(11·12성)는 점수가 아니라
+ * 결정타·완파가 여는 계단이라 구간이 없다.
+ */
+export const ladderBandAt = (rank) => BALANCE.rankLadder.bands.find((b) => rank < b.maxRank) ?? null;
 
-/** 숙련도 % (REQ-301) — 수련 졸업분 + 실전 유효 성공 누적분. */
-export function masteryPct(progress, styleId) {
-  const p = progress.styles[styleId];
-  const trainPart = Math.min(p.trainHits, BALANCE.trainGraduateHits) / BALANCE.trainGraduateHits
-    * BALANCE.masteryTrainPct;
-  const threshold = BALANCE.threshold[styleId];
-  const duelPart = Math.min(p.duelHits, threshold) / threshold
-    * (BALANCE.masteryFullPct - BALANCE.masteryTrainPct);
-  return Math.round(trainPart + duelPart);
-}
+/** 성 상태 하나 — 사부 초식과 제자 초식이 같은 규칙으로 오르므로 형(型)도 하나다 (REQ-705). */
+export const createRankState = (rank = 1) => ({ rank, pts: 0 });
 
-/** 성 포인트 → 성 (REQ-304). 상한 밖 성은 `rankStepMult` 가 없으므로 균등 계단이다. */
-export function rankForPts(pts, { max = BALANCE.rankMax } = {}) {
-  let rank = 1;
-  let spent = 0;
-  while (rank < max) {
-    const cost = BALANCE.rankStep * (BALANCE.rankStepMult[rank + 1] ?? 1);
-    if (pts < spent + cost) break;
-    spent += cost;
-    rank += 1;
-  }
-  return rank;
-}
-
-/** 그 성에 도달하는 데 드는 누적 포인트. */
-export function ptsForRank(rank, { max = BALANCE.rankMax } = {}) {
-  let pts = 0;
-  for (let r = 2; r <= Math.min(rank, max); r += 1) {
-    pts += BALANCE.rankStep * (BALANCE.rankStepMult[r] ?? 1);
-  }
-  return pts;
+/** 그 성에서 다음 계단까지 남은 수련 완주 횟수 (수련이 무효인 구간이면 null). */
+export function trainHitsToNext({ rank, pts }) {
+  const band = ladderBandAt(rank);
+  if (!band || !band.train) return null;
+  return Math.ceil((band.cost - pts) / BALANCE.rankLadder.gain.train);
 }
 
 /**
- * 입문 완료 (REQ-310) — 무공의 전 초식이 숙련 100%. 성 포인트 적립의 선행 조건이므로,
- * 배우지 않은 초식이 하나라도 남아 있는 동안 그 무공은 성 1 에 머문다 (#38).
+ * 유효 성공 1회를 성 축에 적립한다 (REQ-702·703·706).
+ * @param {{rank: number, pts: number}} state
+ * @param {'train'|'duel'} mode 수련 완주가 `train` · 대련·파견의 유효 성공이 `duel`
+ * @param {number} [max] 그 주체의 성 상한 (사부 12 · 제자 10)
+ * @returns {{state: object, from: number, to: number, wall: boolean}}
+ *   `wall` = 수련 적립이 무효인 구간에 든 수련 (8성 벽 — REQ-706)
  */
-export const isInitiated = (progress, setId) =>
-  artStyles(setId).every((s) => masteryPct(progress, s.id) >= BALANCE.masteryFullPct);
+export function accrueRank(state, { mode, max = BALANCE.rankMax }) {
+  if (mode !== 'train' && mode !== 'duel') throw new Error(`알 수 없는 적립 모드: ${mode}`);
+  const still = { state, from: state.rank, to: state.rank, wall: false };
+  const band = state.rank < max ? ladderBandAt(state.rank) : null;
+  if (!band) return still;
+  if (mode === 'train' && !band.train) return { ...still, wall: true };
+  const pts = state.pts + BALANCE.rankLadder.gain[mode];
+  if (pts < band.cost) return { ...still, state: { rank: state.rank, pts } };
+  // 넘친 적립은 이월한다 — 버리면 수련 두 번을 쌓아 둔 손이 대련 한 번에 그 둘을 잃는다.
+  return { state: { rank: state.rank + 1, pts: pts - band.cost }, from: state.rank, to: state.rank + 1, wall: false };
+}
 
-/** 입문 전 무공의 성 포인트는 없는 것과 같다 — 성 조회가 포인트를 읽는 유일한 경로다. */
-export const rankPtsOf = (progress, setId) =>
-  (isInitiated(progress, setId) ? progress.arts[setId].rankPts : 0);
+/**
+ * 결정타·완파가 여는 계단 (REQ-704) — 순차·비소급이고 한 수는 최대 1계단이다.
+ * 두 사건을 각각 적용하지 않고 한 번에 판정하는 것이 그 「최대 1계단」의 자리다: 10성의
+ * 완파 결정타를 따로 흘리면 11성을 거쳐 12성까지 두 계단이 오른다.
+ * @returns {{state: object, from: number, to: number, via: ?('finish'|'crush')}}
+ */
+export function promoteByOutcome(state, { finish = false, crush = false, max = BALANCE.rankMax } = {}) {
+  const { finishRank, crushRank } = BALANCE.rankLadder;
+  const still = { state, from: state.rank, to: state.rank, via: null };
+  const step = (to, via) => ({ state: { rank: to, pts: 0 }, from: state.rank, to, via });
+  if (finish && state.rank === finishRank - 1 && finishRank <= max) return step(finishRank, 'finish');
+  if (crush && state.rank === crushRank - 1 && crushRank <= max) return step(crushRank, 'crush');
+  return still;
+}
 
-export const rankOf = (progress, setId, { max = BALANCE.rankMax } = {}) =>
-  rankForPts(rankPtsOf(progress, setId), { max });
+/** 초식 진행도 (REQ-701) — 성이 곧 숙련이라 초식마다 게이지가 하나다. `learned` 기본값 = 각 무공의 1식. */
+export function createProgress() {
+  const styles = {};
+  for (const s of STYLES) styles[s.id] = { learned: s.order === 1, ...createRankState() };
+  return { styles };
+}
 
-/** 순차 해금 (REQ-303) — 직전 식이 숙련 100% 여야 다음 식을 배울 수 있다. */
+export const styleRank = (progress, styleId) => progress.styles[styleId].rank;
+
+/** 실전 장착 자격 (REQ-713) — 성 계단 하나가 곧 손의 권한이다. */
+export const canEquipRank = (rank) => rank >= BALANCE.rankGate.equip;
+
+/** 원터치 자격 (REQ-713) — 딜레이드 힌트가 걷히는 지점과 같다 (REQ-712). */
+export const isOneTapRank = (rank) => rank >= BALANCE.rankGate.oneTap;
+
+/** 순차 해금 (REQ-711) — 직전 식이 해금 성에 닿아야 다음 식을 배울 수 있다 (원터치 성이 아니다). */
 export function canLearn(progress, styleId) {
   const style = styleById(styleId);
   if (!style || progress.styles[styleId].learned) return false;
   const prev = STYLES.find((s) => s.set === style.set && s.order === style.order - 1);
   if (!prev) return true;
-  return masteryPct(progress, prev.id) >= BALANCE.masteryFullPct;
+  return styleRank(progress, prev.id) >= BALANCE.rankGate.unlock;
 }
 
 export function learn(progress, styleId) {
@@ -232,56 +252,64 @@ export function learn(progress, styleId) {
 }
 
 /**
- * 유효 성공 1회를 적립하고 변화분을 함께 돌려준다 (REQ-301·302·303·304).
- * `changes` 는 통합 로그의 mastery/rank/unlock 이벤트와 1:1 이다.
- * @param {'train'|'duel'} mode 수련 성공도 유효 성공이다 (REQ-302)
+ * 성 직접 주입 (REQ-781) — 개발자 치트 전용이라 적립 규칙을 우회한다. 학습 표시를 함께 켜는
+ * 것은 「성이 있는데 배우지 않은 초식」이라는 상태가 규칙 어디에도 없기 때문이다.
  */
-export function applyEffectiveSuccess(progress, styleId, { mode }) {
-  if (mode !== 'train' && mode !== 'duel') throw new Error(`알 수 없는 적립 모드: ${mode}`);
+export function setStyleRank(progress, styleId, rank) {
+  if (!styleById(styleId)) throw new Error(`알 수 없는 초식: ${styleId}`);
+  if (!Number.isInteger(rank) || rank < 1 || rank > BALANCE.rankMax) {
+    throw new Error(`주입 성이 1~${BALANCE.rankMax} 정수가 아니다: ${rank}`);
+  }
+  return {
+    ...progress,
+    styles: { ...progress.styles, [styleId]: { learned: true, rank, pts: 0 } },
+  };
+}
+
+const withStyleState = (progress, styleId, state) => ({
+  ...progress,
+  styles: { ...progress.styles, [styleId]: { ...progress.styles[styleId], ...state } },
+});
+
+function unlockChange(progress, next, style) {
+  const nextStyle = STYLES.find((s) => s.set === style.set && s.order === style.order + 1);
+  if (!nextStyle || canLearn(progress, nextStyle.id) || !canLearn(next, nextStyle.id)) return null;
+  return { style: nextStyle.id, prev_style_rank: styleRank(next, style.id) };
+}
+
+function assertAccruable(progress, styleId) {
   const style = styleById(styleId);
   if (!style) throw new Error(`알 수 없는 초식: ${styleId}`);
   if (!progress.styles[styleId].learned) throw new Error(`학습하지 않은 초식에 적립: ${styleId}`);
+  return style;
+}
 
-  const setId = style.set;
-  const initiated = isInitiated(progress, setId);
-  const before = {
-    mastery: masteryPct(progress, styleId),
-    rank: rankOf(progress, setId),
-    pts: rankPtsOf(progress, setId),
-  };
-  const hits = progress.styles[styleId];
-  const next = {
-    ...progress,
-    styles: {
-      ...progress.styles,
-      [styleId]: {
-        ...hits,
-        trainHits: hits.trainHits + (mode === 'train' ? 1 : 0),
-        duelHits: hits.duelHits + (mode === 'duel' ? 1 : 0),
-      },
-    },
-    arts: {
-      ...progress.arts,
-      // 입문 전 발동이 성 축에 남기는 것은 없다 — 그 구간의 보상은 숙련이고, 성은 그 뒤에 열린다.
-      [setId]: {
-        ...progress.arts[setId],
-        rankPts: progress.arts[setId].rankPts + (initiated ? BALANCE.rankPtsPerStyle[styleId] : 0),
-      },
-    },
-  };
-
-  const after = { mastery: masteryPct(next, styleId), rank: rankOf(next, setId), pts: rankPtsOf(next, setId) };
+/**
+ * 유효 성공 1회를 적립하고 변화분을 함께 돌려준다 (REQ-702·703·706·711).
+ * `changes` 는 통합 로그의 rank/rank_wall/unlock 이벤트와 1:1 이다.
+ * @param {'train'|'duel'} mode 수련 완주도 적립 단위다 (REQ-715)
+ */
+export function applyEffectiveSuccess(progress, styleId, { mode }) {
+  const style = assertAccruable(progress, styleId);
+  const { state, from, to, wall } = accrueRank(progress.styles[styleId], { mode });
+  const next = withStyleState(progress, styleId, state);
   const changes = {};
-  if (after.mastery !== before.mastery) changes.mastery = { styleId, from: before.mastery, to: after.mastery };
-  // 개방 그 자체는 적립이 아니다 — 이 수가 성 게이지를 열고, 다음 유효 성공부터 쌓인다.
-  if (!initiated && isInitiated(next, setId)) changes.initiate = { style_set: setId };
-  if (after.rank !== before.rank) {
-    changes.rank = { style_set: setId, from: before.rank, to: after.rank, pts: after.pts };
-  }
-  const nextStyle = STYLES.find((s) => s.set === setId && s.order === style.order + 1);
-  if (nextStyle && !canLearn(progress, nextStyle.id) && canLearn(next, nextStyle.id)) {
-    changes.unlock = { styleId: nextStyle.id };
-  }
+  if (wall) changes.wall = { style: styleId, at_rank: from, attempted: 'train' };
+  if (to !== from) changes.rank = { style: styleId, from, to, via: mode };
+  const unlock = unlockChange(progress, next, style);
+  if (unlock) changes.unlock = unlock;
+  return { progress: next, changes };
+}
+
+/** 결정타·완파의 계단 적용 (REQ-704) — 적립과 달리 그 수의 판정 결과가 곧 자격이다. */
+export function applyOutcome(progress, styleId, { finish = false, crush = false }) {
+  const style = assertAccruable(progress, styleId);
+  const { state, from, to, via } = promoteByOutcome(progress.styles[styleId], { finish, crush });
+  if (!via) return { progress, changes: {} };
+  const next = withStyleState(progress, styleId, state);
+  const changes = { rank: { style: styleId, from, to, via } };
+  const unlock = unlockChange(progress, next, style);
+  if (unlock) changes.unlock = unlock;
   return { progress: next, changes };
 }
 
@@ -289,31 +317,45 @@ export function applyEffectiveSuccess(progress, styleId, { mode }) {
 
 export const createDisciple = () => ({ level: DISCIPLE.level, arts: {} });
 
-export const discipleRankOf = (disciple, setId) =>
-  (disciple.arts[setId] ? rankForPts(disciple.arts[setId].rankPts, { max: BALANCE.discipleRankMax }) : null);
+/** 제자 초식의 성 — 전수받지 않은 무공은 성 자체가 없다. */
+export const discipleStyleRank = (disciple, setId, styleId) =>
+  (disciple.arts[setId]?.styles[styleId]?.rank ?? null);
 
 export const discipleStyles = (disciple, setId) =>
-  (disciple.arts[setId] ? disciple.arts[setId].styles.map(styleById) : []);
+  (disciple.arts[setId] ? Object.keys(disciple.arts[setId].styles).map(styleById) : []);
 
-/** 전수 조건 (REQ-307) — 무공이 전수 성에 닿고 제자 무공 슬롯에 여유가 있을 것. */
+/** 전수 조건 — 무공의 전 초식이 전수 성에 닿고 제자 무공 슬롯에 여유가 있을 것. */
 export function canTransmit(progress, setId, disciple) {
   const art = artById(setId);
   if (!art) return false;
-  if (rankOf(progress, setId) < art.transmitRank) return false;
+  if (!artStyles(setId).every((s) => styleRank(progress, s.id) >= art.transmitRank)) return false;
   if (setId in disciple.arts) return false;
   return Object.keys(disciple.arts).length < DISCIPLE.artSlots;
 }
 
-/** 전수 = 복사 (REQ-307). 사부의 progress 는 인자 그대로 남고 제자만 새로 만들어진다. */
+/** 전수 = 복사. 사부의 progress 는 인자 그대로 남고 제자만 새로 만들어진다. */
 export function transmit(progress, disciple, setId) {
   if (!canTransmit(progress, setId, disciple)) throw new Error(`전수 조건 미충족: ${setId}`);
-  // 전수의 최소 단위는 초식이 아니라 무공이다 — 12성이 전 초식 숙련 100% 를 함의하므로
-  // 「사부가 학습한 것만 고른다」는 필터가 성립할 상태 자체가 없다 (#38).
-  const styles = artStyles(setId).map((s) => s.id);
-  return {
+  // 전수의 최소 단위는 초식이 아니라 무공이다 — 전 초식이 전수 성이라 「사부가 학습한 것만
+  // 고른다」는 필터가 성립할 상태 자체가 없다.
+  const styles = {};
+  for (const s of artStyles(setId)) styles[s.id] = createRankState(BALANCE.discipleStartRank);
+  return { ...disciple, arts: { ...disciple.arts, [setId]: { styles } } };
+}
+
+/** 제자 초식 성 적립 (REQ-705) — 사부와 같은 사다리를 상한 10성으로 탄다. */
+export function accrueDiscipleStyle(disciple, setId, styleId, { mode = 'duel' } = {}) {
+  const art = disciple.arts[setId];
+  if (!art || !art.styles[styleId]) return { disciple, from: null, to: null, wall: false };
+  const result = accrueRank(art.styles[styleId], { mode, max: BALANCE.discipleRankMax });
+  const next = {
     ...disciple,
-    arts: { ...disciple.arts, [setId]: { rankPts: 0, styles } },
+    arts: {
+      ...disciple.arts,
+      [setId]: { ...art, styles: { ...art.styles, [styleId]: result.state } },
+    },
   };
+  return { disciple: next, from: result.from, to: result.to, wall: result.wall };
 }
 
 /**

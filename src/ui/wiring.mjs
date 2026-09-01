@@ -5,7 +5,7 @@
 
 import { responseWindowMs, styleById } from '../core.mjs';
 import {
-  equippedStyles, logEvent, logTimeout, recordDispatchVerdict, recordDuelVerdict,
+  beginTrainVisit, equippedStyles, logEvent, logTimeout, recordDispatchVerdict, recordDuelVerdict,
   recordEffectiveSuccess,
 } from './session.mjs';
 
@@ -28,11 +28,13 @@ export function composeHooks(wiring, overlay = {}) {
 }
 
 /**
- * 수련 배선 (REQ-302·308) — 창을 여는 지점과 완주 지점 둘뿐이라 `createMatch` hook 이 아니다.
+ * 수련 배선 (REQ-703·715) — 창을 여는 지점과 완주 지점 둘뿐이라 `createMatch` hook 이 아니다.
+ * 방문 계수는 배선을 만드는 그 자리에서 초기화한다 — 화면과 헤드리스가 같은 리듬을 쓴다.
  * @param {object} p.input 후보 필터 입력기
  */
 export function trainWiring(session, { styleId, input }) {
   const style = styleById(styleId);
+  beginTrainVisit(session, styleId);
   return {
     /** 창 길이는 열 때마다 다시 잰다 — 상시 노출된 접근성 토글이 그 시도부터 반영된다. */
     onArm() {

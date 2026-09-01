@@ -3,7 +3,7 @@
 
 import { BALANCE } from '../../balance.mjs';
 import { createDiscipleHand } from '../../bot.mjs';
-import { discipleRankOf, discipleStyles, finisherOf } from '../../core.mjs';
+import { discipleStyleRank, discipleStyles, finisherOf } from '../../core.mjs';
 import { attrMark, clear, el, hpBar } from '../dom.mjs';
 import { ATTR_VIEW, attrLabel, winAttrOf } from '../theme.mjs';
 import { SFX } from '../audio.mjs';
@@ -12,11 +12,12 @@ import { ART_ID, ART_NAME, DISPATCH_CHALLENGER } from '../session.mjs';
 import { hideVerdict, showGradeVerdict } from '../verdict-overlay.mjs';
 import { composeHooks, dispatchWiring, logDispatchStart } from '../wiring.mjs';
 
-const styleIcon = (style, extra = '') => el('div', {
+const styleIcon = (style, extra = '', rankTag = null) => el('div', {
   class: `cand${extra ? ` ${extra}` : ''}`, style: `--attr:${ATTR_VIEW[style.attr].color}`,
 }, [
   attrMark(style.attr),
   el('span', { class: 'cand-name', text: style.name }),
+  rankTag ? el('span', { class: 'tag', text: rankTag }) : null,
   // 지시 여부를 외곽선 색만으로 두면 색각 이상에서 구분되지 않는다.
   extra.includes('picked') ? el('span', { class: 'tag', text: '지시' }) : null,
 ]);
@@ -37,8 +38,9 @@ export function renderPreview(ctx) {
       el('b', { text: `절초 ${finisher.name} ${finisher.hanja}` }),
       el('span', { class: 'dim', text: ` · ${attrLabel(finisher.attr)} · ${finisher.len}수 · 이기는 색 ${attrLabel(winAttrOf(finisher.attr))}` }),
     ]),
-    el('h2', { text: `제자 — ${ART_NAME} ${discipleRankOf(session.disciple, ART_ID)}성` }),
-    el('div', { class: 'icons' }, styles.map((s) => styleIcon(s))),
+    el('h2', { text: `제자 — ${ART_NAME}` }),
+    el('div', { class: 'icons' }, styles.map((s) => styleIcon(s,
+      '', `${discipleStyleRank(session.disciple, ART_ID, s.id)}성`))),
     el('div', { class: 'actions' }, [
       el('button', { class: 'primary', text: '파견 보내기', onclick: () => ctx.go('dispatch') }),
       el('button', { class: 'small ghost', text: '도장으로', onclick: () => ctx.go('dojo') }),
@@ -50,7 +52,6 @@ export function startDispatch(ctx) {
   const { session, root } = ctx;
   const challenger = DISPATCH_CHALLENGER;
   const styles = discipleStyles(session.disciple, ART_ID);
-  const rankFrom = discipleRankOf(session.disciple, ART_ID);
   ctx.pad.detach();
   clear(root);
 
@@ -70,7 +71,7 @@ export function startDispatch(ctx) {
     telegraphEl,
     el('div', { class: 'arena-gap' }),
     el('div', { class: 'window' }, [windowFill]),
-    el('div', { class: 'head' }, [el('b', { text: '제자' }), el('span', { class: 'dim', text: `${ART_NAME} ${rankFrom}성` })]),
+    el('div', { class: 'head' }, [el('b', { text: '제자' }), el('span', { class: 'dim', text: ART_NAME })]),
     selfHpEl,
     iconsEl,
   ]));
@@ -107,7 +108,7 @@ export function startDispatch(ctx) {
   const match = createMatch({
     challenger,
     selfHpMax: BALANCE.hp.disciple,
-    rankOf: () => discipleRankOf(session.disciple, ART_ID),
+    rankOf: (style) => discipleStyleRank(session.disciple, ART_ID, style.id),
     openLen: () => Math.max(...styles.map((s) => s.seq.length)),
     accessibility: () => session.accessibility,
     hooks: composeHooks(dispatchWiring(session, { disciple, instructed: () => instructed }), {
@@ -144,13 +145,7 @@ export function startDispatch(ctx) {
         if (ranked) SFX.rank();
       },
       onEnd(view) {
-        ctx.go('result', {
-          kind: 'dispatch',
-          win: view.outcome.win,
-          rankFrom,
-          rankTo: discipleRankOf(session.disciple, ART_ID),
-          view,
-        });
+        ctx.go('result', { kind: 'dispatch', win: view.outcome.win, view });
       },
     }),
   });

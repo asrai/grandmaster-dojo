@@ -5,7 +5,7 @@
 일대종사 (一代宗師) / EN working title **Grandmaster Dojo** — 손으로 익힌 초식이 자동화되는 순간이 보상이다. 당신이 익힌 만큼 제자가 대신 싸운다. (Supercent AI Native Game PD take-home, deadline 2026-09-07 23:59 KST.)
 
 - Engine: HTML5 (vanilla JS, `index.html` + ESM modules under `src/`, zero dependencies, no build step) — see `docs/adr/` + vault `13. 일대종사/1. 구상/엔진 결정 (HTML5 vs Unity WebGL).md` for the ADR (Unity/Godot deliberately not adopted; re-decision triggers recorded there)
-- Genre: 아이들 아케이드 (하이브리드 캐주얼) — mastery-gated automation (숙련도 = 자동화 권한)
+- Genre: 아이들 아케이드 (하이브리드 캐주얼) — rank-gated automation (초식 단위 성(成) = 자동화 권한)
 - Platform: Web HTML5 first (web portals / PWA), Capacitor-wrapped mobile second
 - Core input: 후보 필터 시퀀스 (autocomplete-style prefix filtering; fire = single remaining candidate + full sequence); 6단 공방 판정 (완파/우세/상쇄/열세/역파/피격)
 

@@ -1,19 +1,19 @@
-// 후보 필터 시퀀스 입력기 (REQ-101~112). 4방향은 전부 `press()` 한 경로로 들어오고,
+// 후보 필터 시퀀스 입력기 (REQ-101~112·712·713). 4방향은 전부 `press()` 한 경로로 들어오고,
 // DOM 을 모르므로 화면 없이도 페이스를 재현할 수 있다.
 
-import { BALANCE } from '../balance.mjs';
+import { isOneTapRank } from '../core.mjs';
 
 /**
  * @param {object} p
  * @param {object[]} p.pool 이 창에서 낼 수 있는 초식 (실전 = 장착분, 수련 = 그 초식 하나)
- * @param {(style: object) => number} p.masteryOf 숙련 % — 후보 정렬과 원터치 자격의 입력
+ * @param {(style: object) => number} p.rankOf 그 초식의 성 — 후보 정렬과 원터치 자격의 입력 (REQ-712·713)
  * @param {number} p.hintDelayMs 잔여 화살표 점등 지연 (실전 0.5s · 수련 0)
  * @param {() => number} p.now 단조 클럭
  * @param {() => number} p.remainingRatio 발동 시점의 창 잔여 비율 `r`
  * @param {(event: string, fields: object) => void} p.log 통합 로그 싱크
  */
 export function createSequenceInput({
-  pool: initialPool, masteryOf, hintDelayMs, now, remainingRatio = () => 0, log,
+  pool: initialPool, rankOf, hintDelayMs, now, remainingRatio = () => 0, log,
 }) {
   let pool = initialPool;
   let buffer = [];
@@ -24,8 +24,8 @@ export function createSequenceInput({
   const keyOf = (dirs) => dirs.join('');
   const matching = (dirs) => pool
     .filter((s) => keyOf(s.seq).startsWith(keyOf(dirs)))
-    // 결정적 순서: 숙련 높은 순 → 동률이면 슬롯 순 (REQ-102).
-    .sort((a, b) => masteryOf(b) - masteryOf(a) || pool.indexOf(a) - pool.indexOf(b));
+    // 결정적 순서: 성 높은 순 → 동률이면 슬롯 순 (REQ-102).
+    .sort((a, b) => rankOf(b) - rankOf(a) || pool.indexOf(a) - pool.indexOf(b));
 
   let candidates = matching(buffer);
   const top = () => candidates[0] ?? null;
@@ -57,10 +57,10 @@ export function createSequenceInput({
       candidates = matching(buffer);
     },
 
-    /** 점등된 화살표 수 — 숙련 100% 는 원터치 권한이 있으므로 지연 없이 전부 보인다 (REQ-108). */
+    /** 점등된 화살표 수 — 원터치 성은 이미 손이 아는 초식이라 지연 없이 전부 보인다 (REQ-712). */
     revealed(style = top()) {
       if (!style) return 0;
-      if (masteryOf(style) >= BALANCE.masteryFullPct) return style.seq.length;
+      if (isOneTapRank(rankOf(style))) return style.seq.length;
       const lit = now() - hintFrom >= hintDelayMs ? buffer.length + 1 : buffer.length;
       return Math.min(lit, style.seq.length);
     },
@@ -99,10 +99,10 @@ export function createSequenceInput({
       log('reset', {});
     },
 
-    /** 원터치 (REQ-109) — 숙련 100% 초식만, 잔여 시퀀스를 생략하고 그 자리에서 발동한다. */
+    /** 원터치 (REQ-713) — 7성 초식만, 잔여 시퀀스를 생략하고 그 자리에서 발동한다. */
     tap(style) {
       if (locked) return null;
-      if (masteryOf(style) < BALANCE.masteryFullPct) return null;
+      if (!isOneTapRank(rankOf(style))) return null;
       if (!candidates.includes(style)) return null;
       return fire(style, true);
     },

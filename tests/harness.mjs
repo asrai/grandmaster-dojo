@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs';
 import {
   ART_SETS, BALANCE, BALANCE_REV, CHALLENGERS, DISCIPLE, FOE_STYLES, STYLES,
-  validateBalance,
+  validateBalance, valueDigest,
 } from '../src/balance.mjs';
 import { LOG_SCHEMA, TIME_FIELD, createLogBuffer, validate } from '../src/log.mjs';
 import {
@@ -13,22 +13,30 @@ import {
 import { createMatch, createVirtualTimer, pumpToEnd } from '../src/ui/match.mjs';
 import { createSequenceInput } from '../src/ui/sequence-input.mjs';
 import {
-  ART_ID, EXPORT_SCHEMA, accrueDiscipleRank, addCoins, consumeTooltip, createSession,
-  createTooltipState, equippedStyles, exportPayload, learnStyle, logEvent, pickTooltip,
-  recordEffectiveSuccess, settleDispatch, settleDuel, simulateTraining,
+  ART_ID, EXPORT_SCHEMA, accrueDiscipleRank, addCoins, autoEquip, canEquip, consumeTooltip,
+  createSession, createTooltipState, equippedStyles, exportPayload, isCheatFlagged, learnStyle,
+  logEvent, pickTooltip, recordDuelVerdict, recordEffectiveSuccess, setBotRunning, setCheatEnabled,
+  settleDispatch, settleDuel, simulateTraining, cheatSetStyleRank,
 } from '../src/ui/session.mjs';
 import {
   composeHooks, dispatchWiring, duelWiring, trainWiring,
 } from '../src/ui/wiring.mjs';
 import { GRADE_VIEW } from '../src/ui/theme.mjs';
-import { KILL, readout } from './kill-readout.mjs';
+import { BOT_UNREACHABLE, KILL, readout } from './kill-readout.mjs';
 import {
-  applyEffectiveSuccess, artById, artStyles, assertCounterIntegrity, assertPrefixFree, canLearn,
-  canTransmit, challengerById, createDisciple, createProgress, discipleRankOf, discipleStyles,
-  finisherOf, foeStyleById, initiativeOf, isEffectiveSuccess, isInitiated, judge, learn, masteryPct,
-  powerOf, ptsForRank, rankForPts, rankOf, rankPtsOf, resolveMatch, responseWindowMs,
-  selectDiscipleStyle, styleById, transmit,
+  accrueDiscipleStyle, accrueRank, applyEffectiveSuccess, artById, artStyles,
+  assertCounterIntegrity, assertPrefixFree, canEquipRank, canLearn, canTransmit, challengerById,
+  createDisciple, createProgress, createRankState, discipleStyleRank, discipleStyles, finisherOf,
+  foePowerOf, foeStyleById, initiativeOf, isEffectiveSuccess, isOneTapRank, judge, ladderBandAt,
+  learn, powerOf, promoteByOutcome, resolveMatch, responseWindowMs, selectDiscipleStyle,
+  setStyleRank, styleById, styleRank, trainHitsToNext, transmit,
 } from '../src/core.mjs';
+
+/** 성 축 재설계가 폐기한 BALANCE 키 (#64) — 잔존 참조 1개가 판정 수식을 조용히 오염시킨다. */
+const RETIRED_KEYS = [
+  'masteryTrainPct', 'masteryFullPct', 'threshold', 'rankPtsPerStyle',
+  'rankStep', 'rankStepMult', 'equipMasteryPct', 'challengerPower',
+];
 
 // --------------------------------------------------------------- 단정 도구
 
@@ -156,8 +164,6 @@ suite('데이터 무결성 (REQ-501·502·503·505)', () => {
     ok(String(s.name).length > 0 && String(s.hanja).length > 0, `${s.id} 이름·한자 비어있지 않음`);
     ok(String(s.gugyeol).length > 0, `${s.id} 구결 존재`);
     ok(Number.isInteger(s.d) && s.d > 0, `${s.id} D 가 정수`);
-    ok(BALANCE.threshold[s.id] > 0, `${s.id} threshold 는 양수 — 0 은 숙련 분모를 NaN 으로 만들어 입문을 영구 봉인한다`);
-    eq(BALANCE.rankPtsPerStyle[s.id], s.order, `${s.id} 성 포인트 = 초식 차수`);
   }
   deepEq(STYLES.map((s) => [s.attr, s.seq.join('')]), [
     ['fast', 'DRU'], ['hard', 'DLR'], ['fine', 'DURL'], ['fast', 'DDRLU'],
@@ -181,7 +187,7 @@ suite('데이터 무결성 (REQ-501·502·503·505)', () => {
   ], '도전자 A 1·2·3차 + B 구성');
   for (const c of CHALLENGERS) {
     ok(BALANCE.hp[c.id] !== undefined, `${c.id} HP 시드 존재`);
-    ok(BALANCE.challengerPower[c.group] !== undefined, `${c.group} 내공 시드 존재`);
+    ok(Number.isInteger(BALANCE.challengerRank[c.id]), `${c.id} 성 시드 존재 (REQ-722)`);
     for (const sid of c.styles) ok(foeStyleById(sid), `${c.id} 의 초식 ${sid} 가 테이블에 존재`);
   }
   for (const c of CHALLENGERS) {
@@ -194,7 +200,7 @@ suite('데이터 무결성 (REQ-501·502·503·505)', () => {
 
   eq(ART_SETS.length, 1, '무공 테이블 1종');
   deepEq(artById('yuun-geom').styles, STYLES.map((s) => s.id), '무공이 4식을 모두 보유');
-  eq(artById('yuun-geom').transmitRank, BALANCE.rankMax, '전수 조건 = 성 상한');
+  eq(artById('yuun-geom').transmitRank, BALANCE.rankMax, '전수 조건 = 전 초식 성 상한');
   eq(DISCIPLE.level, 1, '제자 레벨 1');
   eq(DISCIPLE.artSlots, 1, '제자 무공 슬롯 1');
 });
@@ -211,35 +217,42 @@ suite('통합 로그 스키마 (REQ-601)', () => {
     fire: ['styleId', 'len', 'oneTap', 'r'],
     timeout: ['styleTop', 'buffer_len'],
     verdict: ['grade', 'dmg_out', 'dmg_in', 'state', 'who'],
-    mastery: ['styleId', 'from', 'to'],
-    rank: ['style_set', 'from', 'to', 'pts'],
-    unlock: ['styleId'],
-    initiate: ['style_set'],
+    rank: ['actor', 'style', 'from', 'to', 'via'],
+    rank_wall: ['actor', 'style', 'at_rank', 'attempted'],
+    unlock: ['style', 'prev_style_rank'],
+    finish: ['style', 'challenger', 'intended'],
     slot: ['action', 'styleId'],
     transmit: ['style_set'],
     dispatch: ['challenger'],
     select: ['styleId', 'byUser'],
     coins: ['delta', 'reason'],
     cycle: ['phase'],
+    cheat: ['action', 'session_flagged'],
     session: ['tester_role', 'device'],
   };
-  eq(Object.keys(LOG_SCHEMA).length, 18, '이벤트 18종');
+  eq(Object.keys(LOG_SCHEMA).length, 19, '이벤트 19종');
   deepEq(Object.keys(LOG_SCHEMA), Object.keys(EXPECTED), '이벤트 이름·순서');
   for (const [event, fields] of Object.entries(EXPECTED)) {
     deepEq(LOG_SCHEMA[event].fields, fields, `${event} 필드`);
   }
   deepEq(LOG_SCHEMA.key.enums.device, ['keyboard', 'button'], 'key.device 열거');
   deepEq(LOG_SCHEMA.session.enums.tester_role, ['self', 'friend', 'bot'], 'session.tester_role 열거');
+  // 뜻이 바뀐 이벤트만 판별 토큰을 단다 — 신설 이벤트는 구 스키마가 없어 `sv` 가 필요 없다 (REQ-791).
+  deepEq(Object.entries(LOG_SCHEMA).filter(([, v]) => v.sv).map(([k]) => k), ['rank', 'unlock'],
+    'sv: 2 를 다는 이벤트는 rank·unlock 둘');
+  for (const gone of ['mastery', 'initiate']) ok(!(gone in LOG_SCHEMA), `${gone} 는 개념과 함께 소멸했다`);
 
   let clock = 100;
   const buf = createLogBuffer({ now: () => clock });
   clock = 350;
   const entry = buf.log('narrow', { styleId: 'yuun-bo' });
   eq(entry[TIME_FIELD], 250, `전 이벤트 공통 ${TIME_FIELD}`);
+  eq(entry.sv, undefined, '뜻이 바뀌지 않은 이벤트에는 판별 토큰이 붙지 않는다');
+  eq(buf.log('unlock', { style: 'jeok-un', prev_style_rank: 5 }).sv, 2, '적재 시점에 sv 가 붙는다');
   buf.log('reset');
-  eq(buf.entries.length, 2, '버퍼 적재');
-  eq(JSON.parse(buf.serialize()).length, 2, 'JSON 내보내기');
-  eq(JSON.parse(JSON.stringify(buf.entries)).length, 2, '버퍼를 통째로 직렬화해도 이중 인코딩되지 않는다');
+  eq(buf.entries.length, 3, '버퍼 적재');
+  eq(JSON.parse(buf.serialize()).length, 3, 'JSON 내보내기');
+  eq(JSON.parse(JSON.stringify(buf.entries)).length, 3, '버퍼를 통째로 직렬화해도 이중 인코딩되지 않는다');
   const loose = createLogBuffer({ now: () => 0, strict: false });
   loose.log('narrow', {});
   eq(loose.entries.length, 1, '비엄격 버퍼는 위반에도 적재를 잇는다');
@@ -287,7 +300,7 @@ suite('케이스 5 — 6단 판정 전 조합 (REQ-202·203·204·205)', () => {
       for (const foeOpen of [false, true]) {
         for (const r of rs) {
           for (const rank of ranks) {
-            for (const foePower of Object.values(BALANCE.challengerPower)) {
+            for (const foePower of CHALLENGERS.map((c) => foePowerOf(c.id))) {
               const expected = expectedVerdict({ self, foe, foeOpen, rank, r, foePower });
               const actual = judge({ selfStyle: self, foeStyle: foe, selfRank: rank, foePower, r, foeOpen });
               deepEq(actual, expected,
@@ -301,7 +314,8 @@ suite('케이스 5 — 6단 판정 전 조합 (REQ-202·203·204·205)', () => {
       }
     }
   }
-  eq(combos, selfOptions.length * FOE_STYLES.length * 2 * rs.length * ranks.length * 2, '전 조합 수');
+  eq(combos, selfOptions.length * FOE_STYLES.length * 2 * rs.length * ranks.length * CHALLENGERS.length,
+    '전 조합 수');
   deepEq([...seenGrades].sort(), Object.keys(BALANCE.grades).sort(), '6단 전 등급이 조합에 등장');
 
   // 파해가 삼각보다 우선한다 — 유운보(쾌)는 α(강)에 우세이기도 하지만 파해라 완파다.
@@ -368,176 +382,320 @@ suite('피해 정수 골든값 (REQ-203)', () => {
   for (const [name, input, expected] of golden) deepEq(judge(input), expected, `골든 ${name}`);
 });
 
-// ---------------------------- 6. 케이스 6 — 최소 경로 45pt (REQ-301·302·303·304)
-
-suite('성 계단 (REQ-304)', () => {
-  eq(rankForPts(0), 1, '0pt = 1성');
-  eq(rankForPts(ptsForRank(10)), 10, '10성 도달');
-  eq(ptsForRank(10), BALANCE.rankStep * 9, '10성 = 2~10성 9계단');
-  eq(ptsForRank(11), ptsForRank(10) + BALANCE.rankStep * BALANCE.rankStepMult[11], '11성 = 10성 + 2배 계단');
-  eq(ptsForRank(12), ptsForRank(11) + BALANCE.rankStep * BALANCE.rankStepMult[12], '12성 = 11성 + 4배 계단');
-  eq(ptsForRank(12), 30, '12성 총 30pt');
-  eq(rankForPts(ptsForRank(12) - 1), 11, '1pt 모자라면 아직 11성');
-  eq(rankForPts(ptsForRank(12)), 12, '30pt = 12성');
-  eq(rankForPts(999), BALANCE.rankMax, '성은 상한에서 멈춘다');
-  eq(rankForPts(999, { max: BALANCE.discipleRankMax }), BALANCE.discipleRankMax, '제자 성 상한 10');
-  eq(rankForPts(0, { max: BALANCE.discipleRankMax }), BALANCE.discipleStartRank, '제자 시작 성 1');
-});
+// ---------------------------------- 6. 성 계단 사다리 (REQ-702·704) — 적립 3단 + 사건 계단
 
 const ART = ART_SETS[0].id;
 const DUEL_A_STAGES = CHALLENGERS.filter((c) => c.mode === 'duel').length;
+const LADDER = BALANCE.rankLadder;
+const [LOW, HIGH] = LADDER.bands;
 
-/**
- * 최소 경로 (REQ-302·304·310) — 전 초식을 숙련 100% 로 만드는 Phase 1 과, 성 게이지가 열린 뒤
- * 성 포인트가 가장 큰 초식만으로 12성을 채우는 Phase 2. 경계가 곧 입문 지점이다.
- */
-const minPath = (() => {
-  let progress = createProgress();
-  const events = [];
-  const record = (styleId, mode) => {
-    const res = applyEffectiveSuccess(progress, styleId, { mode });
-    progress = res.progress;
-    events.push({ styleId, mode, changes: res.changes });
+/** 한 초식만 목표 성으로 세운 진행도 — 계단마다의 국면을 직접 만든다. */
+const masterAt = (rank, styleId = 'yuun-bo') => setStyleRank(createProgress(), styleId, rank);
+
+const accrue = (state, mode, opts = {}) => accrueRank(state, { mode, ...opts });
+
+suite('성 계단 사다리 (REQ-702)', () => {
+  deepEq(ladderBandAt(1), LOW, '1성은 수련 가능 구간');
+  deepEq(ladderBandAt(LOW.maxRank - 1), LOW, `${LOW.maxRank - 1}성까지 수련 가능 구간`);
+  deepEq(ladderBandAt(LOW.maxRank), HIGH, `${LOW.maxRank}성부터 대련 전용 구간`);
+  deepEq(ladderBandAt(HIGH.maxRank), null, `${HIGH.maxRank}성 위는 적립 구간이 없다`);
+  eq(ladderBandAt(BALANCE.rankMax), null, '상한에는 다음 계단이 없다');
+
+  // 시드의 뜻: 수련 3회 = 1성 · 대련 유효 성공 1회 = 1성 (1~7 구간).
+  eq(Math.ceil(LOW.cost / LADDER.gain.train), 3, '1~7 구간 수련 3회 = 1성');
+  eq(Math.ceil(LOW.cost / LADDER.gain.duel), 1, '1~7 구간 대련 유효 성공 1회 = 1성');
+  eq(Math.ceil(HIGH.cost / LADDER.gain.duel), 2, '8~10 구간 대련 유효 성공 2회 = 1성');
+
+  eq(trainHitsToNext({ rank: 1, pts: 0 }), 3, '1성에서 다음 계단까지 수련 3회');
+  eq(trainHitsToNext({ rank: 1, pts: LADDER.gain.train }), 2, '한 번 채우면 2회 남는다');
+  eq(trainHitsToNext({ rank: LOW.maxRank, pts: 0 }), null, '수련 무효 구간에는 남은 횟수가 없다');
+
+  throws(() => accrue(createRankState(), 'nope'), '알 수 없는 적립 모드는 throw', '알 수 없는 적립 모드');
+});
+
+suite('케이스 1 — 적립 3단 (REQ-702·703·706)', () => {
+  // (a) 1~7 구간: 수련 3회 = 1성.
+  let state = createRankState();
+  for (let i = 0; i < 3; i += 1) state = accrue(state, 'train').state;
+  eq(state.rank, 2, '수련 3회 = 1성');
+  eq(state.pts, 0, '계단을 넘고 남은 적립은 0');
+
+  // (b) 1~7 구간: 대련 유효 성공 1회 = 1성.
+  const one = accrue(createRankState(), 'duel');
+  eq(one.to, 2, '대련 유효 성공 1회 = 1성');
+  eq(one.wall, false, '그 구간에는 벽이 없다');
+
+  // (c) 넘친 적립은 이월한다 — 쌓아 둔 수련이 대련 한 번에 사라지지 않는다.
+  const mixed = accrue(accrue(accrue(createRankState(), 'train').state, 'train').state, 'duel');
+  eq(mixed.to, 2, '수련 2 + 대련 1 도 한 계단');
+  eq(mixed.state.pts, LADDER.gain.train * 2, '넘친 2 는 다음 계단으로 이월');
+
+  // (d) 8~10 구간: 수련 적립 0 + 벽.
+  const walled = accrue({ rank: LOW.maxRank, pts: 0 }, 'train');
+  eq(walled.to, LOW.maxRank, `${LOW.maxRank}성 수련은 적립 0`);
+  eq(walled.wall, true, '8성 벽이 발화한다');
+  eq(walled.state.pts, 0, '벽에 막힌 수련은 포인트도 남기지 않는다');
+
+  // (e) 8~10 구간: 대련 2회 = 1성.
+  const first = accrue({ rank: LOW.maxRank, pts: 0 }, 'duel');
+  eq(first.to, LOW.maxRank, '그 구간 첫 유효 성공은 계단을 넘지 못한다');
+  eq(accrue(first.state, 'duel').to, LOW.maxRank + 1, '두 번째에 1성');
+
+  // (f) 적립 상한 — 10성 위는 점수로 오르지 않는다.
+  const capped = accrue({ rank: HIGH.maxRank, pts: 0 }, 'duel');
+  eq(capped.to, HIGH.maxRank, `${HIGH.maxRank}성 위는 적립이 닿지 않는다`);
+  eq(capped.wall, false, '적립 상한은 수련 벽이 아니다');
+
+  // (g) 세션 경로도 같은 규칙 — `rank_wall` 이 실제로 로그에 남는다.
+  const session = createSession();
+  session.progress = masterAt(LOW.maxRank);
+  const changes = recordEffectiveSuccess(session, 'yuun-bo', 'train');
+  eq(changes.rank, undefined, '벽에서는 성 전이가 없다');
+  deepEq(changes.wall, { style: 'yuun-bo', at_rank: LOW.maxRank, attempted: 'train' }, '벽 변화분');
+  const wall = session.log.entries.find((e) => e.event === 'rank_wall');
+  deepEq({ actor: wall.actor, style: wall.style, at_rank: wall.at_rank, attempted: wall.attempted },
+    { actor: 'master', style: 'yuun-bo', at_rank: LOW.maxRank, attempted: 'train' }, 'rank_wall 로그');
+
+  throws(() => applyEffectiveSuccess(createProgress(), 'jeok-un', { mode: 'duel' }),
+    '미학습 초식 적립은 throw', '학습하지 않은 초식');
+  throws(() => learn(createProgress(), 'haeng-un'), '순차 해금 밖 초식 학습은 throw', '해금되지 않은 초식');
+});
+
+suite('케이스 2 — 11·12성 계단 (REQ-704)', () => {
+  const at = (rank, outcome) => promoteByOutcome({ rank, pts: 0 }, outcome);
+
+  eq(at(LADDER.finishRank - 2, { finish: true }).to, LADDER.finishRank - 2, '9성 결정타는 성 불변 (비소급)');
+  eq(at(LADDER.finishRank - 1, { finish: true }).to, LADDER.finishRank, '10성 결정타 → 11성');
+  eq(at(LADDER.finishRank - 1, { finish: true }).via, 'finish', '전이 사유는 결정타');
+  // 한 수 최대 1계단 — 완파 결정타도 11성까지다.
+  eq(at(LADDER.finishRank - 1, { finish: true, crush: true }).to, LADDER.finishRank, '10성 완파 결정타 → 11성');
+  eq(at(LADDER.finishRank, { crush: true }).to, LADDER.crushRank, '11성 완파 → 12성');
+  eq(at(LADDER.finishRank, { crush: true }).via, 'crush', '전이 사유는 완파');
+  eq(at(LADDER.finishRank, { finish: true }).to, LADDER.finishRank, '11성 결정타(비완파)는 성 불변');
+  eq(at(LADDER.crushRank, { crush: true, finish: true }).to, LADDER.crushRank, '12성 위는 없다');
+  eq(at(LADDER.finishRank - 1, { finish: true, max: BALANCE.discipleRankMax }).to, LADDER.finishRank - 1,
+    '상한 10 의 주체는 11성 계단에 오르지 못한다 (REQ-705)');
+
+  // 세션 경로 — 결정타 판정이 `judge` 가 아니라 그 수의 승패에서 온다.
+  const session = createSession();
+  session.progress = masterAt(LADDER.finishRank - 1);
+  const changes = recordDuelVerdict(session, {
+    verdict: { grade: 'advantage', dmgOut: 9, dmgIn: 0, opening: null },
+    fire: { style: styleById('yuun-bo') },
+    challenger: challengerById('A-1'),
+    outcome: { over: true, win: true, by: 'hp' },
+  });
+  eq(changes.rank.to, LADDER.finishRank, '승리를 확정한 타격이 11성을 연다');
+  eq(changes.rank.via, 'finish', 'via 는 결정타');
+  const finish = session.log.entries.find((e) => e.event === 'finish');
+  deepEq({ style: finish.style, challenger: finish.challenger, intended: finish.intended },
+    { style: 'yuun-bo', challenger: 'A-1', intended: true }, 'finish 로그 (REQ-708)');
+
+  /**
+   * 적립과 계단이 같은 수의 *같은* 성을 보는지 — 이 자리가 「한 수 최대 1계단」의 실제 파손점이다.
+   * 계단을 적립보다 뒤에 두면 적립이 만든 성을 계단이 다시 보고 두 계단이 오른다.
+   */
+  const partial = (rank, pts, grade) => {
+    const s = createSession();
+    const base = setStyleRank(createProgress(), 'yuun-bo', rank);
+    s.progress = { ...base, styles: { ...base.styles, 'yuun-bo': { ...base.styles['yuun-bo'], pts } } };
+    recordDuelVerdict(s, {
+      verdict: { grade, dmgOut: 9, dmgIn: 0, opening: null },
+      fire: { style: styleById('yuun-bo') },
+      challenger: challengerById('A-1'),
+      outcome: { over: true, win: true, by: 'hp' },
+    });
+    return { rank: styleRank(s.progress, 'yuun-bo'), steps: s.log.entries.filter((e) => e.event === 'rank') };
   };
-  for (const style of artStyles(ART)) {
-    if (!progress.styles[style.id].learned) progress = learn(progress, style.id);
-    for (let i = 0; i < BALANCE.trainGraduateHits; i += 1) record(style.id, 'train');
-    for (let i = 0; i < BALANCE.threshold[style.id]; i += 1) record(style.id, 'duel');
+  // 수 상한 판정승은 결정타가 아니다 — 그 수가 승리를 확정한 것이 아니라 시계가 끝난 것이다.
+  const byExchanges = createSession();
+  byExchanges.progress = setStyleRank(createProgress(), 'yuun-bo', LADDER.finishRank - 1);
+  recordDuelVerdict(byExchanges, {
+    verdict: { grade: 'advantage', dmgOut: 9, dmgIn: 0, opening: null },
+    fire: { style: styleById('yuun-bo') },
+    challenger: challengerById('A-1'),
+    outcome: { over: true, win: true, by: 'exchanges' },
+  });
+  eq(styleRank(byExchanges.progress, 'yuun-bo'), LADDER.finishRank - 1, '수 상한 판정승은 11성을 열지 않는다');
+  eq(byExchanges.log.entries.some((e) => e.event === 'finish'), false, 'finish 로그도 남지 않는다');
+
+  const carried = partial(HIGH.maxRank - 1, HIGH.cost - LADDER.gain.duel, 'advantage');
+  eq(carried.rank, HIGH.maxRank, `${HIGH.maxRank - 1}성에 적립이 반쯤 찬 채 낸 결정타도 ${HIGH.maxRank}성에서 멈춘다`);
+  eq(carried.steps.length, 1, '그 수의 성 전이는 1건뿐');
+  eq(partial(LADDER.finishRank, 0, 'crush').rank, LADDER.crushRank, '11성 완파 결정타는 12성까지');
+  eq(partial(LADDER.finishRank - 1, 0, 'crush').steps.length, 1, '10성 완파 결정타도 전이 1건');
+});
+
+suite('케이스 4 — 해금 · 장착 · 원터치 계단 (REQ-711~713)', () => {
+  const gate = BALANCE.rankGate;
+  eq(gate.equip < gate.unlock && gate.unlock < gate.oneTap, true, '장착 < 해금 < 원터치');
+
+  // 해금은 5성이고 7성이 아니다 — 그 분리가 「배울까 마저 밀까」를 만든다.
+  for (let rank = 1; rank <= BALANCE.rankMax; rank += 1) {
+    eq(canLearn(masterAt(rank), 'jeok-un'), rank >= gate.unlock, `1식 ${rank}성 → 2식 학습 ${rank >= gate.unlock}`);
+    eq(canEquipRank(rank), rank >= gate.equip, `${rank}성 장착 ${rank >= gate.equip}`);
+    eq(isOneTapRank(rank), rank >= gate.oneTap, `${rank}성 원터치 ${rank >= gate.oneTap}`);
   }
-  const phase1 = events.length;
-  const richest = artStyles(ART).slice()
-    .sort((a, b) => BALANCE.rankPtsPerStyle[b.id] - BALANCE.rankPtsPerStyle[a.id])[0];
-  while (rankOf(progress, ART) < BALANCE.rankMax) record(richest.id, 'duel');
-  return { progress, events, phase1, richest };
+  eq(canLearn(masterAt(gate.oneTap - 1), 'jeok-un'), true, '해금은 원터치 성을 기다리지 않는다');
+
+  // 세션 게이트 — 장착 자격과 빈 슬롯 자동 채움이 같은 계단을 읽는다.
+  const session = createSession();
+  eq(canEquip(session, 'yuun-bo'), false, '1성은 장착 불가');
+  session.progress = masterAt(gate.equip);
+  eq(canEquip(session, 'yuun-bo'), true, `${gate.equip}성부터 장착 가능`);
+  autoEquip(session);
+  eq(session.slots.includes('yuun-bo'), true, '빈 슬롯은 자동으로 채워진다 (REQ-714)');
+
+  // 자리 양보 폐지 — 슬롯이 차면 자동 교체가 일어나지 않는다.
+  const full = createSession();
+  full.progress = masterAt(BALANCE.rankMax, 'yuun-bo');
+  for (const style of artStyles(ART)) full.progress = setStyleRank(full.progress, style.id, BALANCE.rankMax);
+  autoEquip(full);
+  deepEq(full.slots, artStyles(ART).slice(0, BALANCE.slots).map((st) => st.id), '슬롯 수만큼만 채운다');
+  autoEquip(full);
+  deepEq(full.slots, artStyles(ART).slice(0, BALANCE.slots).map((st) => st.id), '재호출도 자리를 빼앗지 않는다');
+
+  // 순차 해금 로그 — 발화점이 5성이고 그 시점 성이 함께 실린다.
+  const unlocking = createSession();
+  unlocking.progress = masterAt(gate.unlock - 1);
+  const changes = recordEffectiveSuccess(unlocking, 'yuun-bo', 'duel');
+  deepEq(changes.unlock, { style: 'jeok-un', prev_style_rank: gate.unlock }, 'unlock 변화분 (REQ-711)');
+  const unlock = unlocking.log.entries.find((e) => e.event === 'unlock');
+  eq(unlock.sv, 2, 'unlock 은 뜻이 바뀐 이벤트라 sv 2 를 단다');
+});
+
+// ---------------------------------- 6-a. 케이스 14 — 개발자 치트 (REQ-781~783)
+
+suite('케이스 14 — 개발자 치트 (REQ-781~783)', () => {
+  const session = createSession();
+  eq(session.cheat.enabled, false, '기본은 숨김 — 명시 토글만이 연다 (REQ-781)');
+  eq(cheatSetStyleRank(session, 'yuun-bo', 5), false, '꺼져 있으면 주입 자체가 없던 일이다');
+  eq(styleRank(session.progress, 'yuun-bo'), 1, '상태도 그대로');
+  eq(isCheatFlagged(session), false, '플래그도 켜지지 않는다');
+
+  setCheatEnabled(session, true);
+  eq(cheatSetStyleRank(session, 'yuun-bo', BALANCE.rankMax), true, '켠 뒤 주입 성공');
+  eq(styleRank(session.progress, 'yuun-bo'), BALANCE.rankMax, '성이 계단을 건너뛰고 주입된다');
+  const cheat = session.log.entries.find((e) => e.event === 'cheat');
+  deepEq({ action: cheat.action, session_flagged: cheat.session_flagged },
+    { action: `rank:yuun-bo=${BALANCE.rankMax}`, session_flagged: true }, 'cheat 로그 (REQ-782)');
+  eq(isCheatFlagged(session), true, '세션 플래그는 지워지지 않는다');
+  eq(exportPayload(session).cheat_flagged, true, '내보내기가 플래그를 실어 판독기가 표본을 뺄 수 있다');
+
+  // 범위 밖 주입은 화면 핸들러 밖으로 새는 throw 가 아니라 거절이다.
+  for (const bad of [0, -1, BALANCE.rankMax + 1, 1.5, Number.NaN]) {
+    eq(cheatSetStyleRank(session, 'jeok-un', bad), false, `${bad} 주입은 거절된다`);
+  }
+  eq(styleRank(session.progress, 'jeok-un'), 1, '거절된 주입은 상태를 건드리지 않는다');
+
+  // 봇 구동 중 강제 off (REQ-783) — 페이스 표본에 주입이 섞이면 그 회차가 무엇을 잰 것인지 알 수 없다.
+  setBotRunning(session, true);
+  eq(session.cheat.enabled, false, '봇이 돌기 시작하면 그 자리에서 닫힌다');
+  eq(setCheatEnabled(session, true), false, '봇이 도는 동안에는 열리지 않는다');
+  eq(cheatSetStyleRank(session, 'jeok-un', 5), false, '따라서 주입도 불가');
+  setBotRunning(session, false);
+  eq(setCheatEnabled(session, true), true, '봇이 멈추면 다시 열 수 있다');
+
+  // 봉투를 벗겨 낸 배열도 제외된다 — 플래그만 보면 `entries` 만 남기는 것이 세탁 경로가 된다 (REQ-782).
+  const flagged = exportPayload(session);
+  ok(flagged.entries.some((e) => e.event === 'cheat'), '봉투를 벗겨도 cheat 이벤트는 로그에 남는다');
+
+  // 헤드리스 사이클도 같은 계약을 진다 — 봇 축의 유일한 진입점이 이 플래그를 세운다.
+  const botRun = runHeadlessCycle({ random: createSeededRandom(20260902) });
+  eq(isCheatFlagged(botRun.session), false, '봇 사이클은 치트 없이 완주한다');
+  eq(botRun.session.botRunning, false, '사이클이 끝나면 구동 표식이 내려간다');
+});
+
+// ------------------------------------------- 6-b. 케이스 3 — 제자 동형 (REQ-705)
+
+/** 전 초식 12성 사부 — 전수 조건을 만족시키는 최소 상태다. */
+const masteredProgress = (() => {
+  let progress = createProgress();
+  for (const style of artStyles(ART)) progress = setStyleRank(progress, style.id, BALANCE.rankMax);
+  return progress;
 })();
 
-suite('케이스 6 — 최소 경로 재현 (REQ-302·304·310)', () => {
-  const { progress, events, phase1, richest } = minPath;
-  const counted = (mode, upto) => events.slice(0, upto).filter((e) => e.mode === mode).length;
-
-  eq(counted('train', phase1), artStyles(ART).length * BALANCE.trainGraduateHits, 'Phase 1 수련 유효 성공 8회');
-  eq(counted('duel', phase1), artStyles(ART).reduce((n, st) => n + BALANCE.threshold[st.id], 0),
-    'Phase 1 실전 유효 성공 8회');
-  for (const style of artStyles(ART)) {
-    eq(masteryPct(progress, style.id), BALANCE.masteryFullPct, `${style.name} 숙련 100%`);
-  }
-
-  // Phase 1 은 성 축에 아무것도 남기지 않는다 — 이것이 D1 게이트의 관찰 가능한 형태다.
-  const atPhase1 = events[phase1 - 1];
-  eq(events.slice(0, phase1 - 1).every((e) => !e.changes.rank), true, 'Phase 1 내내 성 전이 0회');
-  eq(atPhase1.changes.initiate?.style_set, ART, '마지막 100% 달성 수가 입문을 낸다');
-  eq(events.filter((e) => e.changes.initiate).length, 1, '입문 전이는 1회뿐');
-  eq(atPhase1.changes.rank, undefined, '입문 그 수는 적립하지 않는다');
-
-  const opened = events[phase1];
-  eq(opened.changes.rank?.pts, BALANCE.rankPtsPerStyle[richest.id], '개방 직후 첫 발동이 초식 차수만큼 적립');
-  eq(rankOf(progress, ART), BALANCE.rankMax, '12성 도달');
-  eq(rankPtsOf(progress, ART), ptsForRank(BALANCE.rankMax) + (BALANCE.rankPtsPerStyle[richest.id]
-    - (ptsForRank(BALANCE.rankMax) % BALANCE.rankPtsPerStyle[richest.id] || BALANCE.rankPtsPerStyle[richest.id])),
-    '12성 시점 누적 포인트는 4pt 계단의 첫 30 이상 지점');
-  eq(counted('duel', events.length) - counted('duel', phase1),
-    Math.ceil(ptsForRank(BALANCE.rankMax) / BALANCE.rankPtsPerStyle[richest.id]),
-    'Phase 2 는 4식 8회 = 최소 실전 횟수');
-
-  const twelveAt = events.filter((e) => e.changes.rank?.to === BALANCE.rankMax);
-  eq(twelveAt.length, 1, '12성 전이는 1회뿐');
-  deepEq(events.filter((e) => e.changes.unlock).map((e) => e.changes.unlock.styleId),
-    ['jeok-un', 'haeng-un', 'pa-un'], '순차 해금 (REQ-303)');
-
-  // 수련 졸업분 + 실전분이 100% 를 이룬다 — 졸업 숙련이 곧 장착 조건이다.
-  const grad = events.find((e) => e.styleId === 'yuun-bo' && e.mode === 'train'
-    && e.changes.mastery?.to === BALANCE.masteryTrainPct);
-  ok(grad, '수련 졸업 = 숙련 30%');
-  eq(BALANCE.masteryTrainPct, BALANCE.equipMasteryPct, '졸업 숙련 = 장착 조건');
-
-  throws(() => learn(createProgress(), 'haeng-un'), '순차 해금 밖 초식 학습은 throw', '해금되지 않은 초식');
-  throws(() => applyEffectiveSuccess(createProgress(), 'yuun-bo', { mode: 'nope' }), '알 수 없는 적립 모드는 throw', '알 수 없는 적립 모드');
-  throws(() => applyEffectiveSuccess(createProgress(), 'jeok-un', { mode: 'duel' }), '미학습 초식 적립은 throw', '학습하지 않은 초식');
-});
-
-// ------------------------- 6-a. 성 포인트 적립 게이트 (REQ-310) — 미달 · 개방 · 12성 조건
-
-suite('성 포인트 적립 게이트 (REQ-304·310)', () => {
-  // (a) 게이트 회귀 — 입문 전에는 몇 번을 발동해도 성 축이 움직이지 않는다.
-  let held = createProgress();
-  eq(isInitiated(held, ART), false, '1식만 학습한 상태는 입문 미달');
-  for (let i = 0; i < 20; i += 1) {
-    held = applyEffectiveSuccess(held, 'yuun-bo', { mode: i % 2 ? 'duel' : 'train' }).progress;
-  }
-  eq(held.arts[ART].rankPts, 0, '미달 상태 발동 20회 후 rankPts 0');
-  eq(rankPtsOf(held, ART), 0, '미달 상태의 노출 포인트도 0');
-  eq(rankOf(held, ART), 1, '성은 1 에 머문다');
-  eq(masteryPct(held, 'yuun-bo'), BALANCE.masteryFullPct, '숙련은 그 구간에도 오른다');
-
-  // (b) 개방 회귀 — 입문 직후 1회 발동이 초식 차수만큼 정확히 적립한다.
-  const initiated = minPath.events.slice(0, minPath.phase1);
-  let opened = createProgress();
-  for (const e of initiated) {
-    if (!opened.styles[e.styleId].learned) opened = learn(opened, e.styleId);
-    opened = applyEffectiveSuccess(opened, e.styleId, { mode: e.mode }).progress;
-  }
-  eq(isInitiated(opened, ART), true, '전 초식 100% = 입문 완료');
-  eq(rankPtsOf(opened, ART), 0, '개방 시점 누적은 0');
-  const first = applyEffectiveSuccess(opened, 'jeok-un', { mode: 'duel' });
-  eq(rankPtsOf(first.progress, ART), BALANCE.rankPtsPerStyle['jeok-un'], '개방 직후 1회 = 2식 차수 2pt');
-  eq(first.changes.initiate, undefined, '입문은 다시 나지 않는다');
-
-  // (c) 12성 조건 — 포인트가 차 있어도 입문 미달이면 성이 열리지 않는다.
-  const forged = { ...held, arts: { ...held.arts, [ART]: { rankPts: ptsForRank(BALANCE.rankMax) } } };
-  eq(rankForPts(forged.arts[ART].rankPts), BALANCE.rankMax, '포인트 자체는 12성 계단을 넘는다');
-  eq(isInitiated(forged, ART), false, '그래도 입문은 미달');
-  eq(rankOf(forged, ART), 1, '입문 미달이면 12성 불가');
-  eq(canTransmit(forged, ART, createDisciple()), false, '전수 자격도 열리지 않는다');
-
-  // 두 겹(적립 차단 · 조회 차단)을 잇는 결합 불변식 — raw 필드를 직접 읽는 경로가 생겨도 red 가 된다.
-  let raw = createProgress();
-  for (let i = 0; i < 6; i += 1) {
-    const step = applyEffectiveSuccess(raw, 'yuun-bo', { mode: 'duel' });
-    raw = step.progress;
-    eq(isInitiated(raw, ART) || raw.arts[ART].rankPts > 0, false, '입문 전에는 raw rankPts 도 0');
-  }
-});
-
-// ------------------------------ 6-b. 제자는 게이트 예외 (REQ-401·310) — 수용 기준 ④
-
-suite('제자 적립은 게이트를 타지 않는다 (REQ-401·310)', () => {
+suite('케이스 3 — 제자는 사부와 동형 (REQ-705)', () => {
   const session = createSession();
-  session.disciple = transmit(minPath.progress, createDisciple(), ART);
-  // 사부 쪽을 입문 미달로 두어, 제자 적립이 사부의 입문 여부와 무관함을 같은 세션에서 본다.
-  session.progress = createProgress();
-  eq(isInitiated(session.progress, ART), false, '사부는 입문 미달 상태');
-
+  session.disciple = transmit(masteredProgress, createDisciple(), ART);
   deepEq(discipleStyles(session.disciple, ART).map((st) => st.id), artById(ART).styles,
     '제자는 전수 직후 무공의 전 초식을 보유한다');
-  eq(discipleRankOf(session.disciple, ART), BALANCE.discipleStartRank, '제자는 1성에서 시작');
-  accrueDiscipleRank(session, 'pa-un');
-  eq(session.disciple.arts[ART].rankPts, BALANCE.rankPtsPerStyle['pa-un'],
-    '제자는 복사 시점부터 게이트 없이 즉시 적립');
+  for (const style of artStyles(ART)) {
+    eq(discipleStyleRank(session.disciple, ART, style.id), BALANCE.discipleStartRank,
+      `제자 ${style.name} 은 ${BALANCE.discipleStartRank}성에서 시작`);
+  }
+
+  // 파견 유효 성공만으로 상한까지 — 같은 사다리를 타되 11성 계단은 열리지 않는다.
   for (let i = 0; i < 60; i += 1) accrueDiscipleRank(session, 'pa-un');
-  eq(discipleRankOf(session.disciple, ART), BALANCE.discipleRankMax, '제자 상한은 10성으로 유지');
-  eq(rankOf(session.progress, ART), 1, '그동안 사부의 성은 게이트에 막혀 1');
+  eq(discipleStyleRank(session.disciple, ART, 'pa-un'), BALANCE.discipleRankMax, '제자 상한 10성');
+  eq(discipleStyleRank(session.disciple, ART, 'yuun-bo'), BALANCE.discipleStartRank,
+    '초식 단위라 지시하지 않은 초식은 그대로다');
+  const ranks = session.log.entries.filter((e) => e.event === 'rank');
+  eq(ranks.every((e) => e.actor === 'disciple' && e.via === 'mission' && e.sv === 2),
+    true, '제자 성 로그는 actor·via 로 사부와 갈린다');
+
+  // 제자 수련도 같은 벽을 만난다 — 규칙이 하나라 유저도 한 번만 배운다.
+  const atWall = transmit(masteredProgress, createDisciple(), ART);
+  atWall.arts[ART].styles['yuun-bo'] = { rank: LOW.maxRank, pts: 0 };
+  eq(accrueDiscipleStyle(atWall, ART, 'yuun-bo', { mode: 'train' }).wall, true,
+    `제자도 ${LOW.maxRank}성에서 같은 수련 벽을 만난다`);
+  eq(accrueDiscipleStyle(session.disciple, ART, 'pa-un', { mode: 'train' }).wall, false,
+    '상한은 벽이 아니다 — 오를 계단 자체가 없다');
+  eq(accrueDiscipleStyle(session.disciple, 'nope', 'pa-un').to, null, '전수받지 않은 무공은 적립 대상이 아니다');
 });
 
-// ------------------------------------------------- 7. 전수 = 복사 (REQ-307·401)
+// ------------------------------------------------- 7. 전수 = 복사 (REQ-705·707)
 
-suite('전수 = 복사 (REQ-307·401)', () => {
-  const master = minPath.progress;
+suite('전수 = 복사', () => {
   let disciple = createDisciple();
-  eq(canTransmit(master, 'yuun-geom', disciple), true, '12성 + 슬롯 여유 = 전수 가능');
-  eq(canTransmit(createProgress(), 'yuun-geom', disciple), false, '1성은 전수 불가');
-  eq(discipleRankOf(disciple, 'yuun-geom'), null, '전수 전 제자 성은 예외가 아니라 null');
-  deepEq(discipleStyles(disciple, 'yuun-geom'), [], '전수 전 제자 초식은 빈 배열');
+  eq(canTransmit(masteredProgress, ART, disciple), true, '전 초식 12성 + 슬롯 여유 = 전수 가능');
+  eq(canTransmit(createProgress(), ART, disciple), false, '1성은 전수 불가');
+  eq(canTransmit(setStyleRank(masteredProgress, 'pa-un', BALANCE.rankMax - 1), ART, disciple), false,
+    '11성 초식이 하나라도 있으면 불가');
+  eq(discipleStyleRank(disciple, ART, 'yuun-bo'), null, '전수 전 제자 성은 예외가 아니라 null');
+  deepEq(discipleStyles(disciple, ART), [], '전수 전 제자 초식은 빈 배열');
 
-  disciple = transmit(master, disciple, 'yuun-geom');
-  deepEq(disciple.arts['yuun-geom'].styles, artById('yuun-geom').styles,
-    '전수는 무공 단위 — 제자가 받는 목록이 무공 정의 그대로다 (D8)');
-  deepEq(discipleStyles(disciple, 'yuun-geom').map((st) => st.id), artStyles('yuun-geom').map((st) => st.id),
+  disciple = transmit(masteredProgress, disciple, ART);
+  deepEq(discipleStyles(disciple, ART).map((st) => st.id), artStyles(ART).map((st) => st.id),
     '사부·제자 노출 목록이 같은 소스에서 나온다');
-  eq(discipleRankOf(disciple, 'yuun-geom'), BALANCE.discipleStartRank, '제자는 1성부터');
-  eq(rankOf(master, 'yuun-geom'), BALANCE.rankMax, '사부는 성을 유지한다');
-  eq(masteryPct(master, 'yuun-bo'), BALANCE.masteryFullPct, '사부는 숙련을 유지한다');
-  eq(canTransmit(master, 'yuun-geom', disciple), false, '슬롯이 차면 재전수 불가');
-  throws(() => transmit(master, disciple, 'yuun-geom'), '조건 미충족 전수는 throw', '전수 조건 미충족');
+  for (const style of artStyles(ART)) {
+    eq(styleRank(masteredProgress, style.id), BALANCE.rankMax, `사부 ${style.name} 은 성을 유지한다`);
+  }
+  eq(canTransmit(masteredProgress, ART, disciple), false, '슬롯이 차면 재전수 불가');
+  throws(() => transmit(masteredProgress, disciple, ART), '조건 미충족 전수는 throw', '전수 조건 미충족');
+});
+
+// ---------------------------------- 7-a. 위력 = 초식 성 (REQ-721·722)
+
+suite('케이스 5 — 위력은 초식 성에서 나온다 (REQ-721·722)', () => {
+  // 같은 무공 안에서도 초식마다 성이 다르다 — 그 차이가 피해 정수로 그대로 나온다.
+  const progress = setStyleRank(masterAt(4, 'yuun-bo'), 'jeok-un', 7);
+  eq(styleRank(progress, 'yuun-bo'), 4, '1식 4성');
+  eq(styleRank(progress, 'jeok-un'), 7, '2식 7성');
+  const foe = foeStyleById('beta');
+  const low = judge({ selfStyle: styleById('yuun-bo'), foeStyle: foe, selfRank: 4, foePower: foePowerOf('A-2') });
+  const high = judge({ selfStyle: styleById('jeok-un'), foeStyle: foe, selfRank: 7, foePower: foePowerOf('A-2') });
+  eq(low.dmgOut, Math.round(styleById('yuun-bo').d * powerOf(4) * initiativeOf(0) * BALANCE.grades.disadvantage.outPct),
+    '4성 초식의 피해는 그 초식의 N 으로 난다');
+  eq(high.dmgOut, styleById('jeok-un').counters === foe.id
+    ? Math.round(styleById('jeok-un').d * powerOf(7) * initiativeOf(0) * BALANCE.grades.crush.outPct)
+    : high.dmgOut, '7성 초식의 피해는 그 초식의 N 으로 난다');
+  ok(powerOf(7) > powerOf(4), '성이 높은 초식이 더 큰 N 을 낸다');
+
+  // 도전자 성이 상쇄식의 반대쪽 변이다 — `challengerPower` 상수가 사라진 자리다.
+  for (const c of CHALLENGERS) {
+    eq(foePowerOf(c.id), powerOf(BALANCE.challengerRank[c.id]), `${c.id} 내공 = powerOf(도전자 성)`);
+  }
+  const clash = judge({
+    selfStyle: styleById('haeng-un'), foeStyle: foeStyleById('beta'),
+    selfRank: 1, foePower: foePowerOf('A-3'),
+  });
+  eq(clash.grade, 'clash', '동속성은 상쇄');
+  eq(clash.dmgIn, Math.round(Math.max(0, foePowerOf('A-3') - powerOf(1)) * foeStyleById('beta').d * BALANCE.clashK),
+    '상쇄식 양변이 성으로 성립한다');
+  // 등급 승격은 보류 — 성 차가 아무리 벌어져도 판정 등급을 뒤집지 않는다 (REQ-723).
+  eq(judge({ selfStyle: styleById('haeng-un'), foeStyle: foeStyleById('beta'), selfRank: BALANCE.rankMax, foePower: powerOf(1) }).grade,
+    'clash', '12성이어도 상쇄는 상쇄');
 });
 
 // -------------------------------------- 8. 제자 자동 선택 (REQ-403)
@@ -598,7 +756,7 @@ function simulateDispatch({ challengerId, disciple, setId }) {
   match = createMatch({
     challenger,
     selfHpMax: BALANCE.hp.disciple,
-    rankOf: () => discipleRankOf(session.disciple, setId),
+    rankOf: (style) => discipleStyleRank(session.disciple, setId, style.id),
     openLen: () => Math.max(...styles.map((s) => s.seq.length)),
     accessibility: () => false,
     timer,
@@ -626,12 +784,12 @@ function simulateDispatch({ challengerId, disciple, setId }) {
     foeHp: ended.foeHp,
     selfHp: ended.selfHp,
     trace,
-    rank: discipleRankOf(disciple, setId),
+    rank: discipleStyleRank(disciple, setId, styles[0].id),
   };
 }
 
 suite('케이스 8 — B 밸런스 게이트 (REQ-403·506)', () => {
-  const disciple = transmit(minPath.progress, createDisciple(), 'yuun-geom');
+  const disciple = transmit(masteredProgress, createDisciple(), 'yuun-geom');
   const sim = simulateDispatch({ challengerId: 'B', disciple, setId: 'yuun-geom' });
 
   eq(sim.rank, BALANCE.discipleStartRank, '1성 제자');
@@ -642,7 +800,7 @@ suite('케이스 8 — B 밸런스 게이트 (REQ-403·506)', () => {
   ok(sim.trace.some((t) => t.grade === 'crush'), '완파가 최소 1회');
   eq(sim.trace.every((t) => t.grade !== 'reversal'), true, '역파 회피가 실제로 지켜진다');
   if (!sim.win) {
-    console.error(`  ! B 밸런스 미달 — BALANCE.hp.B / challengerPower.B 하향 후 docs/balance-log.md 기록 필요`);
+    console.error('  ! B 밸런스 미달 — BALANCE.hp.B / challengerRank.B 하향 후 docs/balance-log.md 기록 필요');
   }
   console.log(`    B 시뮬: ${sim.exchanges}수, 적 HP ${sim.foeHp}, 제자 HP ${sim.selfHp}, `
     + `등급 ${sim.trace.map((t) => BALANCE.grades[t.grade].label).join('·')}`);
@@ -650,14 +808,18 @@ suite('케이스 8 — B 밸런스 게이트 (REQ-403·506)', () => {
 
 // ------------------------- 9-a. A 밸런스 게이트 (REQ-507) — 성 1 고정 유저가 A 를 이기는가
 
-/** Phase 1 을 세션 API 로 되짚어 각 초식이 100% 가 된 시점의 실전 슬롯을 남긴다. */
-const initiationSlots = (() => {
+/**
+ * 초식을 하나씩 해금 성까지 밀며 각 단계의 실전 슬롯을 남긴다 — A 차수를 만나는 실제 구성이다.
+ * 자리 양보가 폐지돼(REQ-714) 슬롯 3 이 차면 4식은 벤치에 남는다.
+ */
+const unlockSlots = (() => {
   const session = createSession();
   const snapshots = [];
   for (const style of artStyles(ART)) {
     if (!session.progress.styles[style.id].learned) learnStyle(session, style.id);
-    for (let i = 0; i < BALANCE.trainGraduateHits; i += 1) recordEffectiveSuccess(session, style.id, 'train');
-    for (let i = 0; i < BALANCE.threshold[style.id]; i += 1) recordEffectiveSuccess(session, style.id, 'duel');
+    while (styleRank(session.progress, style.id) < BALANCE.rankGate.unlock) {
+      recordEffectiveSuccess(session, style.id, 'duel');
+    }
     snapshots.push(equippedStyles(session));
   }
   return snapshots;
@@ -694,17 +856,16 @@ function simulateDuelA({ challengerId, styles, rank }) {
 }
 
 suite('A 밸런스 게이트 (REQ-503·507)', () => {
-  // 성이 Phase 1 내내 1 에 묶이므로 A 곡선의 전제가 「내공이 오른다」에서 「손이 빨라진다」로 바뀌었다.
-  const rank = rankOf(createProgress(), ART);
-  eq(rank, 1, 'Phase 1 유저는 성 1');
+  // 최저 성 유저가 A 를 넘는가 — 성이 오르면 위력도 오르므로 이것이 곡선의 하계다.
+  const rank = 1;
   eq(powerOf(rank), 1.05, '성 1 내공 1.05');
 
   // A-3 는 두 구성으로 본다 — 첫 조우(4식 미학습)와 입문 시점 구성은 다른 국면이다.
   const stages = [
-    { id: 'A-1', styles: initiationSlots[0] },
-    { id: 'A-2', styles: initiationSlots[1] },
-    { id: 'A-3', styles: initiationSlots[2] },
-    { id: 'A-3', styles: initiationSlots[initiationSlots.length - 1] },
+    { id: 'A-1', styles: unlockSlots[0] },
+    { id: 'A-2', styles: unlockSlots[1] },
+    { id: 'A-3', styles: unlockSlots[2] },
+    { id: 'A-3', styles: unlockSlots[unlockSlots.length - 1] },
   ];
   for (const stage of stages) {
     const sim = simulateDuelA({ challengerId: stage.id, styles: stage.styles, rank });
@@ -716,12 +877,12 @@ suite('A 밸런스 게이트 (REQ-503·507)', () => {
     console.log(`    ${stage.id} 시뮬: ${sim.exchanges}수, 적 HP ${sim.foeHp}, 유저 HP ${sim.selfHp}, `
       + `장착 ${stage.styles.map((st) => st.name).join('·')}`);
   }
-  // 입문 시점의 슬롯이 속성 3색을 덮어야 A-3 의 예고 3종에 전부 우세로 답할 수 있다.
-  const atInitiation = initiationSlots[initiationSlots.length - 1];
-  deepEq([...new Set(atInitiation.map((st) => st.attr))].sort(), ['fast', 'fine', 'hard'],
-    '입문 시점 슬롯이 강·정·쾌를 모두 덮는다');
-  deepEq(atInitiation.map((st) => st.id), ['pa-un', 'jeok-un', 'haeng-un'],
-    '자리 양보가 만드는 구성은 2·3·4식이다 (REQ-305)');
+  // 4식까지 해금한 시점의 슬롯이 속성 3색을 덮어야 A-3 의 예고 3종에 전부 우세로 답할 수 있다.
+  const atLast = unlockSlots[unlockSlots.length - 1];
+  deepEq([...new Set(atLast.map((st) => st.attr))].sort(), ['fast', 'fine', 'hard'],
+    '전 초식 해금 시점 슬롯이 강·정·쾌를 모두 덮는다');
+  deepEq(atLast.map((st) => st.id), artStyles(ART).slice(0, BALANCE.slots).map((st) => st.id),
+    '자리 양보 폐지로 슬롯은 먼저 찬 1·2·3식에 머문다 (REQ-714)');
 });
 
 // ------------------------------- 10. 대련 종료 판정 (REQ-201) — 상태기계와 공유하는 규칙
@@ -796,12 +957,12 @@ suite('후보 필터 입력기 (REQ-102·103·105·106·108·109)', () => {
   const jeokUn = styleById('jeok-un');
   const haengUn = styleById('haeng-un');
 
-  function harnessInput({ pool, mastery = {}, mode = 'duel' }) {
+  function harnessInput({ pool, ranks = {}, mode = 'duel' }) {
     let clock = 0;
     const events = [];
     const input = createSequenceInput({
       pool,
-      masteryOf: (s) => mastery[s.id] ?? 0,
+      rankOf: (s) => ranks[s.id] ?? 1,
       hintDelayMs: BALANCE.hintDelayMs[mode],
       now: () => clock,
       remainingRatio: () => 0.5,
@@ -813,11 +974,11 @@ suite('후보 필터 입력기 (REQ-102·103·105·106·108·109)', () => {
 
   const pool = [yuunBo, jeokUn, haengUn];
 
-  // 정렬 = 숙련 높은 순 → 동률 슬롯 순 (REQ-102)
-  const sorted = harnessInput({ pool, mastery: { 'jeok-un': 100 } });
-  deepEq(sorted.ids(), ['jeok-un', 'yuun-bo', 'haeng-un'], '숙련 높은 초식이 최상단');
+  // 정렬 = 성 높은 순 → 동률 슬롯 순 (REQ-102)
+  const sorted = harnessInput({ pool, ranks: { 'jeok-un': BALANCE.rankMax } });
+  deepEq(sorted.ids(), ['jeok-un', 'yuun-bo', 'haeng-un'], '성 높은 초식이 최상단');
   const tied = harnessInput({ pool });
-  deepEq(tied.ids(), ['yuun-bo', 'jeok-un', 'haeng-un'], '숙련 동률이면 슬롯 순 (결정적)');
+  deepEq(tied.ids(), ['yuun-bo', 'jeok-un', 'haeng-un'], '성 동률이면 슬롯 순 (결정적)');
 
   // 접두어 필터 + 갈래 전환 (케이스 2)
   const branch = harnessInput({ pool });
@@ -873,12 +1034,15 @@ suite('후보 필터 입력기 (REQ-102·103·105·106·108·109)', () => {
 
   const trainHint = harnessInput({ pool: [yuunBo], mode: 'train' });
   eq(trainHint.input.revealed(), 1, '수련은 지연 0 이라 즉시 점등');
-  const fullHint = harnessInput({ pool: [yuunBo], mastery: { 'yuun-bo': BALANCE.masteryFullPct } });
-  eq(fullHint.input.revealed(), yuunBo.seq.length, '숙련 100% 는 지연 없이 전 시퀀스 노출');
+  const belowGate = harnessInput({ pool: [yuunBo], ranks: { 'yuun-bo': BALANCE.rankGate.oneTap - 1 } });
+  belowGate.tick(BALANCE.hintDelayMs.duel);
+  eq(belowGate.input.revealed(), 1, `${BALANCE.rankGate.oneTap - 1}성은 딜레이드 힌트를 유지한다 (REQ-712)`);
+  const fullHint = harnessInput({ pool: [yuunBo], ranks: { 'yuun-bo': BALANCE.rankGate.oneTap } });
+  eq(fullHint.input.revealed(), yuunBo.seq.length, `${BALANCE.rankGate.oneTap}성은 지연 없이 전 시퀀스 노출`);
 
-  // 원터치 (REQ-109)
-  const oneTap = harnessInput({ pool, mastery: { 'yuun-bo': BALANCE.masteryFullPct } });
-  eq(oneTap.input.tap(jeokUn), null, '숙련 100% 가 아니면 원터치 불가');
+  // 원터치 (REQ-713)
+  const oneTap = harnessInput({ pool, ranks: { 'yuun-bo': BALANCE.rankGate.oneTap } });
+  eq(oneTap.input.tap(jeokUn), null, `${BALANCE.rankGate.oneTap}성이 아니면 원터치 불가`);
   const tapped = oneTap.input.tap(yuunBo);
   eq(tapped.oneTap, true, '원터치 발동');
   eq(oneTap.events.at(-1).r, 0.5, '원터치 r 은 탭 시점 잔여 비율');
@@ -960,9 +1124,9 @@ suite('헤드리스 봇 1사이클 (REQ-601·603·605)', () => {
     deepEq(run.session.logViolations, [], `시드 ${SEEDS[i]} — 로그 스키마 위반 0건`);
 
     const emitted = new Set(payload.entries.map((e) => e.event));
-    const missing = Object.keys(LOG_SCHEMA).filter((event) => !emitted.has(event));
+    const missing = Object.keys(LOG_SCHEMA).filter((event) => !emitted.has(event) && !BOT_UNREACHABLE.includes(event));
     // REQ-601 최종 검증 — 실제 1사이클에서 전 종류가 나오지 않으면 kill 산식에 구멍이 있다.
-    deepEq(missing, [], `시드 ${SEEDS[i]} — 통합 로그 ${Object.keys(LOG_SCHEMA).length}종 전량 emit`);
+    deepEq(missing, [], `시드 ${SEEDS[i]} — 통합 로그 ${Object.keys(LOG_SCHEMA).length - BOT_UNREACHABLE.length}종 전량 emit`);
 
     const metrics = readout(payload);
     eq(metrics.aux.tester_role, 'bot', `시드 ${SEEDS[i]} — tester_role 이 봇으로 남는다`);
@@ -1068,25 +1232,27 @@ suite('사이클 시뮬 — 입문 · 12성 · cycle_done (REQ-310·603)', () =>
       const entries = exportPayload(run.session).entries;
       const at = (pred) => entries.find(pred)?.[TIME_FIELD] ?? null;
       const duelVerdicts = entries.filter((e) => e.event === 'verdict' && e.who === 'user');
+      const masterRank = (e) => e.event === 'rank' && e.actor === 'master';
       return {
         seed,
-        initiate: at((e) => e.event === 'initiate'),
-        twelve: at((e) => e.event === 'rank' && e.to === BALANCE.rankMax),
+        unlock: at((e) => e.event === 'unlock'),
+        oneTap: at((e) => masterRank(e) && e.to === BALANCE.rankGate.oneTap),
+        finishStep: at((e) => masterRank(e) && e.via === 'finish'),
+        twelve: at((e) => masterRank(e) && e.to === BALANCE.rankMax),
         transmit: at((e) => e.event === 'transmit'),
         done: run.elapsedMs,
-        ranksBeforeInitiate: entries.filter((e) => e.event === 'rank').length
-          ? entries.findIndex((e) => e.event === 'rank') < entries.findIndex((e) => e.event === 'initiate')
-          : false,
+        screens: run.screens,
         wins: entries.filter((e) => e.event === 'coins' && e.reason === 'duel_win').length,
         rate: duelVerdicts.filter((e) => isEffectiveSuccess(e.grade)).length / duelVerdicts.length,
       };
     });
 
     for (const run of runs) {
-      // 순서가 곧 D1 규칙이다 — 성 전이가 입문보다 앞서면 게이트가 새고 있다는 뜻이다.
-      ok(run.initiate !== null, `${scenario.label} 시드 ${run.seed} — 입문 이벤트가 남는다`);
-      eq(run.ranksBeforeInitiate, false, `${scenario.label} 시드 ${run.seed} — 성 전이는 입문 뒤에만`);
-      ok(run.twelve > run.initiate, `${scenario.label} 시드 ${run.seed} — 12성은 입문 뒤`);
+      // 순서가 곧 계단 규칙이다 (REQ-704·711) — 어긋나면 순차·비소급이 새고 있다는 뜻이다.
+      ok(run.unlock !== null, `${scenario.label} 시드 ${run.seed} — 해금 이벤트가 남는다`);
+      ok(run.oneTap > run.unlock, `${scenario.label} 시드 ${run.seed} — 원터치 성은 해금 뒤`);
+      ok(run.finishStep > run.oneTap, `${scenario.label} 시드 ${run.seed} — 결정타 계단은 원터치 뒤`);
+      ok(run.twelve >= run.finishStep, `${scenario.label} 시드 ${run.seed} — 12성은 결정타 계단 뒤`);
       ok(run.transmit > run.twelve, `${scenario.label} 시드 ${run.seed} — 전수는 12성 뒤`);
       ok(run.wins >= DUEL_A_STAGES, `${scenario.label} 시드 ${run.seed} — A 전 차수 승리 도달`);
     }
@@ -1095,7 +1261,8 @@ suite('사이클 시뮬 — 입문 · 12성 · cycle_done (REQ-310·603)', () =>
     const span = (key) => `${(Math.min(...runs.map((r) => r[key])) / 1000).toFixed(0)}~`
       + `${(Math.max(...runs.map((r) => r[key])) / 1000).toFixed(0)}s`;
     console.log(`    ${scenario.label} 시나리오 (실현 ${(median(runs.map((r) => r.rate)) * 100).toFixed(0)}%): `
-      + `입문 ${secs('initiate')} · 12성 ${secs('twelve')} · cycle_done ${secs('done')} [${span('done')}]`);
+      + `해금 ${secs('unlock')} · 원터치 ${secs('oneTap')} · 12성 ${secs('twelve')} · `
+      + `cycle_done ${secs('done')} [${span('done')}] · 화면 최대 ${Math.max(...runs.map((r) => r.screens))}`);
   }
   // kill 임계는 여기서 단정하지 않는다 — required check 라 시드 튜닝만으로 이후 PR 이 전부 막힌다.
 });
@@ -1158,7 +1325,7 @@ suite('계측 배선 공유 (#11)', () => {
   const style = STYLES[0];
   const input = createSequenceInput({
     pool: [style],
-    masteryOf: () => 0,
+    rankOf: () => 1,
     hintDelayMs: 0,
     now: () => 0,
     log: (event, fields) => logEvent(session, event, fields),
@@ -1257,8 +1424,7 @@ suite('BALANCE 파라미터 census (REQ-606)', () => {
     openingWindowPenalty: 0.4, accessibilityWindowMult: 1.3, accessibilityWindow: false,
     resolveMs: 500, maxExchanges: 12, powerBase: 1, powerPerRank: 0.05,
     initiativeBase: 1, initiativePerRatio: 0.3, clashK: 0.5, effectiveSuccessMaxOrder: 2,
-    trainGraduateHits: 2, masteryTrainPct: 30, masteryFullPct: 100, ignoreHighlightAt: 3,
-    rankStep: 2, rankMax: 12, slots: 3, equipMasteryPct: 30,
+    trainGraduateHits: 2, ignoreHighlightAt: 3, rankMax: 12, slots: 3,
     discipleStartRank: 1, discipleRankMax: 10, discipleFireRatio: 0.6,
     winColorHintExchanges: Number.MAX_SAFE_INTEGER, simEfficiency: 0.1, simTrainSeconds: 3600,
     buttonHitPx: 56,
@@ -1266,11 +1432,16 @@ suite('BALANCE 파라미터 census (REQ-606)', () => {
   for (const [key, value] of Object.entries(SEEDS)) eq(BALANCE[key], value, `BALANCE.${key}`);
   deepEq(BALANCE.damageByLen, { 3: 10, 4: 14, 5: 20 }, 'BALANCE.damageByLen');
   deepEq(BALANCE.hintDelayMs, { duel: 500, train: 0 }, 'BALANCE.hintDelayMs');
-  deepEq(BALANCE.threshold, { 'yuun-bo': 2, 'jeok-un': 2, 'haeng-un': 2, 'pa-un': 2 }, 'BALANCE.threshold');
-  deepEq(BALANCE.rankPtsPerStyle, { 'yuun-bo': 1, 'jeok-un': 2, 'haeng-un': 3, 'pa-un': 4 }, 'BALANCE.rankPtsPerStyle');
-  deepEq(BALANCE.rankStepMult, { 11: 2, 12: 4 }, 'BALANCE.rankStepMult (spec rank11Mult·rank12Mult)');
+  deepEq(BALANCE.rankGate, { equip: 2, unlock: 5, oneTap: 7 }, 'BALANCE.rankGate (REQ-711·713 계단)');
+  deepEq(BALANCE.rankLadder, {
+    gain: { train: 1, duel: 3 },
+    bands: [{ maxRank: 7, cost: 3, train: true }, { maxRank: 10, cost: 6, train: false }],
+    finishRank: 11, crushRank: 12,
+  }, 'BALANCE.rankLadder (REQ-702 적립 3단)');
   deepEq(BALANCE.hp, { user: 100, disciple: 100, 'A-1': 30, 'A-2': 45, 'A-3': 80, B: 80 }, 'BALANCE.hp');
-  deepEq(BALANCE.challengerPower, { A: 1, B: 1.1 }, 'BALANCE.challengerPower');
+  deepEq(BALANCE.challengerRank, { 'A-1': 1, 'A-2': 2, 'A-3': 3, B: 2 }, 'BALANCE.challengerRank (REQ-722)');
+  // 폐기 8키가 하나라도 되살아나면 그 값이 무음 `undefined` 로 판정 수식에 흘러든다 (#64).
+  for (const key of RETIRED_KEYS) ok(!(key in BALANCE), `폐기 키 ${key} 가 BALANCE 에 없다`);
   deepEq(BALANCE.reward, { duelWin: 30, dispatchWin: 50 }, 'BALANCE.reward');
   deepEq(BALANCE.bot, {
     reactionMs: [450, 650], keyMs: [260, 380], navMs: [300, 600],
@@ -1304,9 +1475,17 @@ suite('밸런스 데이터 스키마 (#45)', () => {
 
   // 양성 대조 — 불량 데이터가 폴백 없이 죽고, 어느 필드가 왜 틀렸는지 문면에 실린다.
   const clone = () => JSON.parse(JSON.stringify(source));
+  // 값 지문이 rev 에 묶여 있으므로(#54) 변형마다 rev 를 다시 찍는다 — 안 찍으면 모든 케이스에
+  // rev 오류가 하나씩 덧붙어 「그 변형이 무엇을 잡았는가」가 흐려진다.
+  const restamp = (raw) => {
+    const { rev: version, ...rest } = raw;
+    raw.rev = `${String(version).split('/')[0]}/${valueDigest(rest)}`;
+    return raw;
+  };
   const throwsWith = (mutate, needle, label) => {
     const raw = clone();
     mutate(raw);
+    restamp(raw);
     let message = null;
     try {
       validateBalance(raw);
@@ -1319,24 +1498,61 @@ suite('밸런스 데이터 스키마 (#45)', () => {
     ok(message !== null && message.includes(needle), `${label} — 문면에 ${needle} 가 실린다 (실제: ${message})`);
   };
 
-  throwsWith((r) => { delete r.masteryFullPct; }, 'masteryFullPct: 필드 누락', '필드 누락');
-  throwsWith((r) => { r.telegraphMs = '1000'; }, 'telegraphMs: "1000" 는 유한 수가 아니다', '타입 불일치');
+  throwsWith((r) => { delete r.rankMax; }, 'rankMax: 필드 누락', '필드 누락');
+  throwsWith((r) => { r.telegraphMs = '1000'; }, 'telegraphMs: "1000" 는 0 이상의 정수가 아니다', '타입 불일치');
   throwsWith((r) => { r.grades.clash.formula = 'pctt'; }, 'grades.clash.formula: "pctt" 는 ["pct","clash"] 밖', 'formula enum 밖');
   throwsWith((r) => { r.grades.struck.order = 4; }, 'grades.*.order', 'order 중복 (0..5 순열 아님)');
+  throwsWith((r) => { r.grades.crush.opning = null; }, 'grades.crush.opning: 등급 스키마에 없는 필드', '등급 객체 안의 오타 키 (#54)');
   throwsWith((r) => { delete r.hp['A-3']; }, 'hp: 키 "A-3" 누락 (CHALLENGERS 와 1:1)', 'hp 도전자 키 누락');
-  throwsWith((r) => { delete r.threshold['pa-un']; }, 'threshold: 키', 'threshold 초식 키 누락');
   throwsWith((r) => { r.bot.reactionMs = [650, 450]; }, 'bot.reactionMs: [650,450] 는 [최소, 최대] 순서가 뒤집혔다', 'bot 배열 역순');
-  throwsWith((r) => { r.rev = ''; }, 'rev: "" 는 비어 있지 않은 판본 문자열이 아니다', 'rev 공백');
   throwsWith((r) => { delete r.damageByLen['5']; }, 'damageByLen: 초식 길이 5 의 피해가 없다', 'damageByLen 이 초식 길이를 못 덮음');
   throwsWith((r) => { r.nonesuch = 1; }, 'nonesuch: 스키마에 없는 필드', '스키마 밖 필드');
-  throwsWith((r) => { delete r.challengerPower.A; }, 'challengerPower: 키 "A" 누락', '도전자 군 위력 키 누락');
+  throwsWith((r) => { delete r.challengerRank['A-1']; }, 'challengerRank: 키 "A-1" 누락', '도전자 성 키 누락');
   throwsWith((r) => { delete r.reward.dispatchWin; }, 'reward: 키 "dispatchWin" 누락', '보상 키 누락');
   throwsWith((r) => { delete r.hintDelayMs.duel; }, 'hintDelayMs: 키 "duel" 누락', '힌트 지연 키 누락');
 
+  // 폐기 8키 부활 — 미지 필드 문면이 아니라 폐기를 지목해야 잔존 참조 사고를 그 자리에서 읽는다 (#64).
+  for (const key of RETIRED_KEYS) {
+    throwsWith((r) => { r[key] = 1; }, `${key}: 성 축 재설계로 폐기된 필드`, `폐기 키 ${key} 부활`);
+  }
+
+  // 값 범위·정수성 (#54) — 「숫자이기만 하면」 통과하던 자리다.
+  throwsWith((r) => { r.windowBaseMs = -2600; }, 'windowBaseMs: -2600 는 1 이상의 정수가 아니다', '음수 응수 창');
+  throwsWith((r) => { r.openingWindowPenalty = 1.4; }, 'openingWindowPenalty: 1.4 는 0 이상 1 미만의 비율이 아니다', '창 벌점이 1 을 넘음');
+  throwsWith((r) => { r.bot.missRate = 5; }, 'bot.missRate: 5 는 0~1 비율이 아니다', '확률이 1 을 넘음');
+  throwsWith((r) => { r.rankLadder.bands[0].cost = 0; }, 'rankLadder.bands[0].cost: 0 는 1 이상의 정수가 아니다', '계단 비용 0');
+  throwsWith((r) => { r.powerBase = 0; }, 'powerBase: 0 는 양수가 아니다', '내공 기저 0');
+  throwsWith((r) => { r.hp['A-1'] = -30; }, 'hp.A-1: -30 는 1 이상의 정수가 아니다', '음수 HP');
+  throwsWith((r) => { r.slots = 2.5; }, 'slots: 2.5 는 1 이상의 정수가 아니다', '비정수 슬롯 수');
+
+  // 성 축 상호관계 (#54 · REQ-711·713) — 값 하나가 계단 사슬을 깨는 자리.
+  throwsWith((r) => { r.rankGate.unlock = 2; }, 'rankGate.unlock: 2 가 rankGate.equip 2 보다 크지 않다', '해금 ≤ 장착');
+  throwsWith((r) => { r.rankGate.oneTap = 4; }, 'rankGate.oneTap: 4 가 rankGate.unlock 5 보다 크지 않다', '원터치 ≤ 해금');
+  throwsWith((r) => { r.rankGate.oneTap = 9; }, 'rankGate.oneTap: 9 가 수련 적립 상한 7 를 넘는다', '원터치 > 수련 상한');
+  throwsWith((r) => { r.rankLadder.bands[1].maxRank = 5; }, 'rankLadder.bands[1].maxRank: 5 가 직전 구간 상한 7 보다 크지 않다', '구간 상한 역전');
+  throwsWith((r) => { r.rankLadder.finishRank = 12; }, 'rankLadder.finishRank: 12 가 적립 상한 10 의 다음 계단이 아니다', '결정타 계단이 적립 상한과 이어지지 않음');
+  throwsWith((r) => { r.discipleRankMax = 13; }, 'discipleRankMax: 13 가 성 상한 12 를 넘는다', '제자 상한 > 성 상한');
+  throwsWith((r) => { r.challengerRank['A-1'] = 13; }, 'challengerRank.A-1: 13 가 성 상한 12 를 넘는다', '도전자 성 > 성 상한');
+
+  // rev ↔ 값 결합 (#54) — 값만 고치고 rev 를 그대로 두면 로그 지문이 옛 판본을 달고 나간다.
+  const stale = clone();
+  stale.telegraphMs = 900;
+  let staleMessage = null;
+  try { validateBalance(stale); } catch (err) { staleMessage = err.message; }
+  const { rev: _staleRev, ...staleValues } = stale;
+  ok(staleMessage !== null && staleMessage.includes(`rev: 값 지문이 "${valueDigest(staleValues)}"`),
+    `값을 고치고 rev 를 두면 죽는다 (실제: ${staleMessage})`);
+  ok(staleMessage !== null && staleMessage.includes(`"2026-09-02-a/${valueDigest(staleValues)}" 로 갱신하라`),
+    '문면이 그대로 붙여 넣을 rev 를 준다');
+  eq(validateBalance(restamp(clone())).rev, BALANCE_REV, '지문을 다시 찍으면 통과한다');
+  // rev 축의 두 변형은 restamp 를 태우면 그 자리가 덮이므로 직접 던진다.
+  throws(() => validateBalance({ ...clone(), rev: '' }), 'rev 공백은 throw', '비어 있지 않은 판본 문자열');
+  const noDigest = clone();
+  noDigest.rev = '2026-09-02-a';
+  throws(() => validateBalance(noDigest), '지문 없는 rev 는 throw', '값 지문 8자리');
+
   // 오류는 전건 수집 후 한 번에 보고한다 — 첫 건에서 멈추면 고칠 때마다 재실행이 필요하다.
-  const many = clone();
-  delete many.slots;
-  many.grades.clash.formula = 'pctt';
+  const many = restamp((() => { const r = clone(); delete r.slots; r.grades.clash.formula = 'pctt'; return r; })());
   let batched = null;
   try {
     validateBalance(many);
@@ -1351,7 +1567,7 @@ suite('밸런스 데이터 스키마 (#45)', () => {
 // ------------------------------------------------------------------ 결과
 
 // suite() 가 예외를 삼키므로, 하한이 없으면 스위트가 통째로 건너뛰어도 실패 1건으로만 보인다.
-const MIN_CHECKS = 1796;
+const MIN_CHECKS = 3600;
 if (checks < MIN_CHECKS) {
   failures += 1;
   console.error(`  ✗ 단정 수 ${checks} < 하한 ${MIN_CHECKS} — 스위트가 조용히 건너뛰어졌다`);

@@ -79,40 +79,62 @@ export const CHALLENGERS = [
 const SOURCE = 'src/balance.data.json';
 
 /**
- * 수치 정본의 형(型) 표 — 값은 JSON 이 지고 이 표는 필드 집합과 타입만 진다.
+ * 수치 정본의 형(型) 표 — 값은 JSON 이 지고 이 표는 필드 집합과 의미 제약만 진다.
  * JSON 은 주석을 실을 수 없으므로 값 옆에 있던 사유는 이 표와 아래 검증기가 대신 진다:
  * `winColorHintExchanges` 는 프로토 상시(∞) 지만 Infinity 가 JSON 왕복에서 null 이 되므로
  * 유한 상한을 쓰고, `bot.misHitRate` 는 spec 미지정분이라 없으면 선행 게이트가 공허해진다.
- * 종류: `num` 유한 수 · `bool` 불리언 · `numMap` 값이 전부 유한 수인 map · 나머지는 전용 검사기.
+ * 토큰은 `NUM_RULES` 의 키(스칼라) · `map:<규칙>`(값이 전부 그 규칙인 map) · 전용 검사기 이름이다.
  */
 const SHAPE = {
-  telegraphMs: 'num', windowBaseMs: 'num', windowStepMs: 'num', windowBaseLen: 'num',
-  openingWindowPenalty: 'num', accessibilityWindowMult: 'num', accessibilityWindow: 'bool',
-  resolveMs: 'num', maxExchanges: 'num',
-  damageByLen: 'numMap', powerBase: 'num', powerPerRank: 'num',
-  initiativeBase: 'num', initiativePerRatio: 'num', clashK: 'num',
-  grades: 'grades', effectiveSuccessMaxOrder: 'num',
-  trainGraduateHits: 'num', masteryTrainPct: 'num', masteryFullPct: 'num',
-  hintDelayMs: 'numMap', ignoreHighlightAt: 'num',
-  threshold: 'numMap', rankPtsPerStyle: 'numMap', rankStep: 'num', rankStepMult: 'numMap',
-  rankMax: 'num', slots: 'num', equipMasteryPct: 'num',
-  discipleStartRank: 'num', discipleRankMax: 'num', discipleFireRatio: 'num',
-  winColorHintExchanges: 'num', simEfficiency: 'num', simTrainSeconds: 'num', buttonHitPx: 'num',
-  reward: 'numMap', bot: 'bot', hp: 'numMap', challengerPower: 'numMap',
+  telegraphMs: 'int+', windowBaseMs: 'int1+', windowStepMs: 'int+', windowBaseLen: 'int1+',
+  openingWindowPenalty: 'ratio<1', accessibilityWindowMult: 'pos', accessibilityWindow: 'bool',
+  resolveMs: 'int+', maxExchanges: 'int1+',
+  damageByLen: 'map:int1+', powerBase: 'pos', powerPerRank: 'nonneg',
+  initiativeBase: 'pos', initiativePerRatio: 'nonneg', clashK: 'pos',
+  grades: 'grades', effectiveSuccessMaxOrder: 'int+',
+  trainGraduateHits: 'int1+',
+  hintDelayMs: 'map:int+', ignoreHighlightAt: 'int1+',
+  rankLadder: 'rankLadder', rankGate: 'map:int1+', rankMax: 'int1+', slots: 'int1+',
+  discipleStartRank: 'int1+', discipleRankMax: 'int1+', discipleFireRatio: 'ratio',
+  winColorHintExchanges: 'int1+', simEfficiency: 'pos', simTrainSeconds: 'int1+', buttonHitPx: 'int1+',
+  reward: 'map:int+', bot: 'bot', hp: 'map:int1+', challengerRank: 'map:int1+',
+};
+
+/**
+ * 성 축 재설계(#64)가 폐기한 키 — 부재를 이름으로 확인한다. 미지 필드 검사만으로도 죽지만
+ * 그 문면은 오타와 구분되지 않고, 잔존 참조 하나가 `undefined` 로 수식을 오염시키는 것이
+ * 이 축의 실패 모드라 문면이 폐기를 지목해야 한다.
+ */
+const RETIRED = [
+  'masteryTrainPct', 'masteryFullPct', 'threshold', 'rankPtsPerStyle',
+  'rankStep', 'rankStepMult', 'equipMasteryPct', 'challengerPower',
+];
+
+/** 의미 제약 — 「숫자이기만 하면 통과」가 튜닝 오타를 조용히 게임 규칙으로 만든다 (#54). */
+const NUM_RULES = {
+  num: { test: (v) => isNum(v), why: '유한 수가 아니다' },
+  nonneg: { test: (v) => isNum(v) && v >= 0, why: '0 이상의 유한 수가 아니다' },
+  pos: { test: (v) => isNum(v) && v > 0, why: '양수가 아니다' },
+  ratio: { test: (v) => isNum(v) && v >= 0 && v <= 1, why: '0~1 비율이 아니다' },
+  'ratio<1': { test: (v) => isNum(v) && v >= 0 && v < 1, why: '0 이상 1 미만의 비율이 아니다' },
+  'int+': { test: (v) => Number.isInteger(v) && v >= 0, why: '0 이상의 정수가 아니다' },
+  'int1+': { test: (v) => Number.isInteger(v) && v >= 1, why: '1 이상의 정수가 아니다' },
 };
 
 /** 6단 판정표의 구조 축 — 등급 id 집합과 수식 분기 키는 튜닝 대상이 아니라 코드가 분기하는 값이다. */
 const GRADE_IDS = ['crush', 'advantage', 'clash', 'disadvantage', 'reversal', 'struck'];
+const GRADE_FIELDS = ['order', 'label', 'formula', 'outPct', 'inPct', 'opening'];
 const GRADE_FORMULAS = ['pct', 'clash'];
 const GRADE_OPENINGS = [null, 'foe', 'self'];
 const BOT_RANGES = ['reactionMs', 'keyMs', 'navMs'];
-const BOT_SCALARS = ['missRate', 'misHitRate', 'pollMs'];
+const BOT_RATIOS = ['missRate', 'misHitRate'];
+const LADDER_BAND_FIELDS = ['maxRank', 'cost', 'train'];
 
 /** 소비처가 키로 직접 인덱싱하는 map — 키가 빠지면 값이 undefined 로 흘러 수식이 조용히 NaN 이 된다. */
 const REQUIRED_MAP_KEYS = {
   hintDelayMs: ['duel', 'train'],
   reward: ['duelWin', 'dispatchWin'],
-  challengerPower: [...new Set(CHALLENGERS.map((c) => c.group))],
+  rankGate: ['equip', 'unlock', 'oneTap'],
 };
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
@@ -120,9 +142,13 @@ const isPlain = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 const show = (v) => JSON.stringify(v) ?? String(v);
 const setEq = (a, b) => a.length === b.length && a.every((k, i) => k === b[i]);
 
-function checkNumMap(path, value, bad) {
+function checkNum(path, value, rule, bad) {
+  if (!NUM_RULES[rule].test(value)) bad(path, `${show(value)} 는 ${NUM_RULES[rule].why}`);
+}
+
+function checkNumMap(path, value, rule, bad) {
   if (!isPlain(value)) return bad(path, `${show(value)} 는 map 이 아니다`);
-  for (const [k, v] of Object.entries(value)) if (!isNum(v)) bad(`${path}.${k}`, `${show(v)} 는 유한 수가 아니다`);
+  for (const [k, v] of Object.entries(value)) checkNum(`${path}.${k}`, v, rule, bad);
   for (const k of REQUIRED_MAP_KEYS[path] ?? []) if (!(k in value)) bad(path, `키 ${show(k)} 누락`);
   return undefined;
 }
@@ -136,13 +162,15 @@ function checkGrades(value, bad) {
   const orders = [];
   for (const [id, g] of Object.entries(value)) {
     if (!isPlain(g)) { bad(`grades.${id}`, `${show(g)} 는 등급 객체가 아니다`); continue; }
+    // 최상위와 같은 비대칭 금지 — 오타 키가 살아남으면 그 등급의 규칙이 조용히 기본값으로 돈다 (#54).
+    for (const k of Object.keys(g)) if (!GRADE_FIELDS.includes(k)) bad(`grades.${id}.${k}`, '등급 스키마에 없는 필드');
     if (typeof g.label !== 'string' || g.label === '') bad(`grades.${id}.label`, `${show(g.label)} 는 표시 문자열이 아니다`);
     if (!GRADE_FORMULAS.includes(g.formula)) bad(`grades.${id}.formula`, `${show(g.formula)} 는 ${show(GRADE_FORMULAS)} 밖`);
     if (!GRADE_OPENINGS.includes(g.opening)) bad(`grades.${id}.opening`, `${show(g.opening)} 는 ${show(GRADE_OPENINGS)} 밖`);
     for (const key of ['outPct', 'inPct']) {
-      if (g[key] !== null && !isNum(g[key])) bad(`grades.${id}.${key}`, `${show(g[key])} 는 수도 null 도 아니다`);
+      if (g[key] !== null) checkNum(`grades.${id}.${key}`, g[key], 'ratio', bad);
     }
-    if (!isNum(g.order)) bad(`grades.${id}.order`, `${show(g.order)} 는 유한 수가 아니다`);
+    if (!Number.isInteger(g.order) || g.order < 0) bad(`grades.${id}.order`, `${show(g.order)} 는 0 이상의 정수가 아니다`);
     else orders.push(g.order);
   }
   const expected = GRADE_IDS.map((_, i) => i);
@@ -158,30 +186,135 @@ function checkBot(value, bad) {
     const r = value[key];
     if (!Array.isArray(r) || r.length !== 2 || !r.every(isNum)) bad(`bot.${key}`, `${show(r)} 는 [최소, 최대] 두 수가 아니다`);
     else if (r[0] > r[1]) bad(`bot.${key}`, `${show(r)} 는 [최소, 최대] 순서가 뒤집혔다`);
+    else for (const [i, v] of r.entries()) checkNum(`bot.${key}[${i}]`, v, 'nonneg', bad);
   }
-  for (const key of BOT_SCALARS) if (!isNum(value[key])) bad(`bot.${key}`, `${show(value[key])} 는 유한 수가 아니다`);
+  for (const key of BOT_RATIOS) checkNum(`bot.${key}`, value[key], 'ratio', bad);
+  checkNum('bot.pollMs', value.pollMs, 'int1+', bad);
   return undefined;
+}
+
+/**
+ * 성 계단 사다리 (REQ-702) — 적립 3단 구조를 그대로 담는 표. `bands` 는 점수 적립으로 오르는
+ * 구간이고 `finishRank`·`crushRank` 는 결정타·완파가 여는 계단이라 비용이 아니라 사건이다.
+ */
+function checkLadder(value, bad) {
+  if (!isPlain(value)) return bad('rankLadder', `${show(value)} 는 map 이 아니다`);
+  for (const key of ['train', 'duel']) checkNum(`rankLadder.gain.${key}`, value.gain?.[key], 'int1+', bad);
+  if (!Array.isArray(value.bands) || value.bands.length === 0) {
+    return bad('rankLadder.bands', `${show(value.bands)} 는 비어 있지 않은 배열이 아니다`);
+  }
+  let prev = 0;
+  for (const [i, band] of value.bands.entries()) {
+    const at = `rankLadder.bands[${i}]`;
+    if (!isPlain(band)) { bad(at, `${show(band)} 는 구간 객체가 아니다`); continue; }
+    for (const k of Object.keys(band)) if (!LADDER_BAND_FIELDS.includes(k)) bad(`${at}.${k}`, '구간 스키마에 없는 필드');
+    checkNum(`${at}.maxRank`, band.maxRank, 'int1+', bad);
+    checkNum(`${at}.cost`, band.cost, 'int1+', bad);
+    if (typeof band.train !== 'boolean') bad(`${at}.train`, `${show(band.train)} 는 불리언이 아니다`);
+    if (Number.isInteger(band.maxRank)) {
+      if (band.maxRank <= prev) bad(`${at}.maxRank`, `${band.maxRank} 가 직전 구간 상한 ${prev} 보다 크지 않다`);
+      prev = band.maxRank;
+    }
+  }
+  for (const key of ['finishRank', 'crushRank']) checkNum(`rankLadder.${key}`, value[key], 'int1+', bad);
+  return undefined;
+}
+
+/** 성 축 상수 사이의 순서 — 값 하나가 이 사슬을 깨면 계단이 서로를 건너뛴다 (REQ-711·713, #54). */
+function checkRankOrder(values, bad) {
+  const ladder = values.rankLadder;
+  const gate = values.rankGate;
+  if (!isPlain(ladder) || !Array.isArray(ladder.bands) || !isPlain(gate)) return;
+  const trainCap = ladder.bands.filter((b) => b?.train).reduce((m, b) => Math.max(m, b.maxRank ?? 0), 0);
+  const accrualMax = ladder.bands.reduce((m, b) => Math.max(m, b?.maxRank ?? 0), 0);
+  const chain = [
+    ['rankGate.equip', gate.equip], ['rankGate.unlock', gate.unlock], ['rankGate.oneTap', gate.oneTap],
+  ];
+  for (let i = 1; i < chain.length; i += 1) {
+    const [prevName, prevValue] = chain[i - 1];
+    const [name, value] = chain[i];
+    if (isNum(prevValue) && isNum(value) && !(prevValue < value)) {
+      bad(name, `${value} 가 ${prevName} ${prevValue} 보다 크지 않다 (장착 < 해금 < 원터치)`);
+    }
+  }
+  // 원터치가 수련 상한을 넘으면 수련만으로는 결코 원터치에 닿지 못한다 — 8성 벽의 의도 밖이다.
+  if (isNum(gate.oneTap) && gate.oneTap > trainCap) {
+    bad('rankGate.oneTap', `${gate.oneTap} 가 수련 적립 상한 ${trainCap} 를 넘는다`);
+  }
+  if (isNum(ladder.finishRank) && ladder.finishRank !== accrualMax + 1) {
+    bad('rankLadder.finishRank', `${ladder.finishRank} 가 적립 상한 ${accrualMax} 의 다음 계단이 아니다`);
+  }
+  if (isNum(ladder.crushRank) && ladder.crushRank !== ladder.finishRank + 1) {
+    bad('rankLadder.crushRank', `${ladder.crushRank} 가 ${ladder.finishRank} 의 다음 계단이 아니다`);
+  }
+  if (isNum(ladder.crushRank) && isNum(values.rankMax) && ladder.crushRank !== values.rankMax) {
+    bad('rankLadder.crushRank', `${ladder.crushRank} 가 성 상한 ${values.rankMax} 와 다르다`);
+  }
+  if (isNum(values.discipleRankMax) && isNum(values.rankMax) && values.discipleRankMax > values.rankMax) {
+    bad('discipleRankMax', `${values.discipleRankMax} 가 성 상한 ${values.rankMax} 를 넘는다`);
+  }
+  if (isNum(values.discipleStartRank) && isNum(values.discipleRankMax)
+    && values.discipleStartRank > values.discipleRankMax) {
+    bad('discipleStartRank', `${values.discipleStartRank} 가 제자 성 상한 ${values.discipleRankMax} 를 넘는다`);
+  }
 }
 
 /** 콘텐츠 테이블과의 결합 — 이 세 축이 어긋나면 화면·판정이 조용히 빈 값을 읽는다. */
 function checkContentJoins(values, bad) {
-  const hpKeys = ['user', 'disciple', ...CHALLENGERS.map((c) => c.id)];
+  const challengerIds = CHALLENGERS.map((c) => c.id);
+  const hpKeys = ['user', 'disciple', ...challengerIds];
   if (isPlain(values.hp)) {
     for (const k of hpKeys) if (!(k in values.hp)) bad('hp', `키 ${show(k)} 누락 (CHALLENGERS 와 1:1)`);
     for (const k of Object.keys(values.hp)) if (!hpKeys.includes(k)) bad('hp', `키 ${show(k)} 는 CHALLENGERS 에 없다`);
+  }
+  if (isPlain(values.challengerRank)) {
+    for (const k of challengerIds) if (!(k in values.challengerRank)) bad('challengerRank', `키 ${show(k)} 누락 (CHALLENGERS 와 1:1)`);
+    for (const k of Object.keys(values.challengerRank)) {
+      if (!challengerIds.includes(k)) bad('challengerRank', `키 ${show(k)} 는 CHALLENGERS 에 없다`);
+      else if (isNum(values.rankMax) && values.challengerRank[k] > values.rankMax) {
+        bad(`challengerRank.${k}`, `${values.challengerRank[k]} 가 성 상한 ${values.rankMax} 를 넘는다`);
+      }
+    }
   }
   if (isPlain(values.damageByLen)) {
     for (const len of new Set(STYLES.map((s) => s.seq.length))) {
       if (!(String(len) in values.damageByLen)) bad('damageByLen', `초식 길이 ${len} 의 피해가 없다`);
     }
   }
-  const styleIds = STYLES.map((s) => s.id).sort();
-  for (const key of ['threshold', 'rankPtsPerStyle']) {
-    if (!isPlain(values[key])) continue;
-    if (!setEq(Object.keys(values[key]).sort(), styleIds)) {
-      bad(key, `키 ${show(Object.keys(values[key]))} 가 초식 id ${show(styleIds)} 와 다르다`);
-    }
+}
+
+/**
+ * 값 지문 (#54) — `rev` 가 값 변경을 반드시 따라가게 하는 결합. 값만 고치고 `rev` 를 두면
+ * 내보낸 로그의 지문이 옛 판본을 달고 나가 실험 회차 귀속이 조용히 틀리므로 로드 시점에 죽인다.
+ * 키 순서에 무관하도록 정렬해 직렬화하고, 브라우저에서도 도는 FNV-1a 로 32bit 를 낸다.
+ * 지문의 공급원은 로드 실패 문면이다 — 이 export 는 하네스가 그 문면을 대조하기 위한 자리다.
+ */
+export function valueDigest(values) {
+  const canonical = (v) => {
+    if (Array.isArray(v)) return v.map(canonical);
+    if (isPlain(v)) return Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical(v[k])]));
+    return v;
+  };
+  const text = JSON.stringify(canonical(values));
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i += 1) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
   }
+  return h.toString(16).padStart(8, '0');
+}
+
+const REV_PATTERN = /^(.+)\/([0-9a-f]{8})$/;
+
+function checkRev(rev, values, bad) {
+  if (typeof rev !== 'string' || rev.trim() === '') {
+    return bad('rev', `${show(rev)} 는 비어 있지 않은 판본 문자열이 아니다`);
+  }
+  const digest = valueDigest(values);
+  const parsed = REV_PATTERN.exec(rev);
+  if (!parsed) return bad('rev', `${show(rev)} 가 "<판본>/<값 지문 8자리>" 꼴이 아니다 — "${rev}/${digest}" 로 갱신하라`);
+  if (parsed[2] !== digest) bad('rev', `값 지문이 ${show(digest)} 인데 rev 는 ${show(parsed[2])} 다 — "${parsed[1]}/${digest}" 로 갱신하라`);
+  return undefined;
 }
 
 /**
@@ -197,19 +330,24 @@ export function validateBalance(raw) {
     throw new Error(`밸런스 데이터 불량 — ${SOURCE} 1건:\n  (root): ${show(raw)} 는 객체가 아니다`);
   }
   const { rev, ...values } = raw;
-  if (typeof rev !== 'string' || rev.trim() === '') bad('rev', `${show(rev)} 는 비어 있지 않은 판본 문자열이 아니다`);
+  checkRev(rev, values, bad);
 
   for (const [key, kind] of Object.entries(SHAPE)) {
     if (!(key in values)) { bad(key, '필드 누락'); continue; }
     const v = values[key];
-    if (kind === 'num' && !isNum(v)) bad(key, `${show(v)} 는 유한 수가 아니다`);
-    else if (kind === 'bool' && typeof v !== 'boolean') bad(key, `${show(v)} 는 불리언이 아니다`);
-    else if (kind === 'numMap') checkNumMap(key, v, bad);
+    if (kind === 'bool') { if (typeof v !== 'boolean') bad(key, `${show(v)} 는 불리언이 아니다`); }
     else if (kind === 'grades') checkGrades(v, bad);
     else if (kind === 'bot') checkBot(v, bad);
+    else if (kind === 'rankLadder') checkLadder(v, bad);
+    else if (kind.startsWith('map:')) checkNumMap(key, v, kind.slice(4), bad);
+    else checkNum(key, v, kind, bad);
   }
-  for (const key of Object.keys(values)) if (!(key in SHAPE)) bad(key, '스키마에 없는 필드');
+  for (const key of Object.keys(values)) {
+    if (RETIRED.includes(key)) bad(key, '성 축 재설계로 폐기된 필드 (#64)');
+    else if (!(key in SHAPE)) bad(key, '스키마에 없는 필드');
+  }
 
+  checkRankOrder(values, bad);
   checkContentJoins(values, bad);
 
   if (errors.length > 0) {
