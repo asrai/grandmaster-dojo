@@ -2,7 +2,7 @@
 // 차이는 「창을 무엇이 닫는가」뿐이라, 발동 주체는 `fire()` 를 부르는 호출부가 정한다.
 
 import { BALANCE } from '../balance.mjs';
-import { foePowerOf, foeStyleById, judge, resolveMatch, responseWindowMs } from '../core.mjs';
+import { foeRankOf, foeStyleById, judge, powerOf, resolveMatch, responseWindowMs } from '../core.mjs';
 
 export const PHASE = { TELEGRAPH: 'telegraph', WINDOW: 'window', RESOLVE: 'resolve', DONE: 'done' };
 
@@ -50,7 +50,8 @@ export function pumpToEnd(match, timer, { maxTicks = 20000 } = {}) {
 
 /**
  * @param {object} p
- * @param {object} p.challenger  도전자 행 (예고 순환·내공 시드의 출처)
+ * @param {object} p.challenger  도전자 행 (예고 순환의 출처)
+ * @param {number} [p.foeRank]   그 대면의 도전자 성 — 재대련 강화가 실린 값이 여기로 온다 (REQ-734)
  * @param {number} p.selfHpMax
  * @param {(style: object) => number} p.rankOf 그 수에 낸 초식의 성 — 대련 중에도 오를 수 있다 (REQ-721)
  * @param {() => number} p.openLen 상대 빈틈 수의 창 기준 길이 — 장착이 바뀌면 따라 바뀐다
@@ -60,8 +61,9 @@ export function pumpToEnd(match, timer, { maxTicks = 20000 } = {}) {
  */
 export function createMatch({
   challenger, selfHpMax, rankOf, openLen, accessibility, hooks = {}, timer = FRAME_TIMER,
+  foeRank = foeRankOf(challenger.id),
 }) {
-  const foePower = foePowerOf(challenger.id);
+  const foePower = powerOf(foeRank);
   const foeHpMax = BALANCE.hp[challenger.id];
   const s = {
     phase: PHASE.TELEGRAPH,
@@ -124,6 +126,7 @@ export function createMatch({
       foeStyle: s.telegraphed,
       // 미완주에는 낸 초식이 없어 성의 근거가 없다 — 받는 피해는 상대 D 로만 나므로 최저 성으로 접는다.
       selfRank: fire ? rankOf(fire.style) : 1,
+      foeRank,
       foePower,
       r: fire ? fire.r : 0,
       foeOpen: s.foeOpen,

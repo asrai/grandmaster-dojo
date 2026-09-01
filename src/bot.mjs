@@ -11,12 +11,12 @@ import {
 import { createMatch, createVirtualTimer, pumpToEnd } from './ui/match.mjs';
 import { createSequenceInput } from './ui/sequence-input.mjs';
 import {
-  ART_ID, DISPATCH_CHALLENGER, canTransmitNow, challengerOfStage, createSession,
+  ART_ID, DISPATCH_CHALLENGER, DUEL_STAGES, canTransmitNow, challengerOfStage, createSession,
   equip, equippedStyles, learnStyle, logEvent, logSessionMeta, rankOfStyle, runTransmit,
   setBotRunning, settleDispatch, settleDuel, simulateTraining, trainVisitDone,
 } from './ui/session.mjs';
 import {
-  composeHooks, dispatchWiring, duelWiring, logDispatchStart, trainWiring,
+  composeHooks, dispatchWiring, duelWiring, logDispatchStart, logDuelStart, trainWiring,
 } from './ui/wiring.mjs';
 
 const DIRS = ['U', 'D', 'L', 'R'];
@@ -46,18 +46,22 @@ export function createPace(random = Math.random, seed = BALANCE.bot) {
 const chooseStyle = (input, foeStyle) =>
   selectDiscipleStyle({ styles: input.candidates, foeStyle, rankOf: () => 0 });
 
+/** 계단 하나를 앞둔 성인가 — 결정타(11) 와 완파(12) 는 적립이 아니라 사건으로만 열린다 (REQ-704). */
+const atLadderStep = (rank) =>
+  rank === BALANCE.rankLadder.finishRank - 1 || rank === BALANCE.rankLadder.crushRank - 1;
+
 /**
  * 계단을 미는 손 (REQ-704) — 11·12성은 적립이 아니라 결정타·완파로만 열리므로, 사람은 그
  * 계단에 선 초식을 골라 낸다. 봇이 이 선택을 하지 않으면 사이클이 그 계단에서 영영 멈춘다.
- * 완파 계단은 파해 대상이 예고됐거나 상대 빈틈일 때만 성립하므로 그 수에만 민다.
+ * 미는 조건이 「그 수에 완파가 성립한다」인 것은 두 계단 모두에 맞다 — 완파는 12성의 정의이고,
+ * 결정타는 상대를 쓰러뜨린 수라 그 창의 최대 피해가 곧 최선이다. 조건 없이 밀면 계단에 선
+ * 초식 하나가 매 창을 독점해 나머지 초식의 적립이 굶는다.
  */
 export function preferLadderPush(session) {
-  const { finishRank, crushRank } = BALANCE.rankLadder;
   return (input, foeStyle) => {
     const pushable = input.candidates
       .map((style) => ({ style, rank: rankOfStyle(session, style.id) }))
-      .filter(({ style, rank }) => (rank === finishRank - 1)
-        || (rank === crushRank - 1 && (!foeStyle || style.counters === foeStyle.id)))
+      .filter(({ style, rank }) => atLadderStep(rank) && (!foeStyle || style.counters === foeStyle.id))
       .sort((a, b) => a.rank - b.rank);
     return pushable[0]?.style ?? null;
   };
@@ -174,6 +178,22 @@ function nextSwap(session) {
   return { kind: 'swap', styleId: target.id, slotIdx: slotIdx.i, params: {} };
 }
 
+/**
+ * 계단이 요구하는 무대 (REQ-731·734) — 완파는 파해 대상을 예고하는 도전자에게서만 나므로
+ * (파운현월은 A-4 뿐), 최고 차수만 반복하는 손은 나머지 초식의 계단을 영영 열지 못한다.
+ * 결정타도 같은 자리를 쓴다 — 그 초식이 최대 피해를 내는 무대가 쓰러뜨리기도 가장 쉽다.
+ * 해금한 차수 중 가장 낮은 무대를 고르는 것이 재대련 강화를 가장 적게 물고 가는 경로다.
+ */
+export function nextDuelStage(session) {
+  const reachable = DUEL_STAGES.filter((c) => c.stage <= session.stage);
+  const stageFor = (style) => reachable.find((c) => c.styles.includes(style.counters)) ?? null;
+  const pushing = session.slots.filter(Boolean).map(styleById)
+    .map((style) => ({ style, rank: rankOfStyle(session, style.id) }))
+    .filter(({ style, rank }) => atLadderStep(rank) && stageFor(style))
+    .sort((a, b) => a.rank - b.rank);
+  return pushing.length ? stageFor(pushing[0].style).stage : session.stage;
+}
+
 /** 도장에서의 다음 한 수 — 브라우저 봇과 헤드리스 사이클이 같은 판단을 쓴다. */
 export function nextDojoAction(session) {
   if (canTransmitNow(session)) return { kind: 'transmit', params: {} };
@@ -186,7 +206,8 @@ export function nextDojoAction(session) {
   if (learnable) return { kind: 'learn', styleId: learnable.id, params: {} };
   const swap = nextSwap(session);
   if (swap) return swap;
-  return { kind: 'duel', params: { stage: session.stage } };
+  // 예고를 건너뛰면 봇이 도는 경로가 사람의 경로와 갈려, 재대련 계측이 화면에서만 나온다 (REQ-736).
+  return { kind: 'duelPreview', params: { stage: nextDuelStage(session) } };
 }
 
 /** kill (d) 종점 감시 — 커서로 훑어 매 폴링마다 버퍼 전량을 다시 읽지 않는다. */
@@ -237,6 +258,7 @@ export function createBot({
       if (trainVisitDone(session)) screen.go('dojo');
       return;
     }
+    if (phase === 'duelPreview') { screen.go('duel', screen.params()); return; }
     if (phase === 'preview') { screen.go('dispatch'); return; }
     if (phase === 'transmit' || phase === 'result') { screen.go('dojo'); return; }
     if (phase !== 'dojo') return;
@@ -364,6 +386,7 @@ function headlessTrain({ session, styleId, pace, timer, random, maxWindows = 200
 
 function headlessDuel({ session, stage, pace, timer, random }) {
   const challenger = challengerOfStage(stage);
+  const { foeRank } = logDuelStart(session, challenger);
   const now = () => timer.now();
   let ended = null;
   let match = null;
@@ -387,6 +410,7 @@ function headlessDuel({ session, stage, pace, timer, random }) {
 
   match = createMatch({
     challenger,
+    foeRank,
     selfHpMax: BALANCE.hp.user,
     rankOf: (style) => rankOfStyle(session, style.id),
     openLen: () => Math.max(...equippedStyles(session).map((s) => s.seq.length)),
@@ -487,6 +511,10 @@ export function runHeadlessCycle({
     if (phase === 'transmit') {
       runTransmit(session);
       go('dojo');
+      continue;
+    }
+    if (phase === 'duelPreview') {
+      go('duel', params);
       continue;
     }
     if (phase === 'preview') {

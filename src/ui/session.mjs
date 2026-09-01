@@ -5,8 +5,8 @@ import { ART_SETS, BALANCE, BALANCE_REV, CHALLENGERS, STYLES } from '../balance.
 import { createLogBuffer, validate } from '../log.mjs';
 import {
   accrueDiscipleStyle, applyEffectiveSuccess, applyOutcome, artStyles, canEquipRank, canTransmit,
-  createDisciple, createProgress, discipleStyleRank, isEffectiveSuccess, learn, setStyleRank,
-  styleById, styleRank, trainHitsToNext, transmit,
+  createDisciple, createProgress, discipleStyleRank, foeRankOf, isEffectiveSuccess, learn,
+  rematchFoeRank, setStyleRank, styleById, styleRank, trainHitsToNext, transmit,
 } from '../core.mjs';
 
 /** 내보낸 로그의 판독 계약 이름 — `tests/kill-readout.mjs` 가 이 값으로 파일을 받아들인다. */
@@ -67,6 +67,8 @@ export function createSession({ now } = {}) {
     slots: Array.from({ length: BALANCE.slots }, () => null),
     coins: 0,
     stage: 1,
+    // 도전자별 승수 — 재대련 강화·무보상·`attempt_n` 이 전부 이 한 수에서 파생된다 (REQ-734).
+    duelWins: {},
     accessibility: BALANCE.accessibilityWindow,
     accessibilityToggles: 0,
     accessibilityAtDone: null,
@@ -129,22 +131,57 @@ export function advanceStage(session, clearedStage) {
   return challengerOfStage(session.stage);
 }
 
-export function equip(session, styleId, slotIdx) {
+/**
+ * @param {?string} [challenger] 그 교체가 일어난 도전자 예고 화면의 도전자 (도장에서는 null) —
+ *   「A-4 를 앞두고 진짜 슬롯 판단을 했는가」가 REQ-736 의 지표라 장소가 곧 그 판별자다.
+ */
+// ------------------------------------------------------- 재대련 (REQ-734)
+
+/** 그 도전자를 이미 이긴 횟수 — 초회 대면은 0 이라 강화도 무보상도 걸리지 않는다. */
+export const duelWinsOf = (session, challengerId) => session.duelWins[challengerId] ?? 0;
+
+/** 몇 번째 대면인가 — 초회 1, 재대련부터 2·3·4… (`rematch.attempt_n` 의 정의). */
+export const duelAttemptOf = (session, challengerId) => duelWinsOf(session, challengerId) + 1;
+
+export const isRematch = (session, challengerId) => duelWinsOf(session, challengerId) > 0;
+
+/** 그 대면의 도전자 성 — 재대련 강화가 실린 값이고 대련 루프·예고 화면이 같은 자리를 읽는다. */
+export const duelFoeRank = (session, challengerId) =>
+  rematchFoeRank(foeRankOf(challengerId), duelWinsOf(session, challengerId));
+
+/** 이미 이긴 도전자 목록 — 도장 재대련 항목의 원본 (REQ-734). */
+export const beatenChallengers = (session) => DUEL_STAGES.filter((c) => isRematch(session, c.id));
+
+/**
+ * 대련 진입 (REQ-734) — 그 대면의 성을 확정하고 재대련이면 그것을 로그에 남긴다.
+ * 진입에서 찍는 것은 `attempt_n` 이 「몇 번째에 그만두는가」의 지표라, 승패로 걸러지면
+ * 마지막 회차(대개 포기한 그 판)가 통째로 빠지기 때문이다.
+ */
+export function beginDuel(session, challengerId) {
+  const foeRank = duelFoeRank(session, challengerId);
+  const attemptN = duelAttemptOf(session, challengerId);
+  if (attemptN > 1) {
+    logEvent(session, 'rematch', { challenger: challengerId, foe_rank: foeRank, attempt_n: attemptN });
+  }
+  return { foeRank, attemptN };
+}
+
+export function equip(session, styleId, slotIdx, { challenger = null } = {}) {
   if (!canEquip(session, styleId)) return false;
   const at = slotIdx ?? session.slots.indexOf(null);
   if (at < 0 || at >= session.slots.length) return false;
   const replaced = session.slots[at];
-  if (replaced) logEvent(session, 'slot', { action: 'unequip', styleId: replaced });
+  if (replaced) logEvent(session, 'slot', { action: 'unequip', styleId: replaced, challenger });
   session.slots[at] = styleId;
-  logEvent(session, 'slot', { action: 'equip', styleId });
+  logEvent(session, 'slot', { action: 'equip', styleId, challenger });
   return true;
 }
 
-export function unequip(session, slotIdx) {
+export function unequip(session, slotIdx, { challenger = null } = {}) {
   const styleId = session.slots[slotIdx];
   if (!styleId) return false;
   session.slots[slotIdx] = null;
-  logEvent(session, 'slot', { action: 'unequip', styleId });
+  logEvent(session, 'slot', { action: 'unequip', styleId, challenger });
   return true;
 }
 
@@ -332,14 +369,22 @@ export function cheatSetStyleRank(session, styleId, rank) {
 
 export const isCheatFlagged = (session) => session.cheat.used;
 
-/** 대련 결과 정산 (REQ-209·604) — 문구는 화면이 만들고 여기서는 상태만 움직인다. */
+/**
+ * 대련 결과 정산 (REQ-209·604·734) — 문구는 화면이 만들고 여기서는 상태만 움직인다.
+ * 재대련 승리에 재화를 주지 않는 것이 파밍 루프를 끊는 자리다 — 성 +1 은 난이도로 막고
+ * 무보상은 동기로 막아, 둘 중 하나만으로는 「더 캘까」가 계속 이득으로 남는다.
+ */
 export function settleDuel(session, { win, stage }) {
-  if (!win) return { reward: 0, unlocked: null, cleared: false };
-  addCoins(session, BALANCE.reward.duelWin, 'duel_win');
+  if (!win) return { reward: 0, unlocked: null, cleared: false, rematch: false };
+  const challengerId = challengerOfStage(stage).id;
+  const rematch = isRematch(session, challengerId);
+  session.duelWins[challengerId] = duelWinsOf(session, challengerId) + 1;
+  if (!rematch) addCoins(session, BALANCE.reward.duelWin, 'duel_win');
   return {
-    reward: BALANCE.reward.duelWin,
+    reward: rematch ? 0 : BALANCE.reward.duelWin,
     unlocked: advanceStage(session, stage),
     cleared: isLastStage(stage),
+    rematch,
   };
 }
 

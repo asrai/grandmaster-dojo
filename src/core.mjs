@@ -83,13 +83,38 @@ export function responseWindowMs(len, { selfOpen = false, accessibility = BALANC
 export const powerOf = (rank) => BALANCE.powerBase + BALANCE.powerPerRank * rank;
 
 /**
- * 도전자 내공 (REQ-722) — 도전자별 성 1개가 그 도전자의 전 초식에 걸린다.
+ * 도전자 성 (REQ-722) — 도전자별 성 1개가 그 도전자의 전 초식에 걸린다.
  * 미등록 id 를 접으면 `powerOf(undefined)` 가 NaN 으로 흘러 응수 창 안에서야 죽는다.
  */
-export function foePowerOf(challengerId) {
+export function foeRankOf(challengerId) {
   const rank = BALANCE.challengerRank[challengerId];
   if (rank === undefined) throw new Error(`도전자 성이 없다: ${challengerId}`);
-  return powerOf(rank);
+  return rank;
+}
+
+/** 도전자 내공 — 재대련 강화가 없는 초회 대면의 값이다. */
+export const foePowerOf = (challengerId) => powerOf(foeRankOf(challengerId));
+
+/**
+ * 재대련 강화 성 (REQ-734) — 이긴 횟수만큼 +1 씩 오르되 상한이 있다. 상한은 편의 파라미터가
+ * 아니라 도달 가능성 불변식이다: 파운현월 완파는 A-4 에서만 나므로, 무한 누적은 A-4 반복
+ * 실패가 그 초식의 12성을 영구 봉쇄하는 상태를 만든다.
+ * @param {number} baseRank 그 도전자의 초회 성
+ * @param {number} priorWins 그 도전자를 이미 이긴 횟수 (초회 대면은 0)
+ */
+export function rematchFoeRank(baseRank, priorWins) {
+  if (!Number.isInteger(priorWins) || priorWins < 0) throw new Error(`재대련 승수가 0 이상의 정수가 아니다: ${priorWins}`);
+  const bonus = Math.min(BALANCE.rematch.rankCap, BALANCE.rematch.rankGain * priorWins);
+  return Math.min(BALANCE.rankMax, baseRank + bonus);
+}
+
+/**
+ * 역파 피격 감쇠 계수 (REQ-771) — 내 초식이 상대보다 여문 만큼 덜 아프되 관통 하한 아래로는
+ * 내려가지 않는다. 하한의 목적은 「절초는 무서워야 한다」 하나이고 난이도 손잡이가 아니다.
+ */
+export function reversalDecayFactor(selfRank, foeRank) {
+  const { perRank, pierceFloor } = BALANCE.reversalDecay;
+  return Math.max(pierceFloor, 1 - perRank * Math.max(0, selfRank - foeRank));
 }
 
 /** 선기 배수 — `r` = 응수 창 잔여 비율 (REQ-203). */
@@ -116,14 +141,18 @@ function gradeOf({ selfStyle, foeStyle, foeOpen }) {
  * @param {?object} p.selfStyle 창 안에 완주한 내 초식 (미완주 = null)
  * @param {?object} p.foeStyle  상대 예고 초식 (상대 빈틈이면 무의미)
  * @param {number} p.selfRank   그 초식의 성 (REQ-721)
- * @param {number} [p.foePower] 도전자 내공 시드
+ * @param {number} p.foeRank    상대 성 — 내공의 출처이자 역파 감쇠의 기준이다 (REQ-722·771)
+ * @param {number} [p.foePower] 상대 내공. 기본값이 `foeRank` 파생이라 둘이 갈릴 자리가 없다
  * @param {number} [p.r]        발동 시점의 창 잔여 비율
  * @param {boolean} [p.foeOpen] 이 수가 상대 빈틈인가
  */
-export function judge({ selfStyle, foeStyle = null, selfRank, foePower = 1, r = 0, foeOpen = false }) {
+export function judge({
+  selfStyle, foeStyle = null, selfRank, foeRank, foePower = powerOf(foeRank), r = 0, foeOpen = false,
+}) {
   if (!(r >= 0 && r <= 1)) throw new Error(`선기 잔여 비율이 0~1 밖: ${r}`);
   // 음수·비정수는 내공을 뒤집어 피해를 회복으로 만든다 — 유한성만으로는 못 막는다.
   if (!Number.isInteger(selfRank) || selfRank < 1) throw new Error(`성이 1 이상의 정수가 아니다: ${selfRank}`);
+  if (!Number.isInteger(foeRank) || foeRank < 1) throw new Error(`상대 성이 1 이상의 정수가 아니다: ${foeRank}`);
   if (!Number.isFinite(foePower) || foePower <= 0) throw new Error(`상대 내공이 양수가 아니다: ${foePower}`);
   const grade = gradeOf({ selfStyle, foeStyle, foeOpen });
   const rule = BALANCE.grades[grade];
@@ -140,6 +169,8 @@ export function judge({ selfStyle, foeStyle = null, selfRank, foePower = 1, r = 
   } else {
     out = selfD * selfPower * initiativeOf(r) * rule.outPct;
     incoming = foeD * foePower * rule.inPct;
+    // 감쇠는 피해량 축이라 등급·빈틈은 그대로다 — 여기서 등급이 흔들리면 감쇠를 잘못 꽂은 것이다.
+    if (grade === 'reversal') incoming *= reversalDecayFactor(selfRank, foeRank);
   }
 
   return {
