@@ -387,11 +387,13 @@ function headlessDispatch({ session, timer }) {
  */
 export function runHeadlessCycle({
   session: given = null, random = Math.random, stepMs = 16, maxScreens = 600, device = 'keyboard',
+  paceSeed = BALANCE.bot,
 } = {}) {
   const timer = createVirtualTimer({ stepMs });
   // `t_ms` 가 벽시계면 헤드리스 로그의 kill (a)·(d) 가 통째로 0 이 된다.
   const session = given ?? createSession({ now: () => timer.now() });
-  const pace = createPace(random);
+  // 사이클 시뮬은 손 정확도를 흔들어 유효 성공률 시나리오를 만든다 — 시드 교체가 그 유일한 축이다.
+  const pace = createPace(random, paceSeed);
   let phase = 'dojo';
   let params = {};
   let simulated = false;

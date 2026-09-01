@@ -43,14 +43,14 @@ export const BALANCE = {
   effectiveSuccessMaxOrder: 2,
 
   // 숙련·성·슬롯 (REQ-301~305)
-  trainGraduateHits: 3,
+  trainGraduateHits: 2,
   masteryTrainPct: 30,
   masteryFullPct: 100,
   hintDelayMs: { duel: 500, train: 0 },
   ignoreHighlightAt: 3,
-  threshold: { 'yuun-bo': 4, 'jeok-un': 4, 'haeng-un': 5, 'pa-un': 5 },
+  threshold: { 'yuun-bo': 3, 'jeok-un': 3, 'haeng-un': 4, 'pa-un': 4 },
   rankPtsPerStyle: { 'yuun-bo': 1, 'jeok-un': 2, 'haeng-un': 3, 'pa-un': 4 },
-  rankStep: 3,
+  rankStep: 2,
   rankStepMult: { 11: 2, 12: 4 },
   rankMax: 12,
   slots: 3,
@@ -80,7 +80,7 @@ export const BALANCE = {
   },
 
   // HP·내공 시드 — 도전자 키는 CHALLENGERS.id 와 1:1 (REQ-506 게이트가 하향 조정한다)
-  hp: { user: 100, disciple: 100, 'A-1': 40, 'A-2': 55, 'A-3': 70, B: 80 },
+  hp: { user: 100, disciple: 100, 'A-1': 45, 'A-2': 60, 'A-3': 110, B: 80 },
   challengerPower: { A: 1, B: 1.1 },
 };
 

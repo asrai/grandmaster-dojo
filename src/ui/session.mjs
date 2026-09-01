@@ -164,6 +164,7 @@ export function recordEffectiveSuccess(session, styleId, mode) {
   const { progress, changes } = applyEffectiveSuccess(session.progress, styleId, { mode });
   session.progress = progress;
   if (changes.mastery) logEvent(session, 'mastery', changes.mastery);
+  if (changes.initiate) logEvent(session, 'initiate', changes.initiate);
   if (changes.rank) logEvent(session, 'rank', changes.rank);
   if (changes.unlock) logEvent(session, 'unlock', changes.unlock);
   autoEquip(session);

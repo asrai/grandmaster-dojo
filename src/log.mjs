@@ -16,6 +16,7 @@ export const LOG_SCHEMA = {
   mastery:  { fields: ['styleId', 'from', 'to'] },
   rank:     { fields: ['style_set', 'from', 'to', 'pts'] },
   unlock:   { fields: ['styleId'] },
+  initiate: { fields: ['style_set'] },
   slot:     { fields: ['action', 'styleId'] },
   transmit: { fields: ['style_set'] },
   dispatch: { fields: ['challenger'] },
