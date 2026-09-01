@@ -1,7 +1,7 @@
 // 세션 상태 — 상태기계가 화면 사이로 들고 다니는 유일한 가변 덩어리. 영속화는 없다:
 // 프로토 판정은 단일 세션이고, 잔존 세이브는 kill (a)·(d) 측정을 진행 중 상태로 오염시킨다.
 
-import { ART_SETS, BALANCE, CHALLENGERS, STYLES } from '../balance.mjs';
+import { ART_SETS, BALANCE, BALANCE_REV, CHALLENGERS, STYLES } from '../balance.mjs';
 import { createLogBuffer, validate } from '../log.mjs';
 import {
   applyEffectiveSuccess, canTransmit, createDisciple, createProgress, discipleRankOf,
@@ -16,6 +16,7 @@ export const EXPORT_SCHEMA = 'grandmaster-dojo/log-export@1';
  * 내보낸 뒤 이 값들이 튜닝되면 옛 로그가 조용히 다른 수로 읽히므로 지문을 함께 싣는다.
  */
 export const balanceDigest = () => ({
+  rev: BALANCE_REV,
   windowBaseMs: BALANCE.windowBaseMs,
   windowStepMs: BALANCE.windowStepMs,
   windowBaseLen: BALANCE.windowBaseLen,
