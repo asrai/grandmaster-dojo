@@ -171,14 +171,14 @@ export function createPad() {
       active = consumer;
       structureSig = null;
       arrowsFor = null;
-      root.hidden = false;
+      root.classList.remove('detached');
       render();
     },
     detach() {
       active = null;
       structureSig = null;
       arrowsFor = null;
-      root.hidden = true;
+      root.classList.add('detached');
       root.classList.remove('idle');
       clear(candidatesEl);
       clear(seqEl);
