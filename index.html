@@ -82,11 +82,11 @@ button.ghost { background: transparent; }
 /* 말풍선의 기준 상자 — 가로로 선 줄에서는 버튼 하나가 좁아 줄 전체를 폭으로 물려준다. */
 .row-actions { display: flex; gap: 6px; margin-top: 6px; position: relative; }
 
-/* 유도 툴팁 — 흐름 밖 오버레이라 표시·소멸이 어떤 요소의 위치도 바꾸지 않는다. 안내만 하는
-   말풍선이라 포커스 대상이 아니고 포인터도 그대로 통과시킨다. */
+/* 흐름 밖 말풍선을 담을 뿐이라 앵커 자신의 크기는 안내 유무로 변하지 않는다. */
 .tip-anchor { position: relative; display: flex; }
 .row-actions .tip-anchor { position: static; }
 .tip {
+  /* 아래 형제 위로 겹치므로, 포인터를 통과시켜야 그 형제의 탭을 가로채지 않는다. */
   position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 1;
   pointer-events: none; font-size: 12px;
   color: var(--gold); background: #201a0c; border: 1px solid var(--gold);
