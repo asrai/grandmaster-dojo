@@ -12,18 +12,20 @@ import {
 import { createMatch, createVirtualTimer, pumpToEnd } from '../src/ui/match.mjs';
 import { createSequenceInput } from '../src/ui/sequence-input.mjs';
 import {
-  EXPORT_SCHEMA, addCoins, consumeTooltip, createSession, createTooltipState, exportPayload,
-  logEvent, pickTooltip, settleDispatch, settleDuel, simulateTraining,
+  EXPORT_SCHEMA, addCoins, consumeTooltip, createSession, createTooltipState, equippedStyles,
+  exportPayload, learnStyle, logEvent, pickTooltip, recordEffectiveSuccess, settleDispatch,
+  settleDuel, simulateTraining,
 } from '../src/ui/session.mjs';
 import {
   composeHooks, dispatchWiring, duelWiring, trainWiring,
 } from '../src/ui/wiring.mjs';
 import { KILL, readout } from './kill-readout.mjs';
 import {
-  applyEffectiveSuccess, artById, assertCounterIntegrity, assertPrefixFree, canLearn, canTransmit,
-  challengerById, createDisciple, createProgress, discipleRankOf, discipleStyles, finisherOf,
-  foeStyleById, initiativeOf, isEffectiveSuccess, judge, learn, masteryPct, powerOf, ptsForRank,
-  rankForPts, rankOf, resolveMatch, responseWindowMs, selectDiscipleStyle, styleById, transmit,
+  applyEffectiveSuccess, artById, artStyles, assertCounterIntegrity, assertPrefixFree, canLearn,
+  canTransmit, challengerById, createDisciple, createProgress, discipleRankOf, discipleStyles,
+  finisherOf, foeStyleById, initiativeOf, isEffectiveSuccess, isInitiated, judge, learn, masteryPct,
+  powerOf, ptsForRank, rankForPts, rankOf, rankPtsOf, resolveMatch, responseWindowMs,
+  selectDiscipleStyle, styleById, transmit,
 } from '../src/core.mjs';
 
 // --------------------------------------------------------------- 단정 도구
@@ -210,6 +212,7 @@ suite('통합 로그 스키마 (REQ-601)', () => {
     mastery: ['styleId', 'from', 'to'],
     rank: ['style_set', 'from', 'to', 'pts'],
     unlock: ['styleId'],
+    initiate: ['style_set'],
     slot: ['action', 'styleId'],
     transmit: ['style_set'],
     dispatch: ['challenger'],
@@ -218,7 +221,7 @@ suite('통합 로그 스키마 (REQ-601)', () => {
     cycle: ['phase'],
     session: ['tester_role', 'device'],
   };
-  eq(Object.keys(LOG_SCHEMA).length, 17, '이벤트 17종');
+  eq(Object.keys(LOG_SCHEMA).length, 18, '이벤트 18종');
   deepEq(Object.keys(LOG_SCHEMA), Object.keys(EXPECTED), '이벤트 이름·순서');
   for (const [event, fields] of Object.entries(EXPECTED)) {
     deepEq(LOG_SCHEMA[event].fields, fields, `${event} 필드`);
@@ -368,70 +371,121 @@ suite('피해 정수 골든값 (REQ-203)', () => {
 suite('성 계단 (REQ-304)', () => {
   eq(rankForPts(0), 1, '0pt = 1성');
   eq(rankForPts(ptsForRank(10)), 10, '10성 도달');
-  eq(ptsForRank(10), 27, '10성 = 27pt');
-  eq(ptsForRank(11), 33, '11성 = 27 + 3×2');
-  eq(ptsForRank(12), 45, '12성 = 33 + 3×4');
-  eq(rankForPts(44), 11, '44pt 는 아직 11성');
-  eq(rankForPts(45), 12, '45pt = 12성');
+  eq(ptsForRank(10), BALANCE.rankStep * 9, '10성 = 2~10성 9계단');
+  eq(ptsForRank(11), ptsForRank(10) + BALANCE.rankStep * BALANCE.rankStepMult[11], '11성 = 10성 + 2배 계단');
+  eq(ptsForRank(12), ptsForRank(11) + BALANCE.rankStep * BALANCE.rankStepMult[12], '12성 = 11성 + 4배 계단');
+  eq(ptsForRank(12), 30, '12성 총 30pt');
+  eq(rankForPts(ptsForRank(12) - 1), 11, '1pt 모자라면 아직 11성');
+  eq(rankForPts(ptsForRank(12)), 12, '30pt = 12성');
   eq(rankForPts(999), BALANCE.rankMax, '성은 상한에서 멈춘다');
   eq(rankForPts(999, { max: BALANCE.discipleRankMax }), BALANCE.discipleRankMax, '제자 성 상한 10');
   eq(rankForPts(0, { max: BALANCE.discipleRankMax }), BALANCE.discipleStartRank, '제자 시작 성 1');
 });
 
+const ART = ART_SETS[0].id;
+const DUEL_A_STAGES = CHALLENGERS.filter((c) => c.mode === 'duel').length;
+
+/**
+ * 최소 경로 (REQ-302·304·310) — 전 초식을 숙련 100% 로 만드는 Phase 1 과, 성 게이지가 열린 뒤
+ * 성 포인트가 가장 큰 초식만으로 12성을 채우는 Phase 2. 경계가 곧 입문 지점이다.
+ */
 const minPath = (() => {
-  const plan = [
-    { styleId: 'yuun-bo', train: BALANCE.trainGraduateHits, duel: BALANCE.threshold['yuun-bo'] },
-    { styleId: 'jeok-un', train: BALANCE.trainGraduateHits, duel: BALANCE.threshold['jeok-un'] },
-    { styleId: 'haeng-un', train: BALANCE.trainGraduateHits, duel: BALANCE.threshold['haeng-un'] },
-  ];
   let progress = createProgress();
   const events = [];
-  let trainHits = 0;
-  let duelHits = 0;
-  for (const step of plan) {
-    if (!progress.styles[step.styleId].learned) progress = learn(progress, step.styleId);
-    for (const [mode, times] of [['train', step.train], ['duel', step.duel]]) {
-      for (let i = 0; i < times; i += 1) {
-        const res = applyEffectiveSuccess(progress, step.styleId, { mode });
-        progress = res.progress;
-        if (mode === 'train') trainHits += 1; else duelHits += 1;
-        events.push({ styleId: step.styleId, mode, index: i + 1, changes: res.changes });
-      }
-    }
+  const record = (styleId, mode) => {
+    const res = applyEffectiveSuccess(progress, styleId, { mode });
+    progress = res.progress;
+    events.push({ styleId, mode, changes: res.changes });
+  };
+  for (const style of artStyles(ART)) {
+    if (!progress.styles[style.id].learned) progress = learn(progress, style.id);
+    for (let i = 0; i < BALANCE.trainGraduateHits; i += 1) record(style.id, 'train');
+    for (let i = 0; i < BALANCE.threshold[style.id]; i += 1) record(style.id, 'duel');
   }
-  return { progress, events, trainHits, duelHits };
+  const phase1 = events.length;
+  const richest = artStyles(ART).slice()
+    .sort((a, b) => BALANCE.rankPtsPerStyle[b.id] - BALANCE.rankPtsPerStyle[a.id])[0];
+  while (rankOf(progress, ART) < BALANCE.rankMax) record(richest.id, 'duel');
+  return { progress, events, phase1, richest };
 })();
 
-suite('케이스 6 — 최소 경로 재현 (REQ-302·304)', () => {
-  const { progress, events, trainHits, duelHits } = minPath;
-  eq(trainHits, 9, '수련 유효 성공 9회');
-  eq(duelHits, 13, '실전 유효 성공 13회');
-  eq(masteryPct(progress, 'yuun-bo'), BALANCE.masteryFullPct, '유운보 숙련 100%');
-  eq(masteryPct(progress, 'jeok-un'), BALANCE.masteryFullPct, '2식 숙련 100%');
-  eq(masteryPct(progress, 'haeng-un'), BALANCE.masteryFullPct, '3식 숙련 100%');
-  eq(progress.arts['yuun-geom'].rankPts, 45, '누적 성 포인트 45');
-  eq(rankOf(progress, 'yuun-geom'), BALANCE.rankMax, '12성 도달');
+suite('케이스 6 — 최소 경로 재현 (REQ-302·304·310)', () => {
+  const { progress, events, phase1, richest } = minPath;
+  const counted = (mode, upto) => events.slice(0, upto).filter((e) => e.mode === mode).length;
 
-  const last = events[events.length - 1];
-  deepEq([last.styleId, last.mode, last.index], ['haeng-un', 'duel', 5], '마지막 적립은 3식 실전 5회째');
-  eq(last.changes.rank?.to, BALANCE.rankMax, '3식 실전 5회째에 12성 전이');
-  eq(last.changes.rank?.pts, 45, '전이 시점 누적 포인트');
+  eq(counted('train', phase1), artStyles(ART).length * BALANCE.trainGraduateHits, 'Phase 1 수련 유효 성공 8회');
+  eq(counted('duel', phase1), artStyles(ART).reduce((n, st) => n + BALANCE.threshold[st.id], 0),
+    'Phase 1 실전 유효 성공 8회');
+  for (const style of artStyles(ART)) {
+    eq(masteryPct(progress, style.id), BALANCE.masteryFullPct, `${style.name} 숙련 100%`);
+  }
+
+  // Phase 1 은 성 축에 아무것도 남기지 않는다 — 이것이 D1 게이트의 관찰 가능한 형태다.
+  const atPhase1 = events[phase1 - 1];
+  eq(events.slice(0, phase1 - 1).every((e) => !e.changes.rank), true, 'Phase 1 내내 성 전이 0회');
+  eq(atPhase1.changes.initiate?.style_set, ART, '마지막 100% 달성 수가 입문을 낸다');
+  eq(events.filter((e) => e.changes.initiate).length, 1, '입문 전이는 1회뿐');
+  eq(atPhase1.changes.rank, undefined, '입문 그 수는 적립하지 않는다');
+
+  const opened = events[phase1];
+  eq(opened.changes.rank?.pts, BALANCE.rankPtsPerStyle[richest.id], '개방 직후 첫 발동이 초식 차수만큼 적립');
+  eq(rankOf(progress, ART), BALANCE.rankMax, '12성 도달');
+  eq(rankPtsOf(progress, ART), ptsForRank(BALANCE.rankMax) + (BALANCE.rankPtsPerStyle[richest.id]
+    - (ptsForRank(BALANCE.rankMax) % BALANCE.rankPtsPerStyle[richest.id] || BALANCE.rankPtsPerStyle[richest.id])),
+    '12성 시점 누적 포인트는 4pt 계단의 첫 30 이상 지점');
+  eq(counted('duel', events.length) - counted('duel', phase1),
+    Math.ceil(ptsForRank(BALANCE.rankMax) / BALANCE.rankPtsPerStyle[richest.id]),
+    'Phase 2 는 4식 8회 = 최소 실전 횟수');
+
   const twelveAt = events.filter((e) => e.changes.rank?.to === BALANCE.rankMax);
   eq(twelveAt.length, 1, '12성 전이는 1회뿐');
-
   deepEq(events.filter((e) => e.changes.unlock).map((e) => e.changes.unlock.styleId),
     ['jeok-un', 'haeng-un', 'pa-un'], '순차 해금 (REQ-303)');
-  eq(canLearn(progress, 'pa-un'), true, '4식 학습 가능');
-  eq(progress.styles['pa-un'].learned, false, '해금은 학습이 아니다');
 
-  // 수련 3회 = 졸업 30%, 그 뒤 실전 누적이 100% 로 채운다.
-  const grad = events.find((e) => e.styleId === 'yuun-bo' && e.mode === 'train' && e.index === 3);
-  eq(grad.changes.mastery.to, BALANCE.masteryTrainPct, '수련 3회 = 졸업 숙련 30%');
+  // 수련 졸업분 + 실전분이 100% 를 이룬다 — 졸업 숙련이 곧 장착 조건이다.
+  const grad = events.find((e) => e.styleId === 'yuun-bo' && e.mode === 'train'
+    && e.changes.mastery?.to === BALANCE.masteryTrainPct);
+  ok(grad, '수련 졸업 = 숙련 30%');
   eq(BALANCE.masteryTrainPct, BALANCE.equipMasteryPct, '졸업 숙련 = 장착 조건');
 
   throws(() => learn(createProgress(), 'haeng-un'), '순차 해금 밖 초식 학습은 throw', '해금되지 않은 초식');
   throws(() => applyEffectiveSuccess(createProgress(), 'yuun-bo', { mode: 'nope' }), '알 수 없는 적립 모드는 throw', '알 수 없는 적립 모드');
   throws(() => applyEffectiveSuccess(createProgress(), 'jeok-un', { mode: 'duel' }), '미학습 초식 적립은 throw', '학습하지 않은 초식');
+});
+
+// ------------------------- 6-a. 성 포인트 적립 게이트 (REQ-310) — 미달 · 개방 · 12성 조건
+
+suite('성 포인트 적립 게이트 (REQ-304·310)', () => {
+  // (a) 게이트 회귀 — 입문 전에는 몇 번을 발동해도 성 축이 움직이지 않는다.
+  let held = createProgress();
+  eq(isInitiated(held, ART), false, '1식만 학습한 상태는 입문 미달');
+  for (let i = 0; i < 20; i += 1) {
+    held = applyEffectiveSuccess(held, 'yuun-bo', { mode: i % 2 ? 'duel' : 'train' }).progress;
+  }
+  eq(held.arts[ART].rankPts, 0, '미달 상태 발동 20회 후 rankPts 0');
+  eq(rankPtsOf(held, ART), 0, '미달 상태의 노출 포인트도 0');
+  eq(rankOf(held, ART), 1, '성은 1 에 머문다');
+  eq(masteryPct(held, 'yuun-bo'), BALANCE.masteryFullPct, '숙련은 그 구간에도 오른다');
+
+  // (b) 개방 회귀 — 입문 직후 1회 발동이 초식 차수만큼 정확히 적립한다.
+  const initiated = minPath.events.slice(0, minPath.phase1);
+  let opened = createProgress();
+  for (const e of initiated) {
+    if (!opened.styles[e.styleId].learned) opened = learn(opened, e.styleId);
+    opened = applyEffectiveSuccess(opened, e.styleId, { mode: e.mode }).progress;
+  }
+  eq(isInitiated(opened, ART), true, '전 초식 100% = 입문 완료');
+  eq(rankPtsOf(opened, ART), 0, '개방 시점 누적은 0');
+  const first = applyEffectiveSuccess(opened, 'jeok-un', { mode: 'duel' });
+  eq(rankPtsOf(first.progress, ART), BALANCE.rankPtsPerStyle['jeok-un'], '개방 직후 1회 = 2식 차수 2pt');
+  eq(first.changes.initiate, undefined, '입문은 다시 나지 않는다');
+
+  // (c) 12성 조건 — 포인트가 차 있어도 입문 미달이면 성이 열리지 않는다.
+  const forged = { ...held, arts: { ...held.arts, [ART]: { rankPts: ptsForRank(BALANCE.rankMax) } } };
+  eq(rankForPts(forged.arts[ART].rankPts), BALANCE.rankMax, '포인트 자체는 12성 계단을 넘는다');
+  eq(isInitiated(forged, ART), false, '그래도 입문은 미달');
+  eq(rankOf(forged, ART), 1, '입문 미달이면 12성 불가');
+  eq(canTransmit(forged, ART, createDisciple()), false, '전수 자격도 열리지 않는다');
 });
 
 // ------------------------------------------------- 7. 전수 = 복사 (REQ-307·401)
@@ -445,8 +499,10 @@ suite('전수 = 복사 (REQ-307·401)', () => {
   deepEq(discipleStyles(disciple, 'yuun-geom'), [], '전수 전 제자 초식은 빈 배열');
 
   disciple = transmit(master, disciple, 'yuun-geom');
-  deepEq(disciple.arts['yuun-geom'].styles, ['yuun-bo', 'jeok-un', 'haeng-un'],
-    '제자는 사부가 학습한 초식만 받는다');
+  deepEq(disciple.arts['yuun-geom'].styles, artById('yuun-geom').styles,
+    '전수는 무공 단위 — 제자가 받는 목록이 무공 정의 그대로다 (D8)');
+  deepEq(discipleStyles(disciple, 'yuun-geom').map((st) => st.id), artStyles('yuun-geom').map((st) => st.id),
+    '사부·제자 노출 목록이 같은 소스에서 나온다');
   eq(discipleRankOf(disciple, 'yuun-geom'), BALANCE.discipleStartRank, '제자는 1성부터');
   eq(rankOf(master, 'yuun-geom'), BALANCE.rankMax, '사부는 성을 유지한다');
   eq(masteryPct(master, 'yuun-bo'), BALANCE.masteryFullPct, '사부는 숙련을 유지한다');
@@ -560,6 +616,74 @@ suite('케이스 8 — B 밸런스 게이트 (REQ-403·506)', () => {
   }
   console.log(`    B 시뮬: ${sim.exchanges}수, 적 HP ${sim.foeHp}, 제자 HP ${sim.selfHp}, `
     + `등급 ${sim.trace.map((t) => BALANCE.grades[t.grade].label).join('·')}`);
+});
+
+// ------------------------- 9-a. A 밸런스 게이트 (REQ-507) — 성 1 고정 유저가 A 를 이기는가
+
+/** Phase 1 을 세션 API 로 되짚어 각 초식이 100% 가 된 시점의 실전 슬롯을 남긴다. */
+const initiationSlots = (() => {
+  const session = createSession();
+  const snapshots = [];
+  for (const style of artStyles(ART)) {
+    if (!session.progress.styles[style.id].learned) learnStyle(session, style.id);
+    for (let i = 0; i < BALANCE.trainGraduateHits; i += 1) recordEffectiveSuccess(session, style.id, 'train');
+    for (let i = 0; i < BALANCE.threshold[style.id]; i += 1) recordEffectiveSuccess(session, style.id, 'duel');
+    snapshots.push(equippedStyles(session));
+  }
+  return snapshots;
+})();
+
+// 사본이 아니라 실루프다 — 제자의 손을 유저 자리에 세워 「창을 놓치지 않는 손」을 모델한다.
+function simulateDuelA({ challengerId, styles, rank }) {
+  const session = createSession();
+  const timer = createVirtualTimer();
+  const trace = [];
+  let ended = null;
+  let match = null;
+
+  const hand = createDiscipleHand({ session, styles, fire: (fired) => match.fire(fired) });
+  match = createMatch({
+    challenger: challengerById(challengerId),
+    selfHpMax: BALANCE.hp.user,
+    rankOf: () => rank,
+    openLen: () => Math.max(...styles.map((st) => st.seq.length)),
+    accessibility: () => false,
+    timer,
+    hooks: {
+      onTelegraph() { hand.arm(); },
+      onTick(view) { hand.tick(view); },
+      onVerdict(view) { trace.push(view.verdict.grade); },
+      onEnd(view) { ended = view; },
+    },
+  });
+  pumpToEnd(match, timer);
+  return { win: ended.outcome.win, exchanges: trace.length, foeHp: ended.foeHp, selfHp: ended.selfHp, trace };
+}
+
+suite('A 밸런스 게이트 (REQ-503·507)', () => {
+  // 성이 Phase 1 내내 1 에 묶이므로 A 곡선의 전제가 「내공이 오른다」에서 「손이 빨라진다」로 바뀌었다.
+  const rank = rankOf(createProgress(), ART);
+  eq(rank, 1, 'Phase 1 유저는 성 1');
+  eq(powerOf(rank), 1.05, '성 1 내공 1.05');
+
+  const stages = [
+    { id: 'A-1', styles: initiationSlots[0] },
+    { id: 'A-2', styles: initiationSlots[1] },
+    { id: 'A-3', styles: initiationSlots[initiationSlots.length - 1] },
+  ];
+  for (const stage of stages) {
+    const sim = simulateDuelA({ challengerId: stage.id, styles: stage.styles, rank });
+    ok(sim.win, `성 1 유저가 ${stage.id} 을 이긴다 (남은 HP 적 ${sim.foeHp} / 유저 ${sim.selfHp})`);
+    ok(sim.exchanges <= BALANCE.maxExchanges, `${stage.id} 은 수 상한 안에서 결판 (${sim.exchanges}수)`);
+    if (!sim.win) {
+      console.error(`  ! A 밸런스 미달 — BALANCE.hp['${stage.id}'] 하향 후 docs/balance-log.md 기록 필요`);
+    }
+    console.log(`    ${stage.id} 시뮬: ${sim.exchanges}수, 적 HP ${sim.foeHp}, 유저 HP ${sim.selfHp}, `
+      + `장착 ${stage.styles.map((st) => st.name).join('·')}`);
+  }
+  // 입문 시점의 슬롯이 속성 3색을 덮어야 A-3 의 예고 3종에 전부 우세로 답할 수 있다.
+  deepEq([...new Set(stages[2].styles.map((st) => st.attr))].sort(), ['fast', 'fine', 'hard'],
+    '입문 시점 슬롯이 강·정·쾌를 모두 덮는다');
 });
 
 // ------------------------------- 10. 대련 종료 판정 (REQ-201) — 상태기계와 공유하는 규칙
@@ -798,8 +922,8 @@ suite('헤드리스 봇 1사이클 (REQ-601·603·605)', () => {
 
     const emitted = new Set(payload.entries.map((e) => e.event));
     const missing = Object.keys(LOG_SCHEMA).filter((event) => !emitted.has(event));
-    // REQ-601 최종 검증 — 실제 1사이클에서 17종이 전부 나오지 않으면 kill 산식에 구멍이 있다.
-    deepEq(missing, [], `시드 ${SEEDS[i]} — 통합 로그 17종 전량 emit`);
+    // REQ-601 최종 검증 — 실제 1사이클에서 전 종류가 나오지 않으면 kill 산식에 구멍이 있다.
+    deepEq(missing, [], `시드 ${SEEDS[i]} — 통합 로그 ${Object.keys(LOG_SCHEMA).length}종 전량 emit`);
 
     const metrics = readout(payload);
     eq(metrics.aux.tester_role, 'bot', `시드 ${SEEDS[i]} — tester_role 이 봇으로 남는다`);
@@ -882,6 +1006,59 @@ suite('헤드리스 봇 1사이클 (REQ-601·603·605)', () => {
     + `${metrics.map((m) => `${(m.kill.b_completion_rate * 100).toFixed(0)}%`).join('/')} · `
     + `ignore ${metrics.map((m) => `${(m.gate.ignore_rate * 100).toFixed(1)}%`).join('/')}`
     + (over.length ? ` — 임계(300s·15%) 초과 ${over.length}회, balance-log 회차 필요` : ''));
+});
+
+// ------------- 14-a. 사이클 시뮬 (REQ-310·603) — 유효 성공률 시나리오별 구간 산출
+
+/**
+ * 유효 성공률 시나리오 (#38) — 손 정확도 시드가 그 축의 유일한 입력이라, 두 값은
+ * 「이 봇이 그 성공률을 내는 `missRate`」의 실측 역산이다 (아래 출력의 실현 성공률로 확인된다).
+ */
+const RATE_SCENARIOS = [{ label: '70%', missRate: 0.085 }, { label: '50%', missRate: 0.18 }];
+const SIM_SEEDS = [20260901, 20260902, 7919, 104729, 1299709, 31337, 15485863, 2718281,
+  161803, 577, 9973, 42];
+const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+
+suite('사이클 시뮬 — 입문 · 12성 · cycle_done (REQ-310·603)', () => {
+  for (const scenario of RATE_SCENARIOS) {
+    const runs = SIM_SEEDS.map((seed) => {
+      const run = runHeadlessCycle({
+        random: createSeededRandom(seed),
+        paceSeed: { ...BALANCE.bot, missRate: scenario.missRate },
+      });
+      const entries = exportPayload(run.session).entries;
+      const at = (pred) => entries.find(pred)?.[TIME_FIELD] ?? null;
+      const duelVerdicts = entries.filter((e) => e.event === 'verdict' && e.who === 'user');
+      return {
+        seed,
+        initiate: at((e) => e.event === 'initiate'),
+        twelve: at((e) => e.event === 'rank' && e.to === BALANCE.rankMax),
+        transmit: at((e) => e.event === 'transmit'),
+        done: run.elapsedMs,
+        ranksBeforeInitiate: entries.filter((e) => e.event === 'rank').length
+          ? entries.findIndex((e) => e.event === 'rank') < entries.findIndex((e) => e.event === 'initiate')
+          : false,
+        wins: entries.filter((e) => e.event === 'coins' && e.reason === 'duel_win').length,
+        rate: duelVerdicts.filter((e) => isEffectiveSuccess(e.grade)).length / duelVerdicts.length,
+      };
+    });
+
+    for (const run of runs) {
+      // 순서가 곧 D1 규칙이다 — 성 전이가 입문보다 앞서면 게이트가 새고 있다는 뜻이다.
+      ok(run.initiate !== null, `${scenario.label} 시드 ${run.seed} — 입문 이벤트가 남는다`);
+      eq(run.ranksBeforeInitiate, false, `${scenario.label} 시드 ${run.seed} — 성 전이는 입문 뒤에만`);
+      ok(run.twelve > run.initiate, `${scenario.label} 시드 ${run.seed} — 12성은 입문 뒤`);
+      ok(run.transmit > run.twelve, `${scenario.label} 시드 ${run.seed} — 전수는 12성 뒤`);
+      ok(run.wins >= DUEL_A_STAGES, `${scenario.label} 시드 ${run.seed} — A 전 차수 승리 도달`);
+    }
+
+    const secs = (key) => `${(median(runs.map((r) => r[key])) / 1000).toFixed(0)}s`;
+    const span = (key) => `${(Math.min(...runs.map((r) => r[key])) / 1000).toFixed(0)}~`
+      + `${(Math.max(...runs.map((r) => r[key])) / 1000).toFixed(0)}s`;
+    console.log(`    ${scenario.label} 시나리오 (실현 ${(median(runs.map((r) => r.rate)) * 100).toFixed(0)}%): `
+      + `입문 ${secs('initiate')} · 12성 ${secs('twelve')} · cycle_done ${secs('done')} [${span('done')}]`);
+  }
+  // kill 임계는 여기서 단정하지 않는다 — required check 라 시드 튜닝만으로 이후 PR 이 전부 막힌다.
 });
 
 // ----------------------------------------------- 15. 도장 유도 툴팁 대상 (#15)
@@ -1028,8 +1205,8 @@ suite('BALANCE 파라미터 census (REQ-606)', () => {
     openingWindowPenalty: 0.4, accessibilityWindowMult: 1.3, accessibilityWindow: false,
     resolveMs: 500, maxExchanges: 12, powerBase: 1, powerPerRank: 0.05,
     initiativeBase: 1, initiativePerRatio: 0.3, clashK: 0.5, effectiveSuccessMaxOrder: 2,
-    trainGraduateHits: 3, masteryTrainPct: 30, masteryFullPct: 100, ignoreHighlightAt: 3,
-    rankStep: 3, rankMax: 12, slots: 3, equipMasteryPct: 30,
+    trainGraduateHits: 2, masteryTrainPct: 30, masteryFullPct: 100, ignoreHighlightAt: 3,
+    rankStep: 2, rankMax: 12, slots: 3, equipMasteryPct: 30,
     discipleStartRank: 1, discipleRankMax: 10, discipleFireRatio: 0.6,
     winColorHintExchanges: Number.MAX_SAFE_INTEGER, simEfficiency: 0.1, simTrainSeconds: 3600,
     buttonHitPx: 56,
@@ -1037,10 +1214,10 @@ suite('BALANCE 파라미터 census (REQ-606)', () => {
   for (const [key, value] of Object.entries(SEEDS)) eq(BALANCE[key], value, `BALANCE.${key}`);
   deepEq(BALANCE.damageByLen, { 3: 10, 4: 14, 5: 20 }, 'BALANCE.damageByLen');
   deepEq(BALANCE.hintDelayMs, { duel: 500, train: 0 }, 'BALANCE.hintDelayMs');
-  deepEq(BALANCE.threshold, { 'yuun-bo': 4, 'jeok-un': 4, 'haeng-un': 5, 'pa-un': 5 }, 'BALANCE.threshold');
+  deepEq(BALANCE.threshold, { 'yuun-bo': 2, 'jeok-un': 2, 'haeng-un': 2, 'pa-un': 2 }, 'BALANCE.threshold');
   deepEq(BALANCE.rankPtsPerStyle, { 'yuun-bo': 1, 'jeok-un': 2, 'haeng-un': 3, 'pa-un': 4 }, 'BALANCE.rankPtsPerStyle');
   deepEq(BALANCE.rankStepMult, { 11: 2, 12: 4 }, 'BALANCE.rankStepMult (spec rank11Mult·rank12Mult)');
-  deepEq(BALANCE.hp, { user: 100, disciple: 100, 'A-1': 40, 'A-2': 55, 'A-3': 70, B: 80 }, 'BALANCE.hp');
+  deepEq(BALANCE.hp, { user: 100, disciple: 100, 'A-1': 30, 'A-2': 45, 'A-3': 80, B: 80 }, 'BALANCE.hp');
   deepEq(BALANCE.challengerPower, { A: 1, B: 1.1 }, 'BALANCE.challengerPower');
   deepEq(BALANCE.reward, { duelWin: 30, dispatchWin: 50 }, 'BALANCE.reward');
   deepEq(BALANCE.bot, {
