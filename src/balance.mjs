@@ -48,7 +48,7 @@ export const BALANCE = {
   masteryFullPct: 100,
   hintDelayMs: { duel: 500, train: 0 },
   ignoreHighlightAt: 3,
-  threshold: { 'yuun-bo': 3, 'jeok-un': 3, 'haeng-un': 4, 'pa-un': 4 },
+  threshold: { 'yuun-bo': 2, 'jeok-un': 2, 'haeng-un': 2, 'pa-un': 2 },
   rankPtsPerStyle: { 'yuun-bo': 1, 'jeok-un': 2, 'haeng-un': 3, 'pa-un': 4 },
   rankStep: 2,
   rankStepMult: { 11: 2, 12: 4 },
@@ -80,7 +80,7 @@ export const BALANCE = {
   },
 
   // HP·내공 시드 — 도전자 키는 CHALLENGERS.id 와 1:1 (REQ-506 게이트가 하향 조정한다)
-  hp: { user: 100, disciple: 100, 'A-1': 45, 'A-2': 60, 'A-3': 110, B: 80 },
+  hp: { user: 100, disciple: 100, 'A-1': 30, 'A-2': 45, 'A-3': 80, B: 80 },
   challengerPower: { A: 1, B: 1.1 },
 };
 
