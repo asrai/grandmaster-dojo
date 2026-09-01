@@ -1,8 +1,8 @@
 // 전수 장면 (REQ-307·309) — 12성 배지에서 제자 카드로 같은 무공 아이콘이 옮겨 켜지는 순간이
 // 재미 가설의 구조적 증거라, 화면 전환이 아니라 한 화면 안의 연출로 둔다.
 
-import { BALANCE, STYLES } from '../../balance.mjs';
-import { discipleRankOf, discipleStyles } from '../../core.mjs';
+import { BALANCE } from '../../balance.mjs';
+import { artStyles, discipleRankOf, discipleStyles } from '../../core.mjs';
 import { attrMark, clear, el } from '../dom.mjs';
 import { ATTR_VIEW } from '../theme.mjs';
 import { SFX } from '../audio.mjs';
@@ -19,7 +19,8 @@ export function renderTransmit(ctx) {
   ctx.refreshTop();
   SFX.transmit();
 
-  const learned = STYLES.filter((s) => s.set === ART_ID && session.progress.styles[s.id].learned);
+  // 사부·제자가 같은 무공 정의를 읽는다 — 전수 단위가 초식이 아니라 무공이라는 뜻이다 (#38).
+  const mastered = artStyles(ART_ID);
   const discipleSide = el('div', { class: 'side dark' }, [
     el('h2', { text: `제자 — ${discipleRankOf(session.disciple, ART_ID)}성` }),
     icons(discipleStyles(session.disciple, ART_ID), 'lit'),
@@ -35,7 +36,7 @@ export function renderTransmit(ctx) {
     el('div', { class: 'sides' }, [
       el('div', { class: 'side' }, [
         el('h2', { text: `사부 — ${masterRank}성` }),
-        icons(learned, 'lit'),
+        icons(mastered, 'lit'),
         el('p', { class: 'dim', text: '무공은 사부에게 그대로 남는다 — 전수는 복사다.' }),
       ]),
       discipleSide,
