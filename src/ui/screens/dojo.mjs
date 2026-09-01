@@ -34,17 +34,17 @@ const tipText = (id, lead) => `${TIP_LEAD[lead]} — ${TIPS[tipRank(id)][1]}`;
 // 초식 줄의 액션 id 만 `<종류>:<초식 id>` 꼴이라, 이 분해가 곧 「밴드 액션인가 줄 액션인가」다.
 const rowStyleId = (id) => (String(id).includes(':') ? String(id).split(':')[1] : null);
 
-/** 사용자가 고른 펼침 행. `null` = 미선택(기본값이 선다), `COLLAPSED` = 전부 접음. */
-const COLLAPSED = Symbol('collapsed');
-let chosenRow = null;
+/** 사용자가 고른 펼침 행 — `row: null` 은 전부 접음이고, `against` 는 그 선택을 한 시점의 안내 대상 행이다. */
+let chosen = null;
 
 /**
  * 펼칠 행 하나 — 세로 예산이 초식 4행을 다 펼칠 만큼 넓지 않아 아코디언으로 접는다 (#37).
- * 사용자의 선택이 없는 진입 시점에는 유도 툴팁이 지목한 행이 먼저 열려, 안내와 상세가 한 행에 모인다.
+ * 사용자의 선택은 안내가 같은 행에 머무는 동안만 유지된다 — 안내가 다른 행으로 옮겨가면 그쪽이
+ * 다시 열려, 도장에 들어올 때마다 지목된 행에 안내와 상세가 함께 있다.
  */
-function openRowOf(session, target) {
-  if (chosenRow === COLLAPSED) return null;
-  return chosenRow ?? rowStyleId(target?.id) ?? session.slots.find(Boolean) ?? STYLES[0].id;
+function openRowOf(session, guidedRow) {
+  if (chosen && chosen.against === guidedRow) return chosen.row;
+  return guidedRow ?? session.slots.find(Boolean) ?? STYLES[0].id;
 }
 
 /**
@@ -125,7 +125,7 @@ function actionButton(ctx, action, target) {
     : button;
 }
 
-function styleRow(ctx, style, actions, target, open) {
+function styleRow(ctx, style, actions, target, guidedRow, open) {
   const { session } = ctx;
   const learned = session.progress.styles[style.id].learned;
   const mastery = masteryOf(session, style.id);
@@ -135,7 +135,7 @@ function styleRow(ctx, style, actions, target, open) {
     el('div', { class: 'row-head' }, [
       el('button', {
         class: 'row-name', 'aria-expanded': String(open),
-        onclick: () => { chosenRow = open ? COLLAPSED : style.id; ctx.go('dojo'); },
+        onclick: () => { chosen = { row: open ? null : style.id, against: guidedRow }; ctx.go('dojo'); },
       }, [
         attrMark(style.attr),
         el('b', { text: style.name }),
@@ -196,7 +196,8 @@ export function renderDojo(ctx) {
   const target = pickTooltip(session.tooltip, [...rowActions.flat(), ...band]
     .filter((a) => tipRank(a.id) >= 0)
     .sort((a, b) => tipRank(a.id) - tipRank(b.id)));
-  const openId = openRowOf(session, target);
+  const guidedRow = rowStyleId(target?.id);
+  const openId = openRowOf(session, guidedRow);
 
   root.append(
     el('section', { class: 'card' }, [
@@ -205,7 +206,7 @@ export function renderDojo(ctx) {
         el('span', { class: `badge${rank >= BALANCE.rankMax ? ' max' : ''}`, text: rankLabel(rank) }),
         el('span', { class: 'dim', text: ` 성 포인트 ${session.progress.arts[ART_ID].rankPts}` }),
       ]),
-      el('div', { class: 'rows' }, STYLES.map((s, i) => styleRow(ctx, s, rowActions[i], target, s.id === openId))),
+      el('div', { class: 'rows' }, STYLES.map((s, i) => styleRow(ctx, s, rowActions[i], target, guidedRow, s.id === openId))),
       session.slots.some(Boolean) ? null : el('p', {
         class: 'dim', text: '초식을 수련해 숙련 30% 를 넘기면 실전 슬롯에 자동으로 장착된다.',
       }),
