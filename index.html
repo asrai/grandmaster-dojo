@@ -56,11 +56,12 @@ body {
   position: relative; border-top: 1px solid var(--line); background: var(--panel);
   padding: 8px 12px; display: flex; flex-direction: column; gap: 6px;
 }
-#band:empty { display: none; }
+#band:not(:has(*)) { display: none; }
 /* 밴드는 화면 맨 아래라 말풍선을 위로 띄우고, 기준 상자를 밴드로 올려 좁은 칸에서 접히지 않게 한다. */
 #band .tip-anchor { position: static; }
 #band .tip { top: auto; bottom: calc(100% + 4px); }
-.band-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 6px; }
+.band-actions { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; }
+.band-cell { display: flex; flex-direction: column; gap: 4px; }
 .band-actions button { width: 100%; min-height: var(--hit); padding: 8px 4px; font-weight: 700; }
 /* 부제는 잠금 여부와 무관하게 한 줄을 차지한다 — 밴드가 높이를 바꾸면 위 스크롤 영역이 함께 흔들린다. */
 .band-sub {
@@ -226,7 +227,7 @@ button.ghost { background: transparent; }
 
       <main id="screen"></main>
 
-      <div id="band"></div>
+      <nav id="band" aria-label="주요 행동"></nav>
 
       <footer id="pad" class="detached">
         <div id="padColor" class="pad-color none"></div>

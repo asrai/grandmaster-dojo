@@ -34,7 +34,13 @@ const tipText = (id, lead) => `${TIP_LEAD[lead]} — ${TIPS[tipRank(id)][1]}`;
 // 초식 줄의 액션 id 만 `<종류>:<초식 id>` 꼴이라, 이 분해가 곧 「밴드 액션인가 줄 액션인가」다.
 const rowStyleId = (id) => (String(id).includes(':') ? String(id).split(':')[1] : null);
 
-/** 사용자가 고른 펼침 행 — `row: null` 은 전부 접음이고, `against` 는 그 선택을 한 시점의 안내 대상 행이다. */
+// 재렌더가 누른 버튼 노드를 파기하므로, 포커스를 되돌리려면 같은 줄의 토글을 id 로 다시 찾아야 한다.
+const rowToggleId = (styleId) => `row-toggle-${styleId}`;
+
+/**
+ * 사용자가 고른 펼침 행 — `row: null` 은 전부 접음이고, `against` 는 그 선택을 한 시점의 안내 대상 행이다.
+ * 세션이 아니라 모듈에 두는 것은 이것이 순수 뷰 상태라, 로그 내보내기 payload 에 실려서는 안 되기 때문이다.
+ */
 let chosen = null;
 
 /**
@@ -134,8 +140,12 @@ function styleRow(ctx, style, actions, target, guidedRow, open) {
   return el('div', { class: `row${learned ? '' : ' locked'}${open ? ' open' : ''}`, style: `--attr:${ATTR_VIEW[style.attr].color}` }, [
     el('div', { class: 'row-head' }, [
       el('button', {
-        class: 'row-name', 'aria-expanded': String(open),
-        onclick: () => { chosen = { row: open ? null : style.id, against: guidedRow }; ctx.go('dojo'); },
+        id: rowToggleId(style.id), class: 'row-name', 'aria-expanded': String(open),
+        onclick: () => {
+          chosen = { row: open ? null : style.id, against: guidedRow };
+          ctx.go('dojo');
+          document.getElementById(rowToggleId(style.id))?.focus();
+        },
       }, [
         attrMark(style.attr),
         el('b', { text: style.name }),
@@ -171,10 +181,14 @@ function discipleCard(session) {
 /** 스크롤 흐름 밖의 바닥 밴드 — 주요 액션이 진입 첫 화면에서 엄지 도달 범위 안에 상시 노출된다. */
 function renderBand(ctx, actions, target) {
   clear(ctx.band).append(
-    el('div', { class: 'band-actions' }, [
-      ...actions.map((a) => actionButton(ctx, a, target)),
-      ...actions.map((a) => el('span', { class: 'band-sub', text: a.disabled ? a.lockedSub : a.sub })),
-    ]),
+    el('div', { class: 'band-actions' }, actions.map((a) => {
+      const sub = a.disabled ? a.lockedSub : a.sub;
+      // 칸 폭이 무대의 1/3 이라 부제가 잘릴 수 있고, 잘린 문자열에 닿을 다른 경로가 없다.
+      return el('div', { class: 'band-cell' }, [
+        actionButton(ctx, a, target),
+        el('span', { class: 'band-sub', title: sub, text: sub }),
+      ]);
+    })),
     // 평가자는 실제로 방치할 수 없으므로 1시간을 버튼 하나로 압축해 보여 준다 (REQ-604).
     el('button', {
       class: 'small ghost band-sim',
