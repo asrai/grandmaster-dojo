@@ -1204,6 +1204,12 @@ suite('제자 수련 — 병렬 · 지정 초식만 · 7성 정지 (REQ-751~754�
     ['disciple', BALANCE.rankGate.oneTap, 'train'], '벽 로그는 사부와 같은 형이되 actor 로 갈린다');
   eq(discipleTrainProgress(walled), null, '벽에 닿으면 지정이 풀린다 — 무효인 시간을 계속 태우지 않는다');
   eq(canDiscipleTrain(walled, 'yuun-bo'), false, '벽 위 초식은 다시 지정할 수도 없다');
+  // 벽 위 구간의 유일한 경로는 파견 유효 성공이고, 그마저 상한 10 에서 멈춘다 (REQ-705).
+  for (let i = 0; i < 60; i += 1) accrueDiscipleRank(walled, 'yuun-bo');
+  eq(discipleStyleRank(walled.disciple, ART, 'yuun-bo'), BALANCE.discipleRankMax,
+    `벽 위는 파견 유효 성공으로 ${BALANCE.discipleRankMax}성까지 오른다`);
+  eq(discipleStyleRank(walled.disciple, ART, 'yuun-bo') < BALANCE.rankLadder.finishRank, true,
+    '제자는 11성에 진입하지 않는다 — 결정타·완파는 자동 전투가 하지 않는 판단이다');
 
   // 시간 주입 — 걸어 둔 시각을 앞당길 뿐, 게임 수치(1성당 시간)는 그대로다 (REQ-792).
   const injected = createSession({ now: () => clock });
@@ -1747,7 +1753,7 @@ suite('헤드리스 봇 1사이클 (REQ-601·603·605)', () => {
     + (over.length ? ` — 임계(300s·15%) 초과 ${over.length}회, balance-log 회차 필요` : ''));
 });
 
-// ------------- 14-a. 사이클 시뮬 (REQ-310·603) — 유효 성공률 시나리오별 구간 산출
+// ---- 14-a. 사이클 시뮬 (REQ-711·713·603) — 유효 성공률 시나리오별 구간 산출
 
 /**
  * 유효 성공률 시나리오 (#38) — 손 정확도 시드가 그 축의 유일한 입력이라, 두 값은
@@ -1758,7 +1764,7 @@ const SIM_SEEDS = [20260901, 20260902, 7919, 104729, 1299709, 31337, 15485863, 2
   161803, 577, 9973, 42];
 const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
 
-suite('사이클 시뮬 — 입문 · 12성 · cycle_done (REQ-310·603)', () => {
+suite('사이클 시뮬 — 해금 · 원터치 · 12성 · cycle_done (REQ-711·713·603)', () => {
   for (const scenario of RATE_SCENARIOS) {
     const runs = SIM_SEEDS.map((seed) => {
       const run = runHeadlessCycle({
