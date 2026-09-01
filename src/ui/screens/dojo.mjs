@@ -143,11 +143,13 @@ function bandActions(ctx) {
       onclick: () => ctx.go('transmit'),
     },
     {
+      // 차수 잠금은 여기서 막지 않는다 — 부족 초식 표시가 예고 화면에 있어, 닫으면 그 안내에 닿을 수 없다.
       id: 'dispatch', text: '파견',
-      sub: `${DISPATCH_CHALLENGER.name} B-${session.dispatchStage}`,
-      lockedSub: session.transmitted
-        ? `제자 전 초식 ${missionLockRankOf(session)}성 필요` : '전수 후 열린다',
-      disabled: !canDispatch(session),
+      sub: canDispatch(session)
+        ? `${DISPATCH_CHALLENGER.name} B-${session.dispatchStage}`
+        : `B-${session.dispatchStage} 잠김 — 전 초식 ${missionLockRankOf(session)}성`,
+      lockedSub: '전수 후 열린다',
+      disabled: !session.transmitted,
       onclick: () => ctx.go('preview'),
     },
   ];

@@ -9,7 +9,7 @@ import { ATTR_VIEW, attrLabel, winAttrOf } from '../theme.mjs';
 import { SFX } from '../audio.mjs';
 import { createMatch } from '../match.mjs';
 import {
-  ART_ID, ART_NAME, DISPATCH_CHALLENGER, beginMission, canDispatch, currentMission,
+  ART_ID, ART_NAME, DISPATCH_CHALLENGER, canDispatch, currentMission,
   missionLockRankOf, missionShortfallOf,
 } from '../session.mjs';
 import { hideVerdict, showGradeVerdict } from '../verdict-overlay.mjs';
@@ -52,16 +52,17 @@ function lockNotice(need, shortfall) {
   ]);
 }
 
+/**
+ * 임무 예고 (REQ-732·742·743). **잠긴 차수도 이 화면에 들어온다** — 부족 초식 표시가 하드 잠금의
+ * 절반이라(팝업 대신 그것을 고른 것이 결정이다) 잠긴 동안 닿을 수 없으면 그 절반이 없는 것과 같다.
+ */
 export function renderPreview(ctx) {
   const { session, root } = ctx;
   const unlocked = canDispatch(session);
   // 잠긴 차수는 조합을 뽑지 않는다 — 나갈 수 없는 상대를 미리 굴리면 그 판이 무엇이었는지가 흐려진다.
-  const mission = unlocked ? beginMission(session) : null;
+  const mission = unlocked ? currentMission(session) : null;
   const challenger = mission ? mission.challenger : DISPATCH_CHALLENGER;
   const stageLabel = `B-${session.dispatchStage}`;
-  const finisher = finisherOf(challenger);
-  const styles = discipleStyles(session.disciple, ART_ID);
-  const shortfall = missionShortfallOf(session);
   ctx.pad.detach();
   clear(root);
 
@@ -73,12 +74,13 @@ export function renderPreview(ctx) {
         ? '첫 임무는 고정 상대다 — 갓 전수받은 제자도 이긴다.'
         : '임무마다 상대 구성이 새로 짜인다 — 같은 자리에 눌러앉을 수 없다.',
     }),
-    finisherTell(finisher),
-    el('div', { class: 'icons' }, challenger.styles.map((id) => styleIcon(foeStyleById(id), 'mini'))),
+    mission ? finisherTell(finisherOf(challenger)) : null,
+    mission
+      ? el('div', { class: 'icons' }, mission.foeSet.map((id) => styleIcon(foeStyleById(id), 'mini')))
+      : lockNotice(missionLockRankOf(session), missionShortfallOf(session)),
     el('h2', { text: `제자 — ${ART_NAME}` }),
-    el('div', { class: 'icons' }, styles.map((s) => styleIcon(s,
+    el('div', { class: 'icons' }, discipleStyles(session.disciple, ART_ID).map((s) => styleIcon(s,
       '', `${discipleStyleRank(session.disciple, ART_ID, s.id)}성`))),
-    unlocked ? null : lockNotice(missionLockRankOf(session), shortfall),
     el('div', { class: 'actions' }, [
       el('button', {
         class: 'primary', text: '파견 보내기', disabled: !unlocked, onclick: () => ctx.go('dispatch'),
@@ -90,6 +92,8 @@ export function renderPreview(ctx) {
 
 export function startDispatch(ctx) {
   const { session, root } = ctx;
+  // 자격은 진입 함수가 진다 — 버튼 비활성은 표현일 뿐이라 그것만으로는 우회 경로가 닫히지 않는다 (REQ-743).
+  if (!canDispatch(session)) return renderPreview(ctx);
   const mission = currentMission(session);
   const challenger = mission.challenger;
   const styles = discipleStyles(session.disciple, ART_ID);

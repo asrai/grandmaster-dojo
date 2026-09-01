@@ -89,7 +89,6 @@ export function createSession({ now = () => Date.now() } = {}) {
     // 파견 차수 — 1 = B-1 고정 상대, 2 부터 랜덤 임무 + 하드 잠금 (REQ-741·742).
     dispatchStage: 1,
     mission: null,
-    cycleDone: false,
     cheat: createCheatState(),
     botRunning: false,
   };
@@ -389,8 +388,14 @@ export function beginMission(session, { random = Math.random } = {}) {
   return session.mission;
 }
 
-/** 진행 중인 임무 — 예고를 거치지 않고 들어온 호출부도 같은 조합을 보게 하는 한 자리. */
-export const currentMission = (session) => session.mission ?? beginMission(session);
+/**
+ * 진행 중인 임무 — 조합은 **한 판에 한 번** 확정된다. 화면 진입마다 다시 굴리면 예고↔도장 왕복이
+ * 공짜 리롤이 되어, 눌러앉기를 막으려던 랜덤이 가장 쉬운 조합에 눌러앉는 경로가 된다.
+ */
+export function currentMission(session, options = {}) {
+  const mission = session.mission;
+  return mission && mission.stage === session.dispatchStage ? mission : beginMission(session, options);
+}
 
 /** 수련 방문 시작 (REQ-715) — 방문 계수의 유일한 초기화 지점. */
 export function beginTrainVisit(session, styleId) {
@@ -549,16 +554,13 @@ export function settleDuel(session, { win, stage }) {
 /** 파견 결과 정산 (REQ-406·604). `cycle_done` 이 kill (d) 의 종점이라 승패와 무관하게 찍힌다. */
 export function settleDispatch(session, { win }) {
   if (win) addCoins(session, BALANCE.reward.dispatchWin, 'dispatch_win');
-  // 종점은 1사이클에 하나다 — B-2 이후 임무가 그것을 다시 찍으면 판독기의 첫 사이클 절단선이
-  // 임무마다 움직이고, 판정 범위를 B-1 종료까지로 그은 근거가 사라진다 (REQ-792).
-  if (!session.cycleDone) {
-    session.cycleDone = true;
-    logEvent(session, 'cycle', { phase: 'cycle_done' });
-    // 판독기는 첫 사이클만 세므로 그 종점의 상태를 통째로 붙잡는다 — 이후 화면의 전환은 그 사이클을 오염시키지 않는다.
-    session.accessibilityAtDone ??= { on: session.accessibility, toggles: session.accessibilityToggles };
-  }
+  logEvent(session, 'cycle', { phase: 'cycle_done' });
+  // 판독기는 첫 사이클만 세므로 그 종점의 상태를 통째로 붙잡는다 — 이후 화면의 전환은 그 사이클을 오염시키지 않는다.
+  session.accessibilityAtDone ??= { on: session.accessibility, toggles: session.accessibilityToggles };
   // 이긴 차수만 다음 임무를 연다 — 패배가 차수를 밀면 하드 잠금이 실패를 통과 경로로 만든다.
   if (win && session.mission?.stage === session.dispatchStage) session.dispatchStage += 1;
+  // 임무는 한 판에 소비된다 — 남겨 두면 다음 진입이 지난 차수의 조합으로 싸운다.
+  session.mission = null;
   return { reward: win ? BALANCE.reward.dispatchWin : 0 };
 }
 

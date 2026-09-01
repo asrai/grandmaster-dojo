@@ -8,14 +8,15 @@ import {
 } from '../src/balance.mjs';
 import { LOG_SCHEMA, TIME_FIELD, createLogBuffer, validate } from '../src/log.mjs';
 import {
-  createDiscipleHand, createSeededRandom, nextDuelStage, runHeadlessCycle, runHeadlessMissions,
+  createDiscipleHand, createSeededRandom, nextDojoAction, nextDuelStage, runHeadlessCycle,
+  runHeadlessMissions,
 } from '../src/bot.mjs';
 import { createMatch, createVirtualTimer, pumpToEnd } from '../src/ui/match.mjs';
 import { createSequenceInput } from '../src/ui/sequence-input.mjs';
 import {
   ART_ID, DISPATCH_CHALLENGER, EXPORT_SCHEMA, accrueDiscipleRank, addCoins, advanceDiscipleTraining,
   autoEquip, beatenChallengers, beginDuel, beginMission, canDiscipleTrain, canDispatch, canEquip,
-  canTransmitNow, challengerOfStage, consumeTooltip, createSession, createTooltipState,
+  canTransmitNow, challengerOfStage, consumeTooltip, createSession, createTooltipState, currentMission,
   designateDiscipleTraining, discipleTrainProgress, duelAttemptOf, duelFoeRank, enterPhase, equip,
   equippedStyles, exportPayload, isCheatFlagged, isRematch, learnStyle, logEvent,
   missionLockRankOf, missionShortfallOf, pickTooltip, recordDuelVerdict, recordEffectiveSuccess,
@@ -1108,9 +1109,24 @@ suite('B-2 하드 잠금 = 전 초식 최소 성 (REQ-743)', () => {
   eq(canDispatch(session), false, '한 초식만 뒤처져도 잠긴다');
   deepEq(missionShortfallOf(session).map((s) => s.id), ['pa-un'], '뒤처진 그 초식만 지목된다');
 
+  // 잠긴 차수에서 봇이 두는 한 수는 예고 직행이 아니다 — 자격 없이 들어가면 되돌아 나오는 길밖에 없다.
+  deepEq([nextDojoAction(session).kind, nextDojoAction(session).styleId], ['trainDisciple', 'pa-un'],
+    '잠긴 차수의 다음 한 수는 잠금을 쥔 그 초식을 걸어 두는 것이다');
+
   session.disciple = discipleAt(need);
   eq(canDispatch(session), true, `전 초식 ${need}성에 닿으면 열린다`);
   deepEq(missionShortfallOf(session), [], '열린 뒤에는 부족 초식이 없다');
+  eq(nextDojoAction(session).kind, 'preview', '자격이 차면 예고로 간다');
+
+  // 조합은 한 판에 한 번 확정된다 — 예고 재진입이 공짜 리롤이면 가장 쉬운 조합에 눌러앉을 수 있다.
+  const drawnOnce = currentMission(session, { random: createSeededRandom(7) });
+  deepEq(currentMission(session, { random: createSeededRandom(11) }).foeSet, drawnOnce.foeSet,
+    '예고에 다시 들어와도 같은 조합을 본다');
+  settleDispatch(session, { win: true });
+  eq(session.mission, null, '한 판이 끝나면 그 임무는 소비된다');
+  eq(session.dispatchStage, 3, '이긴 차수만 다음 임무를 연다');
+  ok(currentMission(session, { random: createSeededRandom(7) }).stage === 3,
+    '다음 차수는 그 차수의 조합을 새로 뽑는다');
   eq(isMissionUnlocked(createDisciple(), ART, 2), false, '전수받지 않은 제자는 최소 성 자체가 없다');
   eq(canDispatch(createSession()), false, '전수 전에는 파견이 열리지 않는다');
 });
@@ -1282,8 +1298,10 @@ suite('헤드리스 파견 2단 · 제자 수련 셀프 관측 (REQ-742·744·75
   eq(missions.every((m) => m.stage !== 'B-1'), true, '이어지는 임무는 B-1 이 아니다');
   eq(missions.every((m) => m.foeSet.length === BALANCE.mission.foeCount), true, '임무마다 조합이 새로 짜인다');
   const entries = run.session.log.entries;
-  eq(entries.filter((e) => e.event === 'cycle' && e.phase === 'cycle_done').length, 1,
-    '종점은 1사이클에 하나 — B-2 이후가 판독기의 첫 사이클 절단선을 밀지 않는다 (REQ-792)');
+  // 판정 범위의 표현은 「종점이 하나」가 아니라 「**첫** 종점이 B-1 이고 판독기가 거기서 자른다」다 (REQ-792).
+  const firstDone = entries.findIndex((e) => e.event === 'cycle' && e.phase === 'cycle_done');
+  eq(entries.slice(0, firstDone).filter((e) => e.event === 'dispatch').length, 1,
+    '첫 종점 앞의 파견은 B-1 하나뿐이다');
   const later = entries.filter((e) => e.event === 'dispatch').slice(1);
   eq(later.length, 2, 'B-2 이후 파견도 같은 스키마로 남는다');
   eq(later.every((e) => e.locked_until === BALANCE.mission.unlockRank), true,
@@ -1293,8 +1311,12 @@ suite('헤드리스 파견 2단 · 제자 수련 셀프 관측 (REQ-742·744·75
   eq(trains.every((e) => e.to > e.from), true, '성이 오르지 않은 정산은 항목을 남기지 않는다');
 
   // 로그만으로 산출 — 신규 지표 5종이 판독기에서 나온다 (REQ-794).
-  const { metrics } = readout(exportPayload(run.session));
+  const payload = exportPayload(run.session);
+  const { metrics, kill, aux } = readout(payload);
+  eq(kill.d_cycle_done_ms, run.elapsedMs, '(d) 종점은 B-1 의 것이다 — B-2 이후는 절단선 밖이다');
+  ok(aux.dropped_after_cycle > 0, 'B-2 이후 항목은 첫 사이클 밖으로 떨어진다');
   eq(metrics.dispatch_by_stage.length, 3, '파견 3건이 조합·승패와 함께 판독된다');
+  eq(metrics.rank_wall, 0, '사부 축 8성 벽은 제자 방치분과 섞이지 않는다');
   ok(metrics.disciple_train_ranks > 0, '제자 수련 성 상승분이 로그만으로 산출된다');
   ok(Object.keys(metrics.disciple_train_activity).length > 0, '병렬성 지표(master_activity)가 산출된다');
   ok(metrics.rematch_deepest >= 1, '재대련 중단 지점(attempt_n 분포)이 산출된다');
@@ -1316,11 +1338,11 @@ suite('kill (b) 판독 유효 조건 — 표본 하한 · 치트 제외 (REQ-782
 
   const thin = readout(duelCycle(KILL.minManualWindows - 1));
   eq(thin.kill.b_manual_windows, KILL.minManualWindows - 1, '수동 창 표본 수가 그대로 산출된다');
-  eq(killVerdicts(thin).b, null,
+  eq(killVerdicts(thin).verdicts.b, null,
     `수동 창 ${KILL.minManualWindows} 미만은 (b) 판독 불가 — 모집단 축소가 만드는 소표본 오판을 막는다`);
   const enough = readout(duelCycle(KILL.minManualWindows));
   eq(enough.kill.b_completion_rate, 1, '산식은 불변 — fire(oneTap=false) / (fire + timeout)');
-  eq(killVerdicts(enough).b, true, '표본이 차면 그 자리에서 판독된다');
+  eq(killVerdicts(enough).verdicts.b, true, '표본이 차면 그 자리에서 판독된다');
   eq(KILL.minManualWindows, BALANCE.killReadout.minManualWindows, '표본 하한은 정본 JSON 이 진다');
 
   // 원터치 창은 분모에서 빠지고 그 제외 시점이 7성이다 (REQ-793 — 산식 불변, 시점만 이동).
@@ -1331,8 +1353,8 @@ suite('kill (b) 판독 유효 조건 — 표본 하한 · 치트 제외 (REQ-782
 
   const flagged = { ...duelCycle(KILL.minManualWindows), cheat_flagged: true };
   eq(readout(flagged).aux.cheat_flagged, true, '치트 플래그가 판독 결과에 실린다');
-  eq(killVerdicts(readout(flagged)).b, null, '치트 세션은 (b) 표본에서 빠진다');
-  eq(killVerdicts(readout(flagged)).d, null, '치트 세션은 (d) 표본에서도 빠진다');
+  eq(killVerdicts(readout(flagged)).verdicts.b, null, '치트 세션은 (b) 표본에서 빠진다');
+  eq(killVerdicts(readout(flagged)).verdicts.d, null, '치트 세션은 (d) 표본에서도 빠진다');
 });
 
 // ------------------------- 9-a. A 밸런스 게이트 (REQ-507) — 성 1 고정 유저가 A 를 이기는가
@@ -1676,6 +1698,9 @@ suite('헤드리스 봇 1사이클 (REQ-601·603·605)', () => {
     eq(metrics.kill.d_cycle_done_ms, run.elapsedMs, `시드 ${SEEDS[i]} — cycle_done_t = 사이클 총 시간`);
     ok(metrics.kill.b_hand_fires + metrics.kill.b_timeouts > 0,
       `시드 ${SEEDS[i]} — 실전 창 완주율의 분모가 비어 있지 않다`);
+    // 표본 하한 아래로 내려가면 (b) 는 판독 불가가 되는데 판독기 종료 코드는 그것을 red 로 만들지 않는다.
+    ok(metrics.kill.b_manual_windows >= KILL.minManualWindows,
+      `시드 ${SEEDS[i]} — 수동 창 표본이 하한 ${KILL.minManualWindows} 이상이라 (b) 가 판독된다`);
     ok(metrics.gate.ignore_rate !== null, `시드 ${SEEDS[i]} — ignore_rate 가 산출된다`);
     ok(metrics.aux.first_transmit_ms !== null, `시드 ${SEEDS[i]} — 전수까지 도달`);
     // kill 임계(300s · 15%)는 여기서 단정하지 않는다 — 이 하네스는 required check 라,

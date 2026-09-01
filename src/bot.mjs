@@ -207,10 +207,25 @@ export function nextDuelStage(session) {
   return pushing.length ? stageFor(pushing[0].style).stage : session.stage;
 }
 
+/** 지금 걸 만한 제자 초식 — 잠금을 쥐는 것이 최소 성이라 뒤처진 것부터 건다 (REQ-743·751). */
+export function nextDiscipleTrainee(session) {
+  return discipleStyles(session.disciple, ART_ID)
+    .filter((s) => canDiscipleTrain(session, s.id))
+    .map((s) => ({ id: s.id, rank: discipleStyleRank(session.disciple, ART_ID, s.id) }))
+    .sort((a, b) => a.rank - b.rank)[0] ?? null;
+}
+
 /** 도장에서의 다음 한 수 — 브라우저 봇과 헤드리스 사이클이 같은 판단을 쓴다. */
 export function nextDojoAction(session) {
   if (canTransmitNow(session)) return { kind: 'transmit', params: {} };
-  if (session.transmitted) return { kind: 'preview', params: {} };
+  if (session.transmitted) {
+    if (canDispatch(session)) return { kind: 'preview', params: {} };
+    // 잠긴 차수에서 사람이 두는 한 수는 「뒤처진 초식을 걸어 둔다」다 — 자격 없이 예고로 가면
+    // 그 화면에서 되돌아 나오는 것 말고 할 수 있는 일이 없다.
+    const trainee = nextDiscipleTrainee(session);
+    if (trainee) return { kind: 'trainDisciple', styleId: trainee.id, params: {} };
+    return { kind: 'preview', params: {} };
+  }
   // 장착 성에 못 미치는 초식은 실전에 나갈 수 없으므로 수련이 유일한 경로다 (REQ-713).
   const unequippable = STYLES.find((s) => session.progress.styles[s.id].learned
     && !canEquipRank(rankOfStyle(session, s.id)));
@@ -294,6 +309,13 @@ export function createBot({
     if (next.kind === 'swap') {
       equip(session, next.styleId, next.slotIdx);
       screen.go('dojo');
+      return;
+    }
+    if (next.kind === 'trainDisciple') {
+      designateDiscipleTraining(session, next.styleId);
+      // 방치 압축 버튼이 걸어 둔 시계를 앞당기는 그 자리다 — 봇도 사람과 같은 손잡이를 쓴다.
+      simulateTraining(session);
+      screen.refresh();
       return;
     }
     screen.go(next.kind, next.params);
@@ -488,10 +510,7 @@ export function runHeadlessMissions({
     enterPhase(session, 'dojo');
     // 뒤처진 초식부터 건다 — 잠금을 쥐는 것이 최소 성이라 그 초식이 곧 다음 임무의 열쇠다 (REQ-743).
     for (let step = 0; step < maxTrainSteps && !canDispatch(session); step += 1) {
-      const behind = discipleStyles(session.disciple, ART_ID)
-        .filter((s) => canDiscipleTrain(session, s.id))
-        .map((s) => ({ id: s.id, rank: discipleStyleRank(session.disciple, ART_ID, s.id) }))
-        .sort((a, b) => a.rank - b.rank)[0];
+      const behind = nextDiscipleTrainee(session);
       if (!behind) break;
       designateDiscipleTraining(session, behind.id);
       advanceDiscipleTraining(session, discipleTrainMsPerRank());
@@ -513,7 +532,7 @@ export function runHeadlessMissions({
 /**
  * 헤드리스 1사이클 (REQ-601·605) — 브라우저 없이 같은 봇·같은 입력기·같은 대련 루프로
  * 통합 로그 전 종류를 실제로 방출한다. 가상 시계라 실브라우저 실측을 대체하지 않는다.
- * @returns {{session: object, elapsedMs: number, screens: number}}
+ * @returns {{session: object, elapsedMs: number, screens: number, timer: object}}
  */
 export function runHeadlessCycle({
   // 11·12성이 결정타·완파라는 사건으로만 열려 화면 수의 꼬리가 길고, 그 사건이 떨어질 초식은
@@ -554,7 +573,10 @@ export function runHeadlessCycle({
       const next = nextDojoAction(session);
       if (next.kind === 'learn') learnStyle(session, next.styleId);
       else if (next.kind === 'swap') equip(session, next.styleId, next.slotIdx);
-      else go(next.kind, next.params);
+      else if (next.kind === 'trainDisciple') {
+        designateDiscipleTraining(session, next.styleId);
+        simulateTraining(session);
+      } else go(next.kind, next.params);
       continue;
     }
     if (phase === 'train') {
@@ -577,6 +599,7 @@ export function runHeadlessCycle({
       continue;
     }
     if (phase === 'preview') {
+      beginMission(session, { random });
       go('dispatch');
       continue;
     }

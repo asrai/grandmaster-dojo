@@ -235,7 +235,9 @@ function metricsOf(cycle, all) {
     slot_by_challenger: count(cycle.filter((e) => e.event === 'slot' && e.challenger), 'challenger'),
     finish_by_style: count(finishes, 'style'),
     finish_intended_rate: rate(finishes.filter((e) => e.intended).length, finishes.length),
-    rank_wall: cycle.filter((e) => e.event === 'rank_wall').length,
+    // 벽은 사부·제자 양쪽에서 나므로 actor 로 가른다 — 합치면 사부 축 숫자가 제자 방치분을 삼킨다.
+    rank_wall: cycle.filter((e) => e.event === 'rank_wall' && e.actor === 'master').length,
+    disciple_rank_wall: all.filter((e) => e.event === 'rank_wall' && e.actor === 'disciple').length,
     disciple_train_events: trains.length,
     disciple_train_ranks: trains.reduce((acc, e) => acc + (e.to - e.from), 0),
     // 병렬성의 유일한 증거 — 사부가 그동안 무엇을 하고 있었는가 (REQ-754).
@@ -265,12 +267,13 @@ export function killVerdicts({ kill, gate, aux }) {
   const d = aux.cheat_flagged || aux.mixed_hands || kill.d_cycle_done_ms == null
     ? null : kill.d_cycle_done_ms <= KILL.cycleDoneMs;
   const g = gate.ignore_rate == null ? null : gate.ignore_rate <= KILL.ignoreRate;
-  return { a, b, d, gate: g, thinSample };
+  // 판정과 진단을 층으로 가른다 — 한 평면에 두면 `pass === false` 를 세는 호출부가 진단값을 미달로 읽는다.
+  return { verdicts: { a, b, d, gate: g }, thinSample };
 }
 
 function report(result) {
   const { kill, gate, aux, metrics } = result;
-  const { a, b, d, gate: g, thinSample } = killVerdicts(result);
+  const { verdicts: { a, b, d, gate: g }, thinSample } = killVerdicts(result);
 
   console.log(`\n판독 대상: tester_role=${aux.tester_role ?? '미상'}`
     + ` · 응수 창 ×1.3 ${aux.accessibility === null ? '미상' : aux.accessibility ? 'on' : 'off'}`
@@ -300,7 +303,7 @@ function report(result) {
     + ` (의도 일치 ${pct(metrics.finish_intended_rate)}) · 8성 벽 ${metrics.rank_wall}회`);
   console.log(`    제자 축  파견 ${metrics.dispatch_by_stage.map((m) => `${m.stage}:${m.result}[${m.foe_set.join('+')}]`).join(' · ') || '—'}`
     + ` · 수련 ${metrics.disciple_train_events}회 ${metrics.disciple_train_ranks}성`
-    + ` · 병렬 ${JSON.stringify(metrics.disciple_train_activity)}`);
+    + ` · 8성 벽 ${metrics.disciple_rank_wall}회 · 병렬 ${JSON.stringify(metrics.disciple_train_activity)}`);
   return { a, b, d, gate: g };
 }
 
