@@ -1256,7 +1256,7 @@ suite('계측 배선 공유 (#11)', () => {
   const style = STYLES[0];
   const input = createSequenceInput({
     pool: [style],
-    masteryOf: () => 0,
+    rankOf: () => 1,
     hintDelayMs: 0,
     now: () => 0,
     log: (event, fields) => logEvent(session, event, fields),

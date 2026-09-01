@@ -167,7 +167,7 @@ export function createPad() {
       reset() { fromBot = true; try { reset(); } finally { fromBot = false; } },
     },
 
-    /** @param {{input: object, masteryOf: Function, onFire: Function, onIgnore?: Function}} consumer */
+    /** @param {{input: object, rankOf: Function, onFire: Function, onIgnore?: Function}} consumer */
     attach(consumer) {
       active = consumer;
       structureSig = null;

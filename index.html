@@ -45,7 +45,7 @@ body {
 #top #coins { margin-left: auto; }
 #top label { display: flex; gap: 4px; align-items: center; color: var(--dim); }
 /* 검증 도구는 게임 UI 가 아니라 레터박스 여백에 산다 — 스테이지 스크린샷에 잡히면 안 된다. */
-#tools { position: absolute; top: 8px; left: 8px; z-index: 0; display: flex; gap: 6px; }
+#tools { position: absolute; top: 8px; left: 8px; z-index: 0; display: flex; flex-wrap: wrap; gap: 6px; }
 #tools button { padding: 4px 8px; font-size: 12px; }
 #tools button.urge { border-color: var(--gold); color: var(--gold); }
 
@@ -126,6 +126,18 @@ button.ghost { background: transparent; }
 .tip-target { border-color: var(--gold); color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
 .meter { height: 5px; background: #0b0e13; border-radius: 3px; margin: 6px 0; overflow: hidden; }
 .meter i { display: block; height: 100%; background: var(--gold); }
+/* 성 게이지 — 연속 막대(다음 계단까지의 진척) 위에 12 계단 눈금을 얹는다 (REQ-707). */
+.rank-gauge { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.rank-gauge .meter { flex: 1 1 100%; margin: 4px 0 0; }
+.ticks { flex: 1 1 100%; display: grid; grid-template-columns: repeat(12, 1fr); gap: 2px; }
+.ticks .tick { height: 4px; border-radius: 1px; background: #0b0e13; border: 1px solid var(--line); }
+.ticks .tick.lit { background: var(--gold); border-color: var(--gold); }
+/* 11·12 눈금은 적립이 아니라 결정타·완파로 열린다 — 형태를 달리해 규칙이 화면에서 읽히게 한다. */
+.ticks .tick.gate { border-style: dashed; border-width: 1px 1px 2px; border-radius: 0 0 3px 3px; }
+.cheat { margin-top: 6px; padding: 8px; border: 1px dashed var(--line); border-radius: 6px; background: #0b0e13; max-width: 320px; }
+.cheat-rows { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
+.cheat-row { display: flex; gap: 6px; align-items: center; font-size: 12px; }
+.cheat-row input { width: 56px; background: #11151c; color: var(--fg); border: 1px solid var(--line); border-radius: 4px; }
 
 .mark { font-size: 15px; line-height: 1; }
 .mark.big { font-size: 24px; }
