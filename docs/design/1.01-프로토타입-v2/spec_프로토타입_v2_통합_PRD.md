@@ -19,6 +19,8 @@ tags:
 **생성**: /gamedev-spec v0.11 (통합 spec 구조 룰 v0.19), 2026-09-01
 **소스**: [[brief_프로토타입_v2_통합_PRD_05]] (debate 미경유 직행 — cycle 05, `debate_skipped: true`)
 
+> ⚠ **부분 대체 (2026-09-02)**: 성·숙련·해금·전수·제자·파견 계열 (REQ-108·109·203·301~310·401·503·504·506·507, 로그 `mastery`·`initiate`·`rank`·`unlock`·`transmit`·`dispatch`) 은 [[spec_성_축_초식_단위_재설계]] 가 대체한다 — 그 spec 의 「1.01 대체 맵」 이 처분 목록의 SoT. 입력부 ①·판정부 ② (`gradeOf`)·로그 골격 ⑥ 은 본 spec 이 여전히 현행이다.
+
 ---
 
 ## 개요
