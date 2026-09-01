@@ -8,9 +8,8 @@ import { attrMark, clear, el, hpBar } from '../dom.mjs';
 import { ATTR_VIEW, GRADE_VIEW, attrLabel, gradeLabel, winAttrOf } from '../theme.mjs';
 import { SFX } from '../audio.mjs';
 import { createMatch } from '../match.mjs';
-import {
-  ART_ID, ART_NAME, DISPATCH_CHALLENGER, logEvent, recordDispatchVerdict,
-} from '../session.mjs';
+import { ART_ID, ART_NAME, DISPATCH_CHALLENGER } from '../session.mjs';
+import { composeHooks, dispatchWiring, logDispatchStart } from '../wiring.mjs';
 
 const styleIcon = (style, extra = '') => el('div', {
   class: `cand${extra ? ` ${extra}` : ''}`, style: `--attr:${ATTR_VIEW[style.attr].color}`,
@@ -111,11 +110,10 @@ export function startDispatch(ctx) {
     rankOf: () => discipleRankOf(session.disciple, ART_ID),
     openLen: () => Math.max(...styles.map((s) => s.seq.length)),
     accessibility: () => session.accessibility,
-    hooks: {
+    hooks: composeHooks(dispatchWiring(session, { disciple, instructed: () => instructed }), {
       onTelegraph(view) {
         instructed = null;
         fired = false;
-        disciple.arm();
         clear(verdictEl);
         windowFill.style.width = '100%';
         clear(telegraphEl).appendChild(view.foeOpen
@@ -135,12 +133,11 @@ export function startDispatch(ctx) {
         // 반짝임은 그 수의 예고에서 한 번뿐 — 지시 탭으로 다시 그릴 때는 재생하지 않는다.
         renderIcons(view, { flash: true });
       },
-      onTick(view) {
+      onTick(view, executed) {
         windowFill.style.width = `${view.ratio * 100}%`;
-        if (disciple.tick(view, instructed)) fired = true;
+        if (executed) fired = true;
       },
-      onVerdict(view) {
-        const ranked = recordDispatchVerdict(session, view);
+      onVerdict(view, ranked) {
         renderHp(view);
         const gv = GRADE_VIEW[view.verdict.grade];
         clear(verdictEl).appendChild(el('div', {
@@ -159,10 +156,10 @@ export function startDispatch(ctx) {
           view,
         });
       },
-    },
+    }),
   });
 
-  logEvent(session, 'dispatch', { challenger: challenger.id });
+  logDispatchStart(session, challenger);
   match.start();
   return () => match.stop();
 }

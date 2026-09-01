@@ -1,6 +1,7 @@
 // 헤드리스 회귀 하네스 — 의존성 0, `node tests/harness.mjs` 로 실행한다.
 // 기대값은 BALANCE 키에서 직접 산출하므로 파라미터 개명·판정표 변경은 즉시 red 다.
 
+import { readFileSync } from 'node:fs';
 import {
   ART_SETS, BALANCE, CHALLENGERS, DISCIPLE, FOE_STYLES, STYLES,
 } from '../src/balance.mjs';
@@ -14,6 +15,9 @@ import {
   EXPORT_SCHEMA, addCoins, consumeTooltip, createSession, createTooltipState, exportPayload,
   logEvent, pickTooltip, settleDispatch, settleDuel, simulateTraining,
 } from '../src/ui/session.mjs';
+import {
+  composeHooks, dispatchWiring, duelWiring, trainWiring,
+} from '../src/ui/wiring.mjs';
 import { KILL, readout } from './kill-readout.mjs';
 import {
   applyEffectiveSuccess, artById, assertCounterIntegrity, assertPrefixFree, canLearn, canTransmit,
@@ -929,6 +933,90 @@ suite('도장 유도 툴팁 대상 (#15)', () => {
   deepEq(pickTooltip(late, [{ id: 'duel', disabled: true }]), null, '전부 잠긴 첫 렌더는 안내가 없다');
   eq(pickTooltip(late, [{ id: 'duel', disabled: true }, { id: 'train:pa-un', disabled: false }]), null,
     '직전 렌더에 없던 버튼은 신규 활성화가 아니다');
+});
+
+// ------------------------------- 16. 계측 배선 공유 (#11) — 화면과 헤드리스가 한 벌을 쓴다
+
+suite('계측 배선 공유 (#11)', () => {
+  const session = createSession();
+  const style = STYLES[0];
+  const input = createSequenceInput({
+    pool: [style],
+    masteryOf: () => 0,
+    hintDelayMs: 0,
+    now: () => 0,
+    log: (event, fields) => logEvent(session, event, fields),
+  });
+  const disciple = { arm() {}, tick: () => null };
+
+  // 화면이 계측 hook 을 하나 늘리면 이 목록이 red 가 되고, 그 자리에서 헤드리스도 함께 따라간다.
+  deepEq(Object.keys(trainWiring(session, { styleId: style.id, input })).sort(),
+    ['onArm', 'onFire'], '수련 배선이 내는 hook 이름 집합');
+  deepEq(Object.keys(duelWiring(session, { input })).sort(),
+    ['onTelegraph', 'onTimeout', 'onVerdict', 'onWindow'], '대련 배선이 내는 hook 이름 집합');
+  deepEq(Object.keys(dispatchWiring(session, { disciple })).sort(),
+    ['onTelegraph', 'onTick', 'onVerdict'], '파견 배선이 내는 hook 이름 집합');
+
+  // 이름만 맞고 속이 빈 배선은 위 집합 단정을 통과하므로, hook 이 실제로 계측하는지 함께 본다.
+  const before = session.log.entries.length;
+  duelWiring(session, { input }).onTimeout();
+  eq(session.log.entries.length, before + 1, '대련 배선의 onTimeout 이 항목을 하나 남긴다');
+  eq(session.log.entries.at(-1).event, 'timeout', '그 항목이 창 초과 기록이다');
+
+  const armed = trainWiring(session, { styleId: style.id, input }).onArm();
+  eq(armed, responseWindowMs(style.seq.length, { accessibility: session.accessibility }),
+    '수련 배선의 onArm 이 그 시도의 창 길이를 돌려준다');
+
+  // 화면·헤드리스가 같은 이름으로 자기 hook 을 얹어도 계측이 덮이지 않는다 — 배선 1벌의 강제 지점.
+  const calls = [];
+  const composed = composeHooks(
+    { onTick: (v) => { calls.push(`계측:${v}`); return '계측값'; } },
+    {
+      onTick: (v, measured) => calls.push(`렌더:${v}:${measured}`),
+      onEnd: () => calls.push('렌더:끝'),
+    },
+  );
+  deepEq(Object.keys(composed).sort(), ['onEnd', 'onTick'], '두 묶음의 합집합이 hook 집합이다');
+  eq(composed.onTick(1), '계측값', '계측 반환값이 호출부로 그대로 돌아간다');
+  deepEq(calls, ['계측:1', '렌더:1:계측값'], '계측이 먼저 돌고 그 결과가 렌더로 넘어간다');
+  composed.onEnd();
+  eq(calls.at(-1), '렌더:끝', '계측에 없는 hook 도 그대로 불린다');
+
+  const bare = composeHooks({ onTick: () => '계측만' });
+  eq(bare.onTick(), '계측만', '렌더를 얹지 않아도 계측은 그대로 돈다');
+
+  // 계측 반환값은 인자 뒤에 붙는다 — hook 인자가 늘면 얹은 쪽의 그 자리도 함께 밀린다.
+  const wide = composeHooks({ onVerdict: () => '계측값' }, { onVerdict: (...got) => calls.push(got.join('|')) });
+  wide.onVerdict('a', 'b');
+  eq(calls.at(-1), 'a|b|계측값', '계측 인자가 늘어도 반환값이 마지막 자리를 지킨다');
+
+  // 위 단정은 팩토리가 바뀔 때만 red 다. 이슈가 이름 붙인 재발 경로는 그 반대편 —
+  // 화면이 팩토리를 우회해 자기 hook 에 계측을 직접 다는 것 — 이라 소비처를 원문으로 잠근다.
+  // 화면 모듈은 DOM 을 만져 하네스가 import 할 수 없으므로 원문 대조가 유일한 수단이다.
+  const CONSUMERS = {
+    'src/ui/screens/train.mjs': ['trainWiring'],
+    'src/ui/screens/duel.mjs': ['composeHooks', 'duelWiring'],
+    'src/ui/screens/dispatch.mjs': ['composeHooks', 'dispatchWiring', 'logDispatchStart'],
+    'src/bot.mjs': ['composeHooks', 'dispatchWiring', 'duelWiring', 'logDispatchStart', 'trainWiring'],
+  };
+  // 로깅·성장을 실제로 움직이는 함수 — 화면이 이 이름을 직접 쥐면 배선이 두 벌이 된다.
+  const INSTRUMENTS = [
+    'logTimeout', 'logVerdict', 'recordDispatchVerdict', 'recordDuelVerdict', 'recordEffectiveSuccess',
+  ];
+  for (const [path, expected] of Object.entries(CONSUMERS)) {
+    const source = readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+    // 주석·문자열의 심볼 언급은 배선이 아니다 — required check 를 오탐으로 막지 않게 import 만 본다.
+    const imports = (source.match(/^import[\s\S]*?';$/gm) ?? []).join('\n');
+    const body = source.replace(/^import[\s\S]*?';$/gm, '');
+    deepEq(expected.filter((name) => imports.includes(name)), expected,
+      `${path} 가 공유 배선을 import 한다`);
+    // 쓰이지 않는 import 를 남긴 채 hook 을 인라인으로 되돌리는 우회를 막는다.
+    deepEq(expected.filter((name) => body.includes(`${name}(`)), expected,
+      `${path} 가 그 배선을 실제로 호출한다`);
+    ok(/from '[^']*\/wiring\.mjs'/.test(imports), `${path} 의 배선 출처가 wiring.mjs 다`);
+    deepEq(INSTRUMENTS.filter((name) => imports.includes(name)), [],
+      `${path} 는 계측 함수를 직접 쥐지 않는다 — 배선은 한 벌이어야 한다`);
+  }
 });
 
 // -------------------------------------------- 12. BALANCE 파라미터 census (REQ-606)

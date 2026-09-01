@@ -1,17 +1,18 @@
 // 수련 모드 (REQ-308) — 상대도 판정도 없고, 실전과 같은 창 `T` 안에 완주하면 성공이다.
 
 import { BALANCE } from '../../balance.mjs';
-import { masteryPct, responseWindowMs, styleById } from '../../core.mjs';
+import { masteryPct, styleById } from '../../core.mjs';
 import { arrowRow, attrMark, clear, el } from '../dom.mjs';
 import { ATTR_VIEW } from '../theme.mjs';
 import { SFX } from '../audio.mjs';
 import { createSequenceInput } from '../sequence-input.mjs';
-import { logEvent, masteryOf, recordEffectiveSuccess } from '../session.mjs';
+import { logEvent, masteryOf } from '../session.mjs';
+import { trainWiring } from '../wiring.mjs';
 
 export function startTrain(ctx) {
   const { session, root, params } = ctx;
   const style = styleById(params.styleId);
-  let windowMs = responseWindowMs(style.seq.length, { accessibility: session.accessibility });
+  let windowMs = 1;
   clear(root);
 
   const statusEl = el('div', { class: 'grade' });
@@ -43,6 +44,8 @@ export function startTrain(ctx) {
     log: (event, fields) => logEvent(session, event, fields),
   });
 
+  const wiring = trainWiring(session, { styleId: params.styleId, input });
+
   let startedAt = 0;
   let settled = false;
   let raf = 0;
@@ -57,10 +60,8 @@ export function startTrain(ctx) {
 
   function arm() {
     settled = false;
-    // 접근성 토글이 헤더에 상시 노출되므로 수련 중 변경도 다음 시도부터 반영한다.
-    windowMs = responseWindowMs(style.seq.length, { accessibility: session.accessibility });
+    windowMs = wiring.onArm();
     startedAt = performance.now();
-    input.arm();
     ctx.pad.attach({
       input,
       masteryOf: (s) => masteryOf(session, s.id),
@@ -69,7 +70,7 @@ export function startTrain(ctx) {
         if (settled) return;
         settled = true;
         SFX.fire();
-        recordEffectiveSuccess(session, style.id, 'train');
+        wiring.onFire();
         statusEl.textContent = '성공';
         statusEl.style.color = '#43c98a';
         showProgress();

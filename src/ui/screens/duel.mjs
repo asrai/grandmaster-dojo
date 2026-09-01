@@ -7,9 +7,9 @@ import { SFX } from '../audio.mjs';
 import { PHASE, createMatch } from '../match.mjs';
 import { createSequenceInput } from '../sequence-input.mjs';
 import {
-  ART_NAME, artRank, challengerOfStage, equippedStyles, logEvent, logTimeout,
-  masteryOf, recordDuelVerdict,
+  ART_NAME, artRank, challengerOfStage, equippedStyles, logEvent, masteryOf,
 } from '../session.mjs';
+import { composeHooks, duelWiring } from '../wiring.mjs';
 
 function telegraphView(view) {
   if (view.foeOpen) return el('div', { class: 'telegraph open', text: '빈틈! — 아무 초식이나 완주하면 완파' });
@@ -85,30 +85,24 @@ export function startDuel(ctx) {
     rankOf: () => artRank(session),
     openLen: () => Math.max(...equippedStyles(session).map((s) => s.seq.length)),
     accessibility: () => session.accessibility,
-    hooks: {
+    hooks: composeHooks(duelWiring(session, { input }), {
       onTelegraph(view) {
         clear(telegraphEl).appendChild(telegraphView(view));
         clear(verdictEl);
         windowFill.style.width = '100%';
         renderHp(view);
-        // 예고 구간에 직전 수의 버퍼·후보가 남으면 이미 낸 초식이 아직 걸린 것처럼 읽힌다.
-        input.arm(equippedStyles(session));
         ctx.pad.render();
       },
       onWindow() {
-        // 대련 중 자동 장착된 초식이 그 창부터 후보에 든다 — 슬롯 로그와 화면이 갈리지 않는다.
-        input.arm(equippedStyles(session));
         ctx.pad.render();
       },
       onTick(view) {
         windowFill.style.width = `${view.ratio * 100}%`;
         ctx.pad.render();
       },
-      onTimeout() { logTimeout(session, input); },
-      onVerdict(view) {
+      onVerdict(view, changes) {
         const { verdict } = view;
         ctx.pad.render();
-        const changes = recordDuelVerdict(session, view);
         renderHp(view);
         const gv = GRADE_VIEW[verdict.grade];
         clear(verdictEl).appendChild(el('div', {
@@ -132,7 +126,7 @@ export function startDuel(ctx) {
         ctx.pad.detach();
         ctx.go('result', { kind: 'duel', win: view.outcome.win, stage: params.stage, view });
       },
-    },
+    }),
   });
 
   ctx.pad.attach({
