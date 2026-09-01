@@ -157,7 +157,7 @@ export function autoEquip(session) {
     if (masteryOf(session, style.id) >= BALANCE.masteryFullPct) continue;
     // 자리를 내주는 것은 이미 100% 인 초식뿐 — 미완성끼리는 서로의 진행을 뺏지 않는다.
     const full = session.slots.findIndex((id) => id && masteryOf(session, id) >= BALANCE.masteryFullPct);
-    if (full < 0) return;
+    if (full < 0) continue;
     equip(session, style.id, full);
   }
 }

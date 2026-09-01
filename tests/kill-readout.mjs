@@ -31,7 +31,7 @@ const SELF_TEST_SEED = 20260902;
 /**
  * 판독 산식의 입력 — 이게 없으면 (a)(b)·선행 게이트를 만들 수 없다.
  * 나머지 이벤트는 **조건부**다 (`ignore`·`reset`·`timeout` 은 깔끔하게 친 사람에게 0건일 수 있다).
- * 17종 전량 방출은 계측 빌드의 성질(REQ-601)이라 자체 생성 사이클에서만 강제한다.
+ * 전 종류 방출은 계측 빌드의 성질(REQ-601)이라 자체 생성 사이클에서만 강제한다.
  */
 const READOUT_INPUTS = ['key', 'fire', 'cycle'];
 
@@ -51,7 +51,7 @@ function loadPayload(raw) {
   };
 }
 
-/** 필드 결손 0 의 기계적 증명 — 스키마 대조 + 17종 전량 방출 확인 (수용 케이스 11). */
+/** 필드 결손 0 의 기계적 증명 — 스키마 대조 + 전 종류 방출 확인 (수용 케이스 11). */
 function auditEntries(entries) {
   const problems = [];
   const seen = new Set();

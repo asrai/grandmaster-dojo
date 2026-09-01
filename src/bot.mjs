@@ -382,7 +382,7 @@ function headlessDispatch({ session, timer }) {
 
 /**
  * 헤드리스 1사이클 (REQ-601·605) — 브라우저 없이 같은 봇·같은 입력기·같은 대련 루프로
- * 통합 로그 17종을 실제로 방출한다. 가상 시계라 실브라우저 실측을 대체하지 않는다.
+ * 통합 로그 전 종류를 실제로 방출한다. 가상 시계라 실브라우저 실측을 대체하지 않는다.
  * @returns {{session: object, elapsedMs: number, screens: number}}
  */
 export function runHeadlessCycle({

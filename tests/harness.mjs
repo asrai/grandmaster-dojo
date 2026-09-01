@@ -12,9 +12,9 @@ import {
 import { createMatch, createVirtualTimer, pumpToEnd } from '../src/ui/match.mjs';
 import { createSequenceInput } from '../src/ui/sequence-input.mjs';
 import {
-  EXPORT_SCHEMA, addCoins, consumeTooltip, createSession, createTooltipState, equippedStyles,
-  exportPayload, learnStyle, logEvent, pickTooltip, recordEffectiveSuccess, settleDispatch,
-  settleDuel, simulateTraining,
+  ART_ID, EXPORT_SCHEMA, accrueDiscipleRank, addCoins, consumeTooltip, createSession,
+  createTooltipState, equippedStyles, exportPayload, learnStyle, logEvent, pickTooltip,
+  recordEffectiveSuccess, settleDispatch, settleDuel, simulateTraining,
 } from '../src/ui/session.mjs';
 import {
   composeHooks, dispatchWiring, duelWiring, trainWiring,
@@ -154,7 +154,7 @@ suite('데이터 무결성 (REQ-501·502·503·505)', () => {
     ok(String(s.name).length > 0 && String(s.hanja).length > 0, `${s.id} 이름·한자 비어있지 않음`);
     ok(String(s.gugyeol).length > 0, `${s.id} 구결 존재`);
     ok(Number.isInteger(s.d) && s.d > 0, `${s.id} D 가 정수`);
-    ok(BALANCE.threshold[s.id] !== undefined, `${s.id} threshold 존재`);
+    ok(BALANCE.threshold[s.id] > 0, `${s.id} threshold 는 양수 — 0 은 숙련 분모를 NaN 으로 만들어 입문을 영구 봉인한다`);
     eq(BALANCE.rankPtsPerStyle[s.id], s.order, `${s.id} 성 포인트 = 초식 차수`);
   }
   deepEq(STYLES.map((s) => [s.attr, s.seq.join('')]), [
@@ -486,6 +486,34 @@ suite('성 포인트 적립 게이트 (REQ-304·310)', () => {
   eq(isInitiated(forged, ART), false, '그래도 입문은 미달');
   eq(rankOf(forged, ART), 1, '입문 미달이면 12성 불가');
   eq(canTransmit(forged, ART, createDisciple()), false, '전수 자격도 열리지 않는다');
+
+  // 두 겹(적립 차단 · 조회 차단)을 잇는 결합 불변식 — raw 필드를 직접 읽는 경로가 생겨도 red 가 된다.
+  let raw = createProgress();
+  for (let i = 0; i < 6; i += 1) {
+    const step = applyEffectiveSuccess(raw, 'yuun-bo', { mode: 'duel' });
+    raw = step.progress;
+    eq(isInitiated(raw, ART) || raw.arts[ART].rankPts > 0, false, '입문 전에는 raw rankPts 도 0');
+  }
+});
+
+// ------------------------------ 6-b. 제자는 게이트 예외 (REQ-401·310) — 수용 기준 ④
+
+suite('제자 적립은 게이트를 타지 않는다 (REQ-401·310)', () => {
+  const session = createSession();
+  session.disciple = transmit(minPath.progress, createDisciple(), ART);
+  // 사부 쪽을 입문 미달로 두어, 제자 적립이 사부의 입문 여부와 무관함을 같은 세션에서 본다.
+  session.progress = createProgress();
+  eq(isInitiated(session.progress, ART), false, '사부는 입문 미달 상태');
+
+  deepEq(discipleStyles(session.disciple, ART).map((st) => st.id), artById(ART).styles,
+    '제자는 전수 직후 무공의 전 초식을 보유한다');
+  eq(discipleRankOf(session.disciple, ART), BALANCE.discipleStartRank, '제자는 1성에서 시작');
+  accrueDiscipleRank(session, 'pa-un');
+  eq(session.disciple.arts[ART].rankPts, BALANCE.rankPtsPerStyle['pa-un'],
+    '제자는 복사 시점부터 게이트 없이 즉시 적립');
+  for (let i = 0; i < 60; i += 1) accrueDiscipleRank(session, 'pa-un');
+  eq(discipleRankOf(session.disciple, ART), BALANCE.discipleRankMax, '제자 상한은 10성으로 유지');
+  eq(rankOf(session.progress, ART), 1, '그동안 사부의 성은 게이트에 막혀 1');
 });
 
 // ------------------------------------------------- 7. 전수 = 복사 (REQ-307·401)
@@ -633,7 +661,10 @@ const initiationSlots = (() => {
   return snapshots;
 })();
 
-// 사본이 아니라 실루프다 — 제자의 손을 유저 자리에 세워 「창을 놓치지 않는 손」을 모델한다.
+/**
+ * 사본이 아니라 실루프다 — 제자의 손을 유저 자리에 세워 「창을 놓치지 않는 손」을 모델한다.
+ * 그래서 이 게이트는 상계이고, 실수하는 손의 회귀는 사이클 시뮬의 `wins` 단정이 진다.
+ */
 function simulateDuelA({ challengerId, styles, rank }) {
   const session = createSession();
   const timer = createVirtualTimer();
@@ -666,9 +697,11 @@ suite('A 밸런스 게이트 (REQ-503·507)', () => {
   eq(rank, 1, 'Phase 1 유저는 성 1');
   eq(powerOf(rank), 1.05, '성 1 내공 1.05');
 
+  // A-3 는 두 구성으로 본다 — 첫 조우(4식 미학습)와 입문 시점 구성은 다른 국면이다.
   const stages = [
     { id: 'A-1', styles: initiationSlots[0] },
     { id: 'A-2', styles: initiationSlots[1] },
+    { id: 'A-3', styles: initiationSlots[2] },
     { id: 'A-3', styles: initiationSlots[initiationSlots.length - 1] },
   ];
   for (const stage of stages) {
@@ -682,8 +715,11 @@ suite('A 밸런스 게이트 (REQ-503·507)', () => {
       + `장착 ${stage.styles.map((st) => st.name).join('·')}`);
   }
   // 입문 시점의 슬롯이 속성 3색을 덮어야 A-3 의 예고 3종에 전부 우세로 답할 수 있다.
-  deepEq([...new Set(stages[2].styles.map((st) => st.attr))].sort(), ['fast', 'fine', 'hard'],
+  const atInitiation = initiationSlots[initiationSlots.length - 1];
+  deepEq([...new Set(atInitiation.map((st) => st.attr))].sort(), ['fast', 'fine', 'hard'],
     '입문 시점 슬롯이 강·정·쾌를 모두 덮는다');
+  deepEq(atInitiation.map((st) => st.id), ['pa-un', 'jeok-un', 'haeng-un'],
+    '자리 양보가 만드는 구성은 2·3·4식이다 (REQ-305)');
 });
 
 // ------------------------------- 10. 대련 종료 판정 (REQ-201) — 상태기계와 공유하는 규칙
