@@ -8,6 +8,8 @@
 
 빌드 단계는 없지만 `index.html` 이 ESM 모듈(`src/`)을 로드하므로 **로컬 서버가 필수**다 — `file://` 로 직접 열면 모듈이 차단된다.
 
+수치 정본을 JSON 모듈로 읽으므로 import attributes 를 지원하는 런타임이 하한이다 — Chrome 123+ · Safari 17.2+ · Firefox 138+ · Node 22+.
+
 ```bash
 python3 -m http.server 8000
 # → http://localhost:8000
@@ -31,7 +33,7 @@ python3 -m http.server 8000
 
 ## 밸런스 수치 조정
 
-- 수치 정본은 `src/balance.data.json` 하나다 — 값을 고치고 브라우저를 새로고침(또는 `node tests/kill-readout.mjs` 재실행)하면 브라우저와 헤드리스가 같은 값을 본다. 불량 값은 폴백 없이 즉시 죽고, 어느 필드가 왜 틀렸는지가 화면(또는 stderr)에 뜬다.
+- 수치 정본은 `src/balance.data.json` 하나다 — 값을 고치고 브라우저를 새로고침(또는 `node tests/kill-readout.mjs` 재실행)하면 브라우저와 헤드리스가 같은 값을 본다. 필드·타입·키 결합이 어긋나면 폴백 없이 즉시 죽고 어느 필드가 왜 틀렸는지가 화면(또는 stderr)에 뜬다 — 값의 범위까지는 보지 않는다.
 - 실험 변형은 최상위 `rev` 를 바꿔 구분한다 — 내보낸 로그의 밸런스 지문에 `rev` 가 박혀 어느 변형에서 나온 회차인지 드러난다.
 - 확정 반영만 커밋한다: JSON + `tests/harness.mjs` 의 파라미터 census 시드(하네스가 강제한다) + `docs/balance-log.md` 회차를 한 PR 로.
 

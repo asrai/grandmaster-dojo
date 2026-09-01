@@ -269,17 +269,19 @@ button.ghost { background: transparent; }
 </div>
 <script>
 // 모듈 그래프 로드 실패(밸런스 JSON 구문 오류·검증 throw)는 화면에 백지로만 드러나므로 문면을 남긴다.
-function showFatal(text) {
-  // 부팅에 성공한 뒤의 런타임 예외까지 덮으면 플레이 중 화면이 통째로 날아간다 — 백지일 때만 쓴다.
-  const el = document.getElementById('screen');
-  if (!el || el.childNodes.length > 0) return;
-  el.style.whiteSpace = 'pre-wrap';
-  el.style.padding = '16px';
-  el.textContent = text;
-}
-addEventListener('error', (e) => showFatal(e.error ? e.error.message
-  : `모듈 로드 실패 — ${(e.target && e.target.src) || location.href}`), true);
-addEventListener('unhandledrejection', (e) => showFatal(String((e.reason && e.reason.message) || e.reason)));
+(() => {
+  function showFatal(text) {
+    // 부팅에 성공한 뒤의 런타임 예외까지 덮으면 플레이 중 화면이 통째로 날아간다 — 백지일 때만 쓴다.
+    const el = document.getElementById('screen');
+    if (!el || el.childNodes.length > 0) return;
+    el.style.whiteSpace = 'pre-wrap';
+    el.style.padding = '16px';
+    el.textContent = text;
+  }
+  addEventListener('error', (e) => showFatal(e.error ? e.error.message
+    : `모듈 로드 실패 — ${(e.target && e.target.src) || location.href}\n의존 모듈이 원인일 수 있다 — 로컬 서버로 열었는지, .json 이 application/json 으로 오는지 확인한다.`), true);
+  addEventListener('unhandledrejection', (e) => showFatal(String((e.reason && e.reason.message) || e.reason)));
+})();
 </script>
 <script type="module" src="src/ui/app.mjs"></script>
 </body>
