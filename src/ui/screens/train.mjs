@@ -10,10 +10,9 @@ import { logEvent, masteryOf } from '../session.mjs';
 import { hideVerdict, showVerdict } from '../verdict-overlay.mjs';
 import { trainWiring } from '../wiring.mjs';
 
-// 수련에는 등급이 없지만 연출은 세 화면이 공유한다 — 색·마크는 GRADE_VIEW 를 그대로 빌린다 (#40).
+// 수련에는 등급이 없다 — 등급 마크를 빌리면 성공이 「우세 판정」으로 오학습되므로 색만 빌린다 (#46).
 const TRAIN_VIEW = {
-  done: { ...GRADE_VIEW.advantage, label: '성공' },
-  missed: { ...GRADE_VIEW.disadvantage, label: '창을 넘겼다 — 다시' },
+  done: { color: GRADE_VIEW.advantage.color, label: '성공' },
 };
 
 export function startTrain(ctx) {
@@ -94,8 +93,7 @@ export function startTrain(ctx) {
     ctx.pad.render();
     if (left > 0) return;
     settled = true;
-    // 수련 실패는 무벌 재시도 — 로그는 실전 창의 완주율 분모와 섞이지 않게 남기지 않는다.
-    showVerdict(TRAIN_VIEW.missed);
+    // 수련 실패는 무벌 재시도 — 판정도 로그도 남기지 않고, 창 게이지가 되차오르는 것이 유일한 신호다 (#46).
     rearm = setTimeout(arm, BALANCE.resolveMs);
   }
 
