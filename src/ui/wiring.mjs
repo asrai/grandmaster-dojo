@@ -11,7 +11,9 @@ import {
  * 계측 배선 위에 화면 렌더·구동 hook 을 얹는다. 같은 이름이 덮어쓰기가 아니라 연결이라,
  * 화면이 계측을 조용히 잃는 경로가 구조적으로 없다.
  * @param {object} wiring 계측 hook 묶음
- * @param {object} [overlay] 호출부 고유 hook — 인자 뒤에 계측 반환값을 하나 더 받는다
+ * @param {object} [overlay] 호출부 고유 hook — 계측 인자 **뒤에** 계측 반환값을 하나 더 받으므로,
+ *   계측 hook 의 인자 수를 늘리면 얹은 쪽의 마지막 인자도 함께 옮겨야 한다.
+ *   호출부로 나가는 반환값은 계측 쪽 것이다 — 얹은 hook 은 그 값을 갈아끼우지 못한다.
  */
 export function composeHooks(wiring, overlay = {}) {
   const names = [...new Set([...Object.keys(wiring), ...Object.keys(overlay)])];

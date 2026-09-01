@@ -1,6 +1,7 @@
 // 헤드리스 회귀 하네스 — 의존성 0, `node tests/harness.mjs` 로 실행한다.
 // 기대값은 BALANCE 키에서 직접 산출하므로 파라미터 개명·판정표 변경은 즉시 red 다.
 
+import { readFileSync } from 'node:fs';
 import {
   ART_SETS, BALANCE, CHALLENGERS, DISCIPLE, FOE_STYLES, STYLES,
 } from '../src/balance.mjs';
@@ -983,6 +984,28 @@ suite('계측 배선 공유 (#11)', () => {
 
   const bare = composeHooks({ onTick: () => '계측만' });
   eq(bare.onTick(), '계측만', '렌더를 얹지 않아도 계측은 그대로 돈다');
+
+  // 위 단정은 팩토리가 바뀔 때만 red 다. 이슈가 이름 붙인 재발 경로는 그 반대편 —
+  // 화면이 팩토리를 우회해 자기 hook 에 계측을 직접 다는 것 — 이라 소비처를 원문으로 잠근다.
+  // 화면 모듈은 DOM 을 만져 하네스가 import 할 수 없으므로 원문 대조가 유일한 수단이다.
+  const CONSUMERS = {
+    'src/ui/screens/train.mjs': ['trainWiring'],
+    'src/ui/screens/duel.mjs': ['composeHooks', 'duelWiring'],
+    'src/ui/screens/dispatch.mjs': ['composeHooks', 'dispatchWiring'],
+    'src/bot.mjs': ['composeHooks', 'dispatchWiring', 'duelWiring', 'trainWiring'],
+  };
+  // 로깅·성장을 실제로 움직이는 함수 — 화면이 이 이름을 직접 쥐면 배선이 두 벌이 된다.
+  const INSTRUMENTS = [
+    'logTimeout', 'logVerdict', 'recordDispatchVerdict', 'recordDuelVerdict', 'recordEffectiveSuccess',
+  ];
+  for (const [path, expected] of Object.entries(CONSUMERS)) {
+    const source = readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+    const imported = expected.filter((name) => source.includes(name));
+    deepEq(imported, expected, `${path} 가 공유 배선을 그대로 소비한다`);
+    ok(/from '[^']*\/wiring\.mjs'/.test(source), `${path} 의 배선 출처가 wiring.mjs 다`);
+    deepEq(INSTRUMENTS.filter((name) => source.includes(name)), [],
+      `${path} 는 계측 함수를 직접 쥐지 않는다 — 배선은 한 벌이어야 한다`);
+  }
 });
 
 // -------------------------------------------- 12. BALANCE 파라미터 census (REQ-606)

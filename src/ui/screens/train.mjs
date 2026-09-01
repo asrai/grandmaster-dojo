@@ -12,7 +12,7 @@ import { trainWiring } from '../wiring.mjs';
 export function startTrain(ctx) {
   const { session, root, params } = ctx;
   const style = styleById(params.styleId);
-  let windowMs = 0;
+  let windowMs = 1;
   clear(root);
 
   const statusEl = el('div', { class: 'grade' });
