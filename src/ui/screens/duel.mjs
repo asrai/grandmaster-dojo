@@ -2,13 +2,14 @@
 
 import { BALANCE } from '../../balance.mjs';
 import { attrMark, clear, el, hpBar } from '../dom.mjs';
-import { ATTR_VIEW, GRADE_VIEW, attrLabel, gradeLabel, winAttrOf } from '../theme.mjs';
+import { ATTR_VIEW, attrLabel, winAttrOf } from '../theme.mjs';
 import { SFX } from '../audio.mjs';
 import { PHASE, createMatch } from '../match.mjs';
 import { createSequenceInput } from '../sequence-input.mjs';
 import {
   ART_NAME, artRank, challengerOfStage, equippedStyles, logEvent, masteryOf,
 } from '../session.mjs';
+import { hideVerdict, showGradeVerdict } from '../verdict-overlay.mjs';
 import { composeHooks, duelWiring } from '../wiring.mjs';
 
 function telegraphView(view) {
@@ -38,7 +39,6 @@ export function startDuel(ctx) {
   const foeHpEl = el('div', {});
   const selfHpEl = el('div', {});
   const telegraphEl = el('div', { class: 'tg-slot' });
-  const verdictEl = el('div', { class: 'verdict' });
   const windowFill = el('i', {});
   const banner = el('div', { class: 'toast' });
 
@@ -50,7 +50,7 @@ export function startDuel(ctx) {
     ]),
     foeHpEl,
     telegraphEl,
-    verdictEl,
+    el('div', { class: 'arena-gap' }),
     el('div', { class: 'window' }, [windowFill]),
     el('div', { class: 'head' }, [
       el('b', { text: '사부' }),
@@ -88,7 +88,7 @@ export function startDuel(ctx) {
     hooks: composeHooks(duelWiring(session, { input }), {
       onTelegraph(view) {
         clear(telegraphEl).appendChild(telegraphView(view));
-        clear(verdictEl);
+        hideVerdict();
         windowFill.style.width = '100%';
         renderHp(view);
         ctx.pad.render();
@@ -104,11 +104,7 @@ export function startDuel(ctx) {
         const { verdict } = view;
         ctx.pad.render();
         renderHp(view);
-        const gv = GRADE_VIEW[verdict.grade];
-        clear(verdictEl).appendChild(el('div', {
-          class: 'grade', style: `color:${gv.color}`,
-          text: `${gv.mark} ${gradeLabel(verdict.grade)}`,
-        }));
+        showGradeVerdict(verdict.grade);
         (verdict.grade === 'crush' ? SFX.crush : verdict.dmgIn > 0 ? SFX.hit : SFX.fire)();
 
         if (!changes) return;
@@ -142,6 +138,6 @@ export function startDuel(ctx) {
     onFire: (fired) => { SFX.fire(); match.fire(fired); },
   });
   match.start();
-  return () => { match.stop(); ctx.pad.detach(); };
+  return () => { match.stop(); hideVerdict(); ctx.pad.detach(); };
 }
 

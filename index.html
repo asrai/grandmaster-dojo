@@ -138,16 +138,14 @@ button.ghost { background: transparent; }
 .hpbar { height: 10px; background: #0b0e13; border-radius: 5px; overflow: hidden; margin: 6px 0; }
 .hpbar i { display: block; height: 100%; background: linear-gradient(90deg, #ff5a5a, #ffd166); transition: width .25s; }
 
-/* 대련 화면은 남는 세로를 판정 자리로 채운다 — 등급이 화면 중앙에 떠야 읽힌다. */
+/* 판정은 오버레이가 지므로 남는 세로는 빈 칸으로 남긴다 — 아래 절반의 자리를 그대로 유지한다. */
 .arena { display: flex; flex-direction: column; flex: 1; }
 .arena .tg-slot { min-height: 74px; }
-.arena .verdict { flex: 1; }
+.arena .arena-gap { flex: 1; }
 .telegraph { border: 1px solid var(--attr, var(--line)); border-radius: 8px; padding: 8px; display: flex; gap: 10px; align-items: center; }
 .telegraph.open { border-color: var(--gold); color: var(--gold); justify-content: center; font-weight: 700; }
 .tg-foe { display: flex; gap: 6px; align-items: center; flex: 1; }
 .tg-win { display: flex; gap: 4px; align-items: center; border-left: 1px solid var(--line); padding-left: 10px; color: var(--attr); }
-.verdict { min-height: 42px; display: flex; align-items: center; justify-content: center; }
-.grade { font-size: 26px; font-weight: 800; letter-spacing: 2px; }
 .window { height: 6px; background: #0b0e13; border-radius: 3px; overflow: hidden; margin: 8px 0; }
 .window i { display: block; height: 100%; background: #4aa8ff; }
 
@@ -175,6 +173,22 @@ button.ghost { background: transparent; }
 
 .toast { min-height: 20px; text-align: center; color: var(--gold); opacity: 0; transition: opacity .2s; }
 .toast.show { opacity: 1; }
+
+/* 판정은 흐름 밖에서 뜬다 — 자리를 차지하면 문구 등장마다 아래 형제가 밀린다 (#40). */
+#verdictOverlay {
+  position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  display: flex; align-items: center; justify-content: center;
+}
+.verdict-pop { text-align: center; text-shadow: 0 2px 16px #000, 0 0 32px #000; animation: verdict-pop .5s ease-out forwards; }
+.verdict-mark { display: block; font-size: 88px; font-weight: 800; line-height: 1; }
+.verdict-label { display: block; margin-top: 8px; font-size: 22px; font-weight: 800; letter-spacing: 3px; }
+/* 응수 창(500ms)이 다시 열리기 전에 스스로 사라진다 — 다음 판정과 겹쳐 읽히지 않게. */
+@keyframes verdict-pop {
+  0% { opacity: 0; transform: scale(.6) }
+  20% { opacity: 1; transform: scale(1.1) }
+  36% { transform: scale(1) }
+  100% { opacity: 0; transform: scale(1) }
+}
 
 #pad { border-top: 1px solid var(--line); padding: 8px 12px; background: var(--panel); height: calc(var(--hit) * 2 + 160px); }
 /* 자리째 접는다 — 패드를 쓰는 화면은 진입부터 이탈까지 붙여 두므로 화면 안에서 높이가 튀지 않는다. */
@@ -242,6 +256,7 @@ button.ghost { background: transparent; }
         </div>
       </footer>
     </div>
+    <div id="verdictOverlay" aria-live="polite"></div>
   </div>
 
   <div id="tools">

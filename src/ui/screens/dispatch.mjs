@@ -5,10 +5,11 @@ import { BALANCE } from '../../balance.mjs';
 import { createDiscipleHand } from '../../bot.mjs';
 import { discipleRankOf, discipleStyles, finisherOf } from '../../core.mjs';
 import { attrMark, clear, el, hpBar } from '../dom.mjs';
-import { ATTR_VIEW, GRADE_VIEW, attrLabel, gradeLabel, winAttrOf } from '../theme.mjs';
+import { ATTR_VIEW, attrLabel, winAttrOf } from '../theme.mjs';
 import { SFX } from '../audio.mjs';
 import { createMatch } from '../match.mjs';
 import { ART_ID, ART_NAME, DISPATCH_CHALLENGER } from '../session.mjs';
+import { hideVerdict, showGradeVerdict } from '../verdict-overlay.mjs';
 import { composeHooks, dispatchWiring, logDispatchStart } from '../wiring.mjs';
 
 const styleIcon = (style, extra = '') => el('div', {
@@ -56,7 +57,6 @@ export function startDispatch(ctx) {
   const foeHpEl = el('div', {});
   const selfHpEl = el('div', {});
   const telegraphEl = el('div', { class: 'tg-slot' });
-  const verdictEl = el('div', { class: 'verdict' });
   const iconsEl = el('div', { class: 'icons' });
   const windowFill = el('i', {});
 
@@ -68,7 +68,7 @@ export function startDispatch(ctx) {
     ]),
     foeHpEl,
     telegraphEl,
-    verdictEl,
+    el('div', { class: 'arena-gap' }),
     el('div', { class: 'window' }, [windowFill]),
     el('div', { class: 'head' }, [el('b', { text: '제자' }), el('span', { class: 'dim', text: `${ART_NAME} ${rankFrom}성` })]),
     selfHpEl,
@@ -114,7 +114,7 @@ export function startDispatch(ctx) {
       onTelegraph(view) {
         instructed = null;
         fired = false;
-        clear(verdictEl);
+        hideVerdict();
         windowFill.style.width = '100%';
         clear(telegraphEl).appendChild(view.foeOpen
           ? el('div', { class: 'telegraph open', text: '빈틈! — 제자가 연환을 잇는다' })
@@ -139,11 +139,7 @@ export function startDispatch(ctx) {
       },
       onVerdict(view, ranked) {
         renderHp(view);
-        const gv = GRADE_VIEW[view.verdict.grade];
-        clear(verdictEl).appendChild(el('div', {
-          class: 'grade', style: `color:${gv.color}`,
-          text: `${gv.mark} ${gradeLabel(view.verdict.grade)}`,
-        }));
+        showGradeVerdict(view.verdict.grade);
         (view.verdict.grade === 'crush' ? SFX.crush : SFX.hit)();
         if (ranked) SFX.rank();
       },
@@ -161,5 +157,5 @@ export function startDispatch(ctx) {
 
   logDispatchStart(session, challenger);
   match.start();
-  return () => match.stop();
+  return () => { match.stop(); hideVerdict(); };
 }

@@ -3,11 +3,18 @@
 import { BALANCE } from '../../balance.mjs';
 import { masteryPct, styleById } from '../../core.mjs';
 import { arrowRow, attrMark, clear, el } from '../dom.mjs';
-import { ATTR_VIEW } from '../theme.mjs';
+import { ATTR_VIEW, GRADE_VIEW } from '../theme.mjs';
 import { SFX } from '../audio.mjs';
 import { createSequenceInput } from '../sequence-input.mjs';
 import { logEvent, masteryOf } from '../session.mjs';
+import { hideVerdict, showVerdict } from '../verdict-overlay.mjs';
 import { trainWiring } from '../wiring.mjs';
+
+// 수련에는 등급이 없지만 연출은 세 화면이 공유한다 — 색·마크는 GRADE_VIEW 를 그대로 빌린다 (#40).
+const TRAIN_VIEW = {
+  done: { ...GRADE_VIEW.advantage, label: '성공' },
+  missed: { ...GRADE_VIEW.disadvantage, label: '창을 넘겼다 — 다시' },
+};
 
 export function startTrain(ctx) {
   const { session, root, params } = ctx;
@@ -15,7 +22,6 @@ export function startTrain(ctx) {
   let windowMs = 1;
   clear(root);
 
-  const statusEl = el('div', { class: 'grade' });
   const progressEl = el('p', { class: 'dim' });
   const windowFill = el('i', {});
 
@@ -29,7 +35,6 @@ export function startTrain(ctx) {
       el('div', { class: 'tg-foe' }, [attrMark(style.attr, { size: 'big' }), el('span', { text: style.gugyeol })]),
     ]),
     arrowRow(style.seq, 0, style.seq.length),
-    statusEl,
     el('div', { class: 'window' }, [windowFill]),
     progressEl,
   ]));
@@ -71,14 +76,13 @@ export function startTrain(ctx) {
         settled = true;
         SFX.fire();
         wiring.onFire();
-        statusEl.textContent = '성공';
-        statusEl.style.color = '#43c98a';
+        showVerdict(TRAIN_VIEW.done);
         showProgress();
         ctx.refreshTop();
         rearm = setTimeout(arm, BALANCE.resolveMs);
       },
     });
-    statusEl.textContent = '';
+    hideVerdict();
     showProgress();
   }
 
@@ -91,13 +95,12 @@ export function startTrain(ctx) {
     if (left > 0) return;
     settled = true;
     // 수련 실패는 무벌 재시도 — 로그는 실전 창의 완주율 분모와 섞이지 않게 남기지 않는다.
-    statusEl.textContent = '창을 넘겼다 — 다시';
-    statusEl.style.color = '#e08a4a';
+    showVerdict(TRAIN_VIEW.missed);
     rearm = setTimeout(arm, BALANCE.resolveMs);
   }
 
   arm();
   raf = requestAnimationFrame(frame);
   // 재무장 타이머가 살아남으면 도장 화면 위에서 패드가 되살아나 수련 적립이 무한해진다.
-  return () => { cancelAnimationFrame(raf); clearTimeout(rearm); ctx.pad.detach(); };
+  return () => { cancelAnimationFrame(raf); clearTimeout(rearm); hideVerdict(); ctx.pad.detach(); };
 }
