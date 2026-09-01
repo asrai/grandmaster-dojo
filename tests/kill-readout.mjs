@@ -15,12 +15,16 @@ import { LOG_SCHEMA, SCHEMA_VERSION_FIELD, TIME_FIELD, validate } from '../src/l
 import { EXPORT_SCHEMA, balanceDigest, exportPayload } from '../src/ui/session.mjs';
 import { createSeededRandom, runHeadlessCycle } from '../src/bot.mjs';
 
-/** kill-criterion 임계 (제안서 §7 · spec REQ-603). 판독기는 이 값만 알고 게임 로직은 모른다. */
+/**
+ * kill-criterion 임계 (제안서 §7 · spec REQ-603·793). 판독기는 이 값만 알고 게임 로직은 모른다.
+ * 표본 하한만 정본 JSON 에서 온다 — 모집단 크기는 판독 유효 조건이라 튜닝과 같은 자리에 산다.
+ */
 export const KILL = {
   firstFireMs: 60_000,
   completionRate: 0.5,
   cycleDoneMs: 300_000,
   ignoreRate: 0.15,
+  minManualWindows: BALANCE.killReadout.minManualWindows,
 };
 
 /** 실전 창 = 사부 대련 구간. 수련 창을 섞으면 (b) 가 손의 증거가 아니라 연습량이 된다. */
@@ -54,9 +58,10 @@ function loadPayload(raw) {
 /**
  * 봇 사이클이 구조적으로 낼 수 없는 이벤트 — 계측 구멍이 아니라 「그 손이 그 자리에 못 간다」다.
  * `rank_wall` 은 봇이 장착 성까지만 수련해 8성 벽을 두드릴 일이 없고, `cheat` 는 봇 구동 중
- * 강제 off 라 원리적으로 발화하지 않는다 (REQ-783).
+ * 강제 off 라 원리적으로 발화하지 않는다 (REQ-783). `disciple_train` 은 판정 범위(B-1 종료)
+ * 밖이다 — 1사이클은 전수 직후 B-1 로 직행하므로 방치 루프를 걸 자리가 없다 (REQ-792).
  */
-export const BOT_UNREACHABLE = ['rank_wall', 'cheat'];
+export const BOT_UNREACHABLE = ['rank_wall', 'cheat', 'disciple_train'];
 
 /** 필드 결손 0 의 기계적 증명 — 스키마 대조 + 전 종류 방출 확인 (수용 케이스 11). */
 function auditEntries(entries) {
@@ -169,8 +174,11 @@ export function readout(payload) {
       b_completion_rate: rate(handFires, handFires + timeouts),
       b_hand_fires: handFires,
       b_timeouts: timeouts,
+      // 판독 유효 조건 (REQ-793) — 모집단이 작으면 비율이 손의 증거가 아니라 잡음이다.
+      b_manual_windows: handFires + timeouts,
       d_cycle_done_ms: cycleDone ? cycleDone[TIME_FIELD] : null,
     },
+    metrics: metricsOf(tagged, payload.entries),
     gate: {
       ignore_rate: rate(ignored.length, keys.length),
       by_device: Object.fromEntries(Object.entries(byDevice)
@@ -199,7 +207,44 @@ export function readout(payload) {
       accessibility: payload.accessibility ?? null,
       accessibility_toggles: payload.accessibility_toggles ?? 0,
       dropped_after_cycle: dropped,
+      // 주입 세션은 축적을 건너뛴 표본이라 (b)(c)(d) 를 그 자리에서 무효로 만든다 (REQ-782).
+      cheat_flagged: payload.cheat_flagged === true || payload.entries.some((e) => e.event === 'cheat'),
     },
+  };
+}
+
+/**
+ * 신규 지표 (REQ-794). 축이 둘로 갈리는 것이 판정 범위의 표현이다 — 사부 축(재대련·슬롯·결정타·
+ * 8성 벽)은 kill 과 같은 첫 사이클 모집단에서 세고, 제자 축(방치 수련·B-2 이후 임무)은 판정 범위
+ * 밖이라 첫 사이클 절단선 뒤에서만 관측된다 (REQ-792).
+ * @param {object[]} cycle 첫 사이클 · 손 필터를 거친 항목
+ * @param {object[]} all   내보낸 로그 전량
+ */
+function metricsOf(cycle, all) {
+  const count = (rows, key) => rows.reduce((acc, e) => {
+    acc[e[key]] = (acc[e[key]] ?? 0) + 1;
+    return acc;
+  }, {});
+  const finishes = cycle.filter((e) => e.event === 'finish');
+  const trains = all.filter((e) => e.event === 'disciple_train');
+  const rematches = cycle.filter((e) => e.event === 'rematch');
+  return {
+    rematch_attempts: count(rematches, 'attempt_n'),
+    rematch_deepest: rematches.reduce((m, e) => Math.max(m, e.attempt_n), 0),
+    // 슬롯 교체가 **어느 예고 화면에서** 났는지가 REQ-736 의 지표다 (예고 밖은 null 로 남는다).
+    slot_by_challenger: count(cycle.filter((e) => e.event === 'slot' && e.challenger), 'challenger'),
+    finish_by_style: count(finishes, 'style'),
+    finish_intended_rate: rate(finishes.filter((e) => e.intended).length, finishes.length),
+    // 벽은 사부·제자 양쪽에서 나므로 actor 로 가른다 — 합치면 사부 축 숫자가 제자 방치분을 삼킨다.
+    rank_wall: cycle.filter((e) => e.event === 'rank_wall' && e.actor === 'master').length,
+    disciple_rank_wall: all.filter((e) => e.event === 'rank_wall' && e.actor === 'disciple').length,
+    disciple_train_events: trains.length,
+    // 구 판본 파일은 필드가 없을 수 있다 — 판독은 그 사실을 이미 위에서 보고했고 여기서 죽으면 안 된다.
+    disciple_train_ranks: trains.reduce((acc, e) => acc + (Number(e.to) - Number(e.from) || 0), 0),
+    // 병렬성의 유일한 증거 — 사부가 그동안 무엇을 하고 있었는가 (REQ-754).
+    disciple_train_activity: count(trains, 'master_activity'),
+    dispatch_by_stage: all.filter((e) => e.event === 'dispatch')
+      .map((e) => ({ stage: e.stage, result: e.result, foe_set: e.foe_set, locked_until: e.locked_until })),
   };
 }
 
@@ -209,16 +254,27 @@ const secs = (ms) => (ms == null ? '—' : `${(ms / 1000).toFixed(1)}s`);
 const pct = (v) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`);
 const mark = (pass) => (pass == null ? '  ?' : pass ? '  ✓' : '  ✗');
 
-function report(result) {
-  const { kill, gate, aux } = result;
+/**
+ * kill 4항 pass/fail — `null` 은 미달이 아니라 **판독 불가**다. 무효 조건 넷이 각각 다른 축을 막는다:
+ * 치트 주입은 축적을 건너뛴 표본이고 (REQ-782), 창 배율 전환은 두 모집단을 한 분수에 섞으며,
+ * 수동 창 표본 하한은 모집단 축소가 만드는 소표본 오판을 막고 (REQ-793), 손 혼재는 (d) 의 시계를 가른다.
+ */
+export function killVerdicts({ kill, gate, aux }) {
   const a = kill.a_first_fire_ms == null ? null : kill.a_first_fire_ms <= KILL.firstFireMs;
-  // 사이클 중 창 배율이 바뀌면 기본 창과 ×1.3 창의 fire/timeout 이 한 분수에 섞여 판정이 뒤집힌다.
-  const b = aux.accessibility_toggles > 0 || kill.b_completion_rate == null
+  const thinSample = kill.b_manual_windows < KILL.minManualWindows;
+  const b = aux.cheat_flagged || aux.accessibility_toggles > 0 || thinSample
+    || kill.b_completion_rate == null
     ? null : kill.b_completion_rate >= KILL.completionRate;
-  // 봇이 섞인 사이클의 총 시간은 사람의 페이스가 아니다 — (b)·(a) 처럼 구간을 골라낼 수 없다.
-  const d = aux.mixed_hands || kill.d_cycle_done_ms == null
+  const d = aux.cheat_flagged || aux.mixed_hands || kill.d_cycle_done_ms == null
     ? null : kill.d_cycle_done_ms <= KILL.cycleDoneMs;
   const g = gate.ignore_rate == null ? null : gate.ignore_rate <= KILL.ignoreRate;
+  // 판정과 진단을 층으로 가른다 — 한 평면에 두면 `pass === false` 를 세는 호출부가 진단값을 미달로 읽는다.
+  return { verdicts: { a, b, d, gate: g }, thinSample };
+}
+
+function report(result) {
+  const { kill, gate, aux, metrics } = result;
+  const { verdicts: { a, b, d, gate: g }, thinSample } = killVerdicts(result);
 
   console.log(`\n판독 대상: tester_role=${aux.tester_role ?? '미상'}`
     + ` · 응수 창 ×1.3 ${aux.accessibility === null ? '미상' : aux.accessibility ? 'on' : 'off'}`
@@ -233,7 +289,8 @@ function report(result) {
     + ` · device별 ${Object.entries(gate.by_device).map(([d, v]) => `${d} ${pct(v)}`).join(' · ') || '—'}`);
   console.log(`${mark(a)} kill (a)  first_fire_t ${secs(kill.a_first_fire_ms)} (임계 ${secs(KILL.firstFireMs)}, 수련 창 포함)`);
   console.log(`${mark(b)} kill (b)  완주율 ${pct(kill.b_completion_rate)}`
-    + ` = fire(oneTap=false) ${kill.b_hand_fires} / (+ timeout ${kill.b_timeouts}) (임계 ${pct(KILL.completionRate)})`);
+    + ` = fire(oneTap=false) ${kill.b_hand_fires} / (+ timeout ${kill.b_timeouts}) (임계 ${pct(KILL.completionRate)})`
+    + ` · 수동 창 ${kill.b_manual_windows}${thinSample ? ` < ${KILL.minManualWindows} — 표본 미달로 판독 불가` : ''}`);
   console.log('    kill (c)  설문 축 — 로그 외 입력');
   console.log(`${mark(d)} kill (d)  cycle_done_t ${secs(kill.d_cycle_done_ms)} (임계 ${secs(KILL.cycleDoneMs)})`);
   console.log(`    보조  first_transmit ${secs(aux.first_transmit_ms)}`
@@ -241,6 +298,13 @@ function report(result) {
     + ` · 창 잔여 ${pct(aux.tail_ratio_mean)} (tail_ms ${aux.tail_ms_band?.join('~') ?? '—'})`
     + ` · top_attr 전환 ${aux.top_attr_switches}회`);
   console.log(`    유효 성공률(유저) ${pct(aux.effective_success_rate)} · 등급 ${JSON.stringify(aux.verdict_grades)}`);
+  // 신규 지표 (REQ-794) — 사부 축은 판정 모집단, 제자 축은 판정 범위 밖의 셀프 관측이다.
+  console.log(`    사부 축  재대련 회차 ${JSON.stringify(metrics.rematch_attempts)} (최심 ${metrics.rematch_deepest})`
+    + ` · 슬롯 교체 ${JSON.stringify(metrics.slot_by_challenger)} · 결정타 ${JSON.stringify(metrics.finish_by_style)}`
+    + ` (의도 일치 ${pct(metrics.finish_intended_rate)}) · 8성 벽 ${metrics.rank_wall}회`);
+  console.log(`    제자 축  파견 ${metrics.dispatch_by_stage.map((m) => `${m.stage}:${m.result}[${m.foe_set?.join('+') ?? '?'}]`).join(' · ') || '—'}`
+    + ` · 수련 ${metrics.disciple_train_events}회 ${metrics.disciple_train_ranks}성`
+    + ` · 8성 벽 ${metrics.disciple_rank_wall}회 · 병렬 ${JSON.stringify(metrics.disciple_train_activity)}`);
   return { a, b, d, gate: g };
 }
 

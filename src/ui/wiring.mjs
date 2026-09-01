@@ -5,8 +5,8 @@
 
 import { responseWindowMs, styleById } from '../core.mjs';
 import {
-  beginDuel, beginTrainVisit, equippedStyles, logEvent, logTimeout, recordDispatchVerdict,
-  recordDuelVerdict, recordEffectiveSuccess,
+  beginDuel, beginTrainVisit, equippedStyles, logEvent, logTimeout, missionLockRankOf,
+  recordDispatchVerdict, recordDuelVerdict, recordEffectiveSuccess,
 } from './session.mjs';
 
 /**
@@ -45,9 +45,20 @@ export function trainWiring(session, { styleId, input }) {
   };
 }
 
-/** 파견 진입 기록 (REQ-403) — 사이클 로그의 파견 구간 시작점이라 두 호출부가 같은 자리를 쓴다. */
-export const logDispatchStart = (session, challenger) =>
-  logEvent(session, 'dispatch', { challenger: challenger.id });
+/**
+ * 파견 결과 기록 (REQ-744) — 진입이 아니라 종료에서 찍는 것은 스키마가 승패를 함께 지기 때문이고,
+ * 구간의 시작점은 `cycle{phase}` 가 이미 진다. B-1 무패 보장·B-2 잠금·조합별 승패가 한 항목에서 갈린다.
+ * @param {object} p.mission 실제로 싸운 그 임무 — 여기서 다시 도출하면 싸운 적 없는 조합이 기록될 수 있다.
+ */
+export function logDispatchResult(session, { mission, win }) {
+  return logEvent(session, 'dispatch', {
+    stage: mission.label,
+    foe_set: mission.foeSet.slice(),
+    disciple_ranks: mission.ranks,
+    locked_until: missionLockRankOf(session),
+    result: win ? 'win' : 'loss',
+  });
+}
 
 /**
  * 대련 진입 기록 (REQ-734) — 그 대면의 도전자 성과 재대련 회차가 여기서 확정된다.
