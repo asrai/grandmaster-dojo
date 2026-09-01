@@ -25,7 +25,7 @@ import {
 import { GRADE_VIEW } from '../src/ui/theme.mjs';
 import { BOT_UNREACHABLE, KILL, readout } from './kill-readout.mjs';
 import {
-  accrueDiscipleStyle, accrueRank, applyEffectiveSuccess, artById, artStyles,
+  accrueDiscipleStyle, accrueRank, applyEffectiveSuccess, applyOutcome, artById, artStyles,
   assertCounterIntegrity, assertPrefixFree, canEquipRank, canLearn, canTransmit, challengerById,
   createDisciple, createProgress, createRankState, discipleStyleRank, discipleStyles, finisherOf,
   foePowerOf, foeRankOf, foeStyleById, initiativeOf, isEffectiveSuccess, isOneTapRank, judge,
@@ -215,6 +215,21 @@ suite('데이터 무결성 (REQ-501·502·503·505)', () => {
   // 사부 대련 4판이 결정타 4회를 초식 4개에 1:1 배분할 수 있어야 한다 (REQ-731).
   eq(new Set(STYLES.map((s) => crushStages(s.id)[0])).size, STYLES.length,
     '초식마다 서로 다른 첫 완파 무대를 갖는다');
+  /**
+   * 위 무대 표는 **파해 완파**의 무대다 (#64 가 #65 로 이관한 판정). 빈틈 수의 완파 취급도
+   * 12성 자격이므로 「파운현월 완파는 A-4 에서만」은 파해 경로에 한정된 서술이고, 재대련 상한은
+   * 유일 경로가 아니라 **주 경로**의 도달 가능성을 지킨다. 이 단정이 그 사실을 결정으로 고정한다 —
+   * 없으면 다음 회차가 이것을 결함으로 읽고 `gradeOf`(무변경 계약)를 건드린다.
+   */
+  const openCrush = judge({
+    selfStyle: styleById('pa-un'), foeStyle: foeStyleById('alpha'), selfRank: BALANCE.rankLadder.crushRank - 1,
+    foeRank: foeRankOf('A-1'), foeOpen: true,
+  });
+  eq(openCrush.grade, 'crush', '빈틈 수에는 파해 관계 없이 완파 취급이다');
+  deepEq(applyOutcome(setStyleRank(createProgress(), 'pa-un', BALANCE.rankLadder.crushRank - 1), 'pa-un',
+    { crush: openCrush.grade === 'crush' }).changes.rank,
+  { style: 'pa-un', from: BALANCE.rankLadder.crushRank - 1, to: BALANCE.rankLadder.crushRank, via: 'crush' },
+  '빈틈 완파도 12성 자격이다 — 무대 표는 파해 완파의 것이다');
 
   eq(ART_SETS.length, 1, '무공 테이블 1종');
   deepEq(artById('yuun-geom').styles, STYLES.map((s) => s.id), '무공이 4식을 모두 보유');
