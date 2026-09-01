@@ -197,7 +197,7 @@ function discipleCard(session) {
   return el('section', { class: 'card' }, [
     el('h2', { text: '제자' }),
     styles.length === 0
-      ? el('p', { class: 'dim', text: '아직 전수한 무공이 없다 — 전 초식을 12성으로 깨달으면 전수할 수 있다.' })
+      ? el('p', { class: 'dim', text: `아직 전수한 무공이 없다 — 전 초식을 ${artById(ART_ID).transmitRank}성으로 깨달으면 전수할 수 있다.` })
       : el('div', {}, [
         el('p', {}, [el('b', { text: ART_NAME })]),
         el('div', { class: 'icons' }, styles.map((s) => el('span', {

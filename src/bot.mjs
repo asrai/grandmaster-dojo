@@ -453,6 +453,14 @@ export function runHeadlessCycle({
   logSessionMeta(session, { testerRole: 'bot', device });
   const go = (next, nextParams = {}) => { phase = next; params = nextParams; };
 
+  // 상한 초과·내부 throw 로 나가도 구동 표식을 되돌린다 — 남으면 그 세션은 치트가 영구 잠긴다.
+  try {
+    return runScreens();
+  } finally {
+    setBotRunning(session, false);
+  }
+
+  function runScreens() {
   while (screens < maxScreens) {
     screens += 1;
     logEvent(session, 'cycle', { phase });
@@ -497,10 +505,10 @@ export function runHeadlessCycle({
         continue;
       }
       settleDispatch(session, { win: params.win });
-      setBotRunning(session, false);
       return { session, elapsedMs: timer.now(), screens };
     }
     throw new Error(`알 수 없는 화면: ${phase}`);
   }
   throw new Error(`1사이클이 ${maxScreens} 화면 안에 끝나지 않았다`);
+  }
 }

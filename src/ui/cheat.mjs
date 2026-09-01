@@ -32,6 +32,7 @@ export function mountCheatPanel({ session, refresh }) {
         el('span', { text: style.name }),
         el('input', {
           type: 'number', min: '1', max: String(BALANCE.rankMax),
+          'aria-label': `${style.name} 성`,
           value: String(session.progress.styles[style.id].rank),
           id: `cheat-rank-${style.id}`,
         }),

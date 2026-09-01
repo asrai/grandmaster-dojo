@@ -22,7 +22,7 @@ import {
   composeHooks, dispatchWiring, duelWiring, trainWiring,
 } from '../src/ui/wiring.mjs';
 import { GRADE_VIEW } from '../src/ui/theme.mjs';
-import { KILL, readout } from './kill-readout.mjs';
+import { BOT_UNREACHABLE, KILL, readout } from './kill-readout.mjs';
 import {
   accrueDiscipleStyle, accrueRank, applyEffectiveSuccess, artById, artStyles,
   assertCounterIntegrity, assertPrefixFree, canEquipRank, canLearn, canTransmit, challengerById,
@@ -1098,13 +1098,6 @@ suite('재화 · 정산 · 내보내기 (REQ-602·604·209)', () => {
 });
 
 // --------------------- 14. 헤드리스 봇 1사이클 (REQ-601·603·605 · 수용 케이스 11)
-
-/**
- * 봇 사이클이 구조적으로 낼 수 없는 이벤트 — 「덜 나왔다」가 아니라 「그 손이 그 자리에 못 간다」다.
- * `rank_wall` 은 봇이 장착 성까지만 수련하므로(REQ-713 게이트) 8성 벽을 두드릴 일이 없고,
- * `cheat` 는 봇 구동 중 강제 off 라 원리적으로 발화하지 않는다 (REQ-783).
- */
-const BOT_UNREACHABLE = ['rank_wall', 'cheat'];
 
 suite('헤드리스 봇 1사이클 (REQ-601·603·605)', () => {
   const SEEDS = [20260901, 20260902, 7919, 104729, 1299709];

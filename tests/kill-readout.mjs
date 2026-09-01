@@ -42,7 +42,7 @@ function loadPayload(raw) {
   // 최상위 배열 = 버퍼만 있는 형태. 그 밖에는 내보내기 계약이라 키 결손을 통과로 접지 않는다.
   if (Array.isArray(parsed)) return { bare: true, entries: parsed, log_violations: [] };
   if (!Array.isArray(parsed.entries)) throw new Error('entries 배열이 없다 — 내보내기 파일이 아니다');
-  const missing = ['schema', 'log_violations'].filter((k) => !(k in parsed));
+  const missing = ['schema', 'log_violations', 'cheat_flagged'].filter((k) => !(k in parsed));
   return {
     ...parsed,
     bare: false,
@@ -56,7 +56,7 @@ function loadPayload(raw) {
  * `rank_wall` 은 봇이 장착 성까지만 수련해 8성 벽을 두드릴 일이 없고, `cheat` 는 봇 구동 중
  * 강제 off 라 원리적으로 발화하지 않는다 (REQ-783).
  */
-const BOT_UNREACHABLE = ['rank_wall', 'cheat'];
+export const BOT_UNREACHABLE = ['rank_wall', 'cheat'];
 
 /** 필드 결손 0 의 기계적 증명 — 스키마 대조 + 전 종류 방출 확인 (수용 케이스 11). */
 function auditEntries(entries) {

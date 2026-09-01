@@ -306,14 +306,14 @@ export function setBotRunning(session, running) {
 /**
  * 치트 주입 (REQ-781·782) — 세션에 지워지지 않는 플래그를 남긴다. 주입은 축적을 건너뛰므로
  * 그 세션은 balance-log 회차와 kill (b)(c)(d) 표본에서 통째로 빠진다.
- * @param {() => void} mutate 세션 상태를 실제로 바꾸는 일 — 던지면 플래그도 로그도 남지 않으므로
- *   호출부가 인자를 먼저 검증해야 한다 (「바꿨는데 표식이 없다」는 REQ-782 의 구멍이다)
+ * @param {() => void} mutate 세션 상태를 실제로 바꾸는 일 — 플래그를 먼저 세우는 것은 「바꿨는데
+ *   표식이 없다」가 REQ-782 의 구멍이기 때문이다 (반대 방향의 헛플래그는 표본 하나를 더 뺄 뿐이다)
  */
 export function applyCheat(session, action, mutate) {
   if (!session.cheat.enabled) return false;
-  mutate();
   session.cheat.used = true;
   logEvent(session, 'cheat', { action, session_flagged: true });
+  mutate();
   return true;
 }
 
