@@ -8,14 +8,15 @@ import {
 } from '../src/balance.mjs';
 import { LOG_SCHEMA, TIME_FIELD, createLogBuffer, validate } from '../src/log.mjs';
 import {
-  createDiscipleHand, createSeededRandom, runHeadlessCycle,
+  createDiscipleHand, createSeededRandom, nextDuelStage, runHeadlessCycle,
 } from '../src/bot.mjs';
 import { createMatch, createVirtualTimer, pumpToEnd } from '../src/ui/match.mjs';
 import { createSequenceInput } from '../src/ui/sequence-input.mjs';
 import {
-  ART_ID, EXPORT_SCHEMA, accrueDiscipleRank, addCoins, autoEquip, canEquip, consumeTooltip,
-  createSession, createTooltipState, equippedStyles, exportPayload, isCheatFlagged, learnStyle,
-  logEvent, pickTooltip, recordDuelVerdict, recordEffectiveSuccess, setBotRunning, setCheatEnabled,
+  ART_ID, EXPORT_SCHEMA, accrueDiscipleRank, addCoins, autoEquip, beatenChallengers, beginDuel,
+  canEquip, challengerOfStage, consumeTooltip, createSession, createTooltipState, duelAttemptOf, duelFoeRank,
+  equip, equippedStyles, exportPayload, isCheatFlagged, isRematch, learnStyle, logEvent,
+  pickTooltip, recordDuelVerdict, recordEffectiveSuccess, setBotRunning, setCheatEnabled,
   settleDispatch, settleDuel, simulateTraining, cheatSetStyleRank,
 } from '../src/ui/session.mjs';
 import {
@@ -24,12 +25,13 @@ import {
 import { GRADE_VIEW } from '../src/ui/theme.mjs';
 import { BOT_UNREACHABLE, KILL, readout } from './kill-readout.mjs';
 import {
-  accrueDiscipleStyle, accrueRank, applyEffectiveSuccess, artById, artStyles,
+  accrueDiscipleStyle, accrueRank, applyEffectiveSuccess, applyOutcome, artById, artStyles,
   assertCounterIntegrity, assertPrefixFree, canEquipRank, canLearn, canTransmit, challengerById,
   createDisciple, createProgress, createRankState, discipleStyleRank, discipleStyles, finisherOf,
-  foePowerOf, foeStyleById, initiativeOf, isEffectiveSuccess, isOneTapRank, judge, ladderBandAt,
-  learn, powerOf, promoteByOutcome, resolveMatch, responseWindowMs, selectDiscipleStyle,
-  setStyleRank, styleById, styleRank, trainHitsToNext, transmit,
+  foePowerOf, foeRankOf, foeStyleById, initiativeOf, isEffectiveSuccess, isOneTapRank, judge,
+  ladderBandAt, learn, powerOf, promoteByOutcome, rematchFoeRank, resolveMatch, responseWindowMs,
+  reversalDecayFactor, selectDiscipleStyle, setStyleRank, styleById, styleRank, trainHitsToNext,
+  transmit,
 } from '../src/core.mjs';
 
 /** 성 축 재설계가 폐기한 BALANCE 키 (#64) — 잔존 참조 1개가 판정 수식을 조용히 오염시킨다. */
@@ -119,7 +121,7 @@ function expectedGrade({ self, foe, foeOpen }) {
   return 'clash';
 }
 
-function expectedVerdict({ self, foe, foeOpen, rank, r, foePower }) {
+function expectedVerdict({ self, foe, foeOpen, rank, r, foePower, foeRank }) {
   const grade = expectedGrade({ self, foe, foeOpen });
   const n = BALANCE.powerBase + BALANCE.powerPerRank * rank;
   const init = BALANCE.initiativeBase + BALANCE.initiativePerRatio * r;
@@ -133,7 +135,11 @@ function expectedVerdict({ self, foe, foeOpen, rank, r, foePower }) {
     }
     : {
       dmgOut: Math.round(selfD * n * init * rule.outPct),
-      dmgIn: Math.round(foeD * foePower * rule.inPct),
+      // 역파만 성 차로 감쇠하되 관통 하한 아래로는 내려가지 않는다 (REQ-771) — core 와 독립 산출.
+      dmgIn: Math.round(foeD * foePower * rule.inPct * (grade === 'reversal'
+        ? Math.max(BALANCE.reversalDecay.pierceFloor,
+          1 - BALANCE.reversalDecay.perRank * Math.max(0, rank - foeRank))
+        : 1)),
     };
   return { grade, ...dmg, opening: foeOpen ? null : rule.opening };
 }
@@ -183,8 +189,8 @@ suite('데이터 무결성 (REQ-501·502·503·505)', () => {
 
   deepEq(CHALLENGERS.map((c) => [c.id, ...c.styles]), [
     ['A-1', 'alpha'], ['A-2', 'alpha', 'beta'], ['A-3', 'alpha', 'beta', 'gamma'],
-    ['B', 'alpha', 'gamma', 'delta'],
-  ], '도전자 A 1·2·3차 + B 구성');
+    ['A-4', 'alpha', 'gamma', 'delta'], ['B', 'alpha', 'gamma', 'delta'],
+  ], '도전자 A 1~4차 + B 구성 (REQ-731)');
   for (const c of CHALLENGERS) {
     ok(BALANCE.hp[c.id] !== undefined, `${c.id} HP 시드 존재`);
     ok(Number.isInteger(BALANCE.challengerRank[c.id]), `${c.id} 성 시드 존재 (REQ-722)`);
@@ -194,9 +200,36 @@ suite('데이터 무결성 (REQ-501·502·503·505)', () => {
     const finishers = c.styles.map(foeStyleById).filter((s) => s.finisher);
     ok(finishers.length <= 1, `${c.id} 절초 ≤ 1 — finisherOf 가 축약하지 않는다`);
   }
-  eq(CHALLENGERS.filter((c) => c.group === 'A').every((c) => finisherOf(c) === null), true, 'A 는 절초 없음');
+  eq(['A-1', 'A-2', 'A-3'].every((id) => finisherOf(challengerById(id)) === null), true, 'A-3 까지는 절초 없음');
+  eq(finisherOf(challengerById('A-4')).id, 'delta', 'A-4 의 절초는 δ — 사부가 δ 를 처음 만나는 자리 (REQ-731)');
   eq(finisherOf(challengerById('B')).id, 'delta', 'B 의 절초는 δ');
   eq(styleById('pa-un').counters, 'delta', 'δ 의 파해는 4식');
+
+  // 완파 무대 (REQ-731) — 파해 대상을 예고에 가진 도전자에게서만 그 초식의 12성이 열린다.
+  const crushStages = (styleId) => CHALLENGERS
+    .filter((c) => c.mode === 'duel' && c.styles.includes(styleById(styleId).counters)).map((c) => c.id);
+  deepEq(crushStages('yuun-bo'), ['A-1', 'A-2', 'A-3', 'A-4'], '유운보 완파 무대');
+  deepEq(crushStages('jeok-un'), ['A-2', 'A-3'], '적운압정 완파 무대');
+  deepEq(crushStages('haeng-un'), ['A-3', 'A-4'], '행운유수 완파 무대');
+  deepEq(crushStages('pa-un'), ['A-4'], '파운현월 완파 무대는 A-4 뿐 — 재대련 상한이 도달 가능성 불변식인 근거');
+  // 사부 대련 4판이 결정타 4회를 초식 4개에 1:1 배분할 수 있어야 한다 (REQ-731).
+  eq(new Set(STYLES.map((s) => crushStages(s.id)[0])).size, STYLES.length,
+    '초식마다 서로 다른 첫 완파 무대를 갖는다');
+  /**
+   * 위 무대 표는 **파해 완파**의 무대다 (#64 가 #65 로 이관한 판정). 빈틈 수의 완파 취급도
+   * 12성 자격이므로 「파운현월 완파는 A-4 에서만」은 파해 경로에 한정된 서술이고, 재대련 상한은
+   * 유일 경로가 아니라 **주 경로**의 도달 가능성을 지킨다. 이 단정이 그 사실을 결정으로 고정한다 —
+   * 없으면 다음 회차가 이것을 결함으로 읽고 `gradeOf`(무변경 계약)를 건드린다.
+   */
+  const openCrush = judge({
+    selfStyle: styleById('pa-un'), foeStyle: foeStyleById('alpha'), selfRank: BALANCE.rankLadder.crushRank - 1,
+    foeRank: foeRankOf('A-1'), foeOpen: true,
+  });
+  eq(openCrush.grade, 'crush', '빈틈 수에는 파해 관계 없이 완파 취급이다');
+  deepEq(applyOutcome(setStyleRank(createProgress(), 'pa-un', BALANCE.rankLadder.crushRank - 1), 'pa-un',
+    { crush: openCrush.grade === 'crush' }).changes.rank,
+  { style: 'pa-un', from: BALANCE.rankLadder.crushRank - 1, to: BALANCE.rankLadder.crushRank, via: 'crush' },
+  '빈틈 완파도 12성 자격이다 — 무대 표는 파해 완파의 것이다');
 
   eq(ART_SETS.length, 1, '무공 테이블 1종');
   deepEq(artById('yuun-geom').styles, STYLES.map((s) => s.id), '무공이 4식을 모두 보유');
@@ -221,7 +254,8 @@ suite('통합 로그 스키마 (REQ-601)', () => {
     rank_wall: ['actor', 'style', 'at_rank', 'attempted'],
     unlock: ['style', 'prev_style_rank'],
     finish: ['style', 'challenger', 'intended'],
-    slot: ['action', 'styleId'],
+    rematch: ['challenger', 'foe_rank', 'attempt_n'],
+    slot: ['action', 'styleId', 'challenger'],
     transmit: ['style_set'],
     dispatch: ['challenger'],
     select: ['styleId', 'byUser'],
@@ -230,7 +264,7 @@ suite('통합 로그 스키마 (REQ-601)', () => {
     cheat: ['action', 'session_flagged'],
     session: ['tester_role', 'device'],
   };
-  eq(Object.keys(LOG_SCHEMA).length, 19, '이벤트 19종');
+  eq(Object.keys(LOG_SCHEMA).length, 20, '이벤트 20종');
   deepEq(Object.keys(LOG_SCHEMA), Object.keys(EXPECTED), '이벤트 이름·순서');
   for (const [event, fields] of Object.entries(EXPECTED)) {
     deepEq(LOG_SCHEMA[event].fields, fields, `${event} 필드`);
@@ -238,8 +272,8 @@ suite('통합 로그 스키마 (REQ-601)', () => {
   deepEq(LOG_SCHEMA.key.enums.device, ['keyboard', 'button'], 'key.device 열거');
   deepEq(LOG_SCHEMA.session.enums.tester_role, ['self', 'friend', 'bot'], 'session.tester_role 열거');
   // 뜻이 바뀐 이벤트만 판별 토큰을 단다 — 신설 이벤트는 구 스키마가 없어 `sv` 가 필요 없다 (REQ-791).
-  deepEq(Object.entries(LOG_SCHEMA).filter(([, v]) => v.sv).map(([k]) => k), ['rank', 'unlock'],
-    'sv: 2 를 다는 이벤트는 rank·unlock 둘');
+  deepEq(Object.entries(LOG_SCHEMA).filter(([, v]) => v.sv).map(([k]) => k), ['rank', 'unlock', 'slot'],
+    'sv: 2 를 다는 이벤트는 rank·unlock·slot 셋 (REQ-736 이 slot 에 challenger 를 더했다)');
   for (const gone of ['mastery', 'initiate']) ok(!(gone in LOG_SCHEMA), `${gone} 는 개념과 함께 소멸했다`);
 
   let clock = 100;
@@ -300,11 +334,12 @@ suite('케이스 5 — 6단 판정 전 조합 (REQ-202·203·204·205)', () => {
       for (const foeOpen of [false, true]) {
         for (const r of rs) {
           for (const rank of ranks) {
-            for (const foePower of CHALLENGERS.map((c) => foePowerOf(c.id))) {
-              const expected = expectedVerdict({ self, foe, foeOpen, rank, r, foePower });
-              const actual = judge({ selfStyle: self, foeStyle: foe, selfRank: rank, foePower, r, foeOpen });
+            for (const foeRank of CHALLENGERS.map((c) => foeRankOf(c.id))) {
+              const foePower = powerOf(foeRank);
+              const expected = expectedVerdict({ self, foe, foeOpen, rank, r, foePower, foeRank });
+              const actual = judge({ selfStyle: self, foeStyle: foe, selfRank: rank, foeRank, r, foeOpen });
               deepEq(actual, expected,
-                `${self ? self.id : '미완주'} vs ${foe.id} (빈틈=${foeOpen} r=${r} 성=${rank} N적=${foePower})`);
+                `${self ? self.id : '미완주'} vs ${foe.id} (빈틈=${foeOpen} r=${r} 성=${rank} 적성=${foeRank})`);
               ok(actual.dmgOut >= 0 && actual.dmgIn >= 0, `피해가 음수가 아니다 (${self ? self.id : '미완주'} vs ${foe.id})`);
               seenGrades.add(actual.grade);
               combos += 1;
@@ -319,28 +354,32 @@ suite('케이스 5 — 6단 판정 전 조합 (REQ-202·203·204·205)', () => {
   deepEq([...seenGrades].sort(), Object.keys(BALANCE.grades).sort(), '6단 전 등급이 조합에 등장');
 
   // 파해가 삼각보다 우선한다 — 유운보(쾌)는 α(강)에 우세이기도 하지만 파해라 완파다.
-  eq(judge({ selfStyle: styleById('yuun-bo'), foeStyle: foeStyleById('alpha'), selfRank: 1 }).grade,
+  eq(judge({ selfStyle: styleById('yuun-bo'), foeStyle: foeStyleById('alpha'), selfRank: 1, foeRank: 1 }).grade,
     'crush', '파해 우선 (삼각으로는 우세)');
   eq(wins('fast', 'hard'), true, '삼각만 보면 쾌가 강을 이긴다');
 
   // 빈틈은 1수 지속·중첩 없음.
-  eq(judge({ selfStyle: styleById('yuun-bo'), foeStyle: foeStyleById('alpha'), selfRank: 1 }).opening,
+  eq(judge({ selfStyle: styleById('yuun-bo'), foeStyle: foeStyleById('alpha'), selfRank: 1, foeRank: 1 }).opening,
     'foe', '완파 → 상대 빈틈');
-  eq(judge({ selfStyle: styleById('yuun-bo'), foeStyle: foeStyleById('delta'), selfRank: 1, foePower: 1.1 }).opening,
+  eq(judge({ selfStyle: styleById('yuun-bo'), foeStyle: foeStyleById('delta'), selfRank: 1, foeRank: 2 }).opening,
     'self', '역파 → 나 빈틈');
-  const chained = judge({ selfStyle: styleById('haeng-un'), foeStyle: foeStyleById('gamma'), selfRank: 1, foeOpen: true });
+  const chained = judge({ selfStyle: styleById('haeng-un'), foeStyle: foeStyleById('gamma'), selfRank: 1, foeRank: 1, foeOpen: true });
   eq(chained.grade, 'crush', '상대 빈틈 중 아무 초식 완주 = 완파 취급');
   eq(chained.opening, null, '빈틈 중의 완파 취급은 빈틈을 다시 열지 않는다');
   eq(chained.dmgIn, 0, '상대 빈틈에는 받는 피해가 없다');
-  eq(judge({ selfStyle: null, foeStyle: foeStyleById('alpha'), selfRank: 1, foeOpen: true }).dmgIn, 0,
+  eq(judge({ selfStyle: null, foeStyle: foeStyleById('alpha'), selfRank: 1, foeRank: 1, foeOpen: true }).dmgIn, 0,
     '상대 빈틈 중 미완주도 무피해');
-  throws(() => judge({ selfStyle: styleById('yuun-bo'), foeStyle: null, selfRank: 1 }),
+  throws(() => judge({ selfStyle: styleById('yuun-bo'), foeStyle: null, selfRank: 1, foeRank: 1 }),
     '빈틈이 아닌데 상대 초식이 없으면 throw', '상대 초식이 없다');
-  throws(() => judge({ selfStyle: styleById('yuun-bo'), foeStyle: foeStyleById('alpha'), selfRank: 1, r: 1.5 }),
+  throws(() => judge({ selfStyle: styleById('yuun-bo'), foeStyle: foeStyleById('alpha'), selfRank: 1, foeRank: 1, r: 1.5 }),
     '선기 잔여 비율 범위 밖은 throw', '0~1 밖');
-  const dom = (over) => () => judge({ selfStyle: styleById('yuun-bo'), foeStyle: foeStyleById('alpha'), selfRank: 1, ...over });
+  const dom = (over) => () => judge({ selfStyle: styleById('yuun-bo'), foeStyle: foeStyleById('alpha'), selfRank: 1, foeRank: 1, ...over });
   throws(() => judge({ selfStyle: styleById('yuun-bo'), foeStyle: foeStyleById('alpha') }),
     '성 결손은 NaN 이 아니라 throw', '성이 1 이상의 정수가 아니다');
+  throws(() => judge({ selfStyle: styleById('yuun-bo'), foeStyle: foeStyleById('alpha'), selfRank: 1 }),
+    '상대 성 결손도 throw — 역파 감쇠가 NaN 으로 새면 그 수에서야 죽는다', '상대 성이 1 이상의 정수가 아니다');
+  throws(dom({ foeRank: 0 }), '0 상대 성은 throw', '상대 성이 1 이상의 정수가 아니다');
+  throws(dom({ foeRank: 2.5 }), '비정수 상대 성은 throw', '상대 성이 1 이상의 정수가 아니다');
   throws(dom({ selfRank: -30 }), '음수 성은 throw — 피해가 회복으로 뒤집힌다', '성이 1 이상의 정수가 아니다');
   throws(dom({ selfRank: 0 }), '0성은 throw', '성이 1 이상의 정수가 아니다');
   throws(dom({ selfRank: 1.5 }), '비정수 성은 throw', '성이 1 이상의 정수가 아니다');
@@ -351,7 +390,7 @@ suite('케이스 5 — 6단 판정 전 조합 (REQ-202·203·204·205)', () => {
   // 파해와 역파가 동시에 성립하면 완파가 이긴다 — 시드 데이터에는 충돌 쌍이 없어 합성한다.
   const mutualSelf = { id: 'm-self', attr: 'fast', d: 10, counters: 'm-foe' };
   const mutualFoe = { id: 'm-foe', attr: 'fast', d: 10, finisher: true, counters: 'm-self' };
-  eq(judge({ selfStyle: mutualSelf, foeStyle: mutualFoe, selfRank: 1 }).grade, 'crush', '파해가 역파보다 우선');
+  eq(judge({ selfStyle: mutualSelf, foeStyle: mutualFoe, selfRank: 1, foeRank: 1 }).grade, 'crush', '파해가 역파보다 우선');
 });
 
 // ------------------------------------------- 5. 손계산 골든값 (REQ-203 산술 고정)
@@ -360,23 +399,30 @@ suite('피해 정수 골든값 (REQ-203)', () => {
   const S = Object.fromEntries(STYLES.map((s) => [s.id, s]));
   const F = Object.fromEntries(FOE_STYLES.map((s) => [s.id, s]));
   const golden = [
-    ['완파 1성 r0', { selfStyle: S['yuun-bo'], foeStyle: F.alpha, selfRank: 1, foePower: 1, r: 0 },
+    ['완파 1성 r0', { selfStyle: S['yuun-bo'], foeStyle: F.alpha, selfRank: 1, foeRank: 1, foePower: 1, r: 0 },
       { grade: 'crush', dmgOut: 11, dmgIn: 0, opening: 'foe' }],
-    ['완파 12성 r1', { selfStyle: S['yuun-bo'], foeStyle: F.alpha, selfRank: 12, foePower: 1, r: 1 },
+    ['완파 12성 r1', { selfStyle: S['yuun-bo'], foeStyle: F.alpha, selfRank: 12, foeRank: 1, foePower: 1, r: 1 },
       { grade: 'crush', dmgOut: 21, dmgIn: 0, opening: 'foe' }],
-    ['우세 1성 r0.4', { selfStyle: S['jeok-un'], foeStyle: F.delta, selfRank: 1, foePower: 1.1, r: 0.4 },
+    ['우세 1성 r0.4', { selfStyle: S['jeok-un'], foeStyle: F.delta, selfRank: 1, foeRank: 2, foePower: 1.1, r: 0.4 },
       { grade: 'advantage', dmgOut: 7, dmgIn: 4, opening: null }],
-    ['상쇄 우위', { selfStyle: S['haeng-un'], foeStyle: F.beta, selfRank: 12, foePower: 1, r: 0 },
+    ['상쇄 우위', { selfStyle: S['haeng-un'], foeStyle: F.beta, selfRank: 12, foeRank: 1, foePower: 1, r: 0 },
       { grade: 'clash', dmgOut: 4, dmgIn: 0, opening: null }],
-    ['상쇄 열위', { selfStyle: S['haeng-un'], foeStyle: F.delta, selfRank: 1, foePower: 1.1, r: 0 },
+    ['상쇄 열위', { selfStyle: S['haeng-un'], foeStyle: F.delta, selfRank: 1, foeRank: 2, foePower: 1.1, r: 0 },
       { grade: 'clash', dmgOut: 0, dmgIn: 1, opening: null }],
-    ['열세', { selfStyle: S['yuun-bo'], foeStyle: F.beta, selfRank: 1, foePower: 1, r: 0 },
+    ['열세', { selfStyle: S['yuun-bo'], foeStyle: F.beta, selfRank: 1, foeRank: 1, foePower: 1, r: 0 },
       { grade: 'disadvantage', dmgOut: 2, dmgIn: 8, opening: null }],
-    ['역파', { selfStyle: S['yuun-bo'], foeStyle: F.delta, selfRank: 1, foePower: 1.1, r: 0 },
+    // 성이 상대 이하면 감쇠가 걸리지 않는다 — 이 골든값이 #64 판본과 같아야 감쇠가 무관한 수를 건드리지 않은 것이다.
+    ['역파 무감쇠', { selfStyle: S['yuun-bo'], foeStyle: F.delta, selfRank: 1, foeRank: 2, foePower: 1.1, r: 0 },
       { grade: 'reversal', dmgOut: 0, dmgIn: 22, opening: 'self' }],
-    ['피격', { selfStyle: null, foeStyle: F.alpha, selfRank: 1, foePower: 1, r: 0 },
+    ['역파 감쇠 (A-4 · 성 차 7)', { selfStyle: S['yuun-bo'], foeStyle: F.delta, selfRank: 11, foeRank: 4, r: 0 },
+      { grade: 'reversal', dmgOut: 0, dmgIn: 11, opening: 'self' }],
+    ['역파 관통 하한 (A-4 · 성 차 8 = 정의역 상계)', { selfStyle: S['yuun-bo'], foeStyle: F.delta, selfRank: 12, foeRank: 4, r: 0 },
+      { grade: 'reversal', dmgOut: 0, dmgIn: 10, opening: 'self' }],
+    ['역파 관통 하한 고정 (성 차 11)', { selfStyle: S['yuun-bo'], foeStyle: F.delta, selfRank: 12, foeRank: 1, r: 0 },
+      { grade: 'reversal', dmgOut: 0, dmgIn: 8, opening: 'self' }],
+    ['피격', { selfStyle: null, foeStyle: F.alpha, selfRank: 1, foeRank: 1, foePower: 1, r: 0 },
       { grade: 'struck', dmgOut: 0, dmgIn: 10, opening: null }],
-    ['연환', { selfStyle: S['haeng-un'], foeStyle: F.gamma, selfRank: 1, foePower: 1, r: 0, foeOpen: true },
+    ['연환', { selfStyle: S['haeng-un'], foeStyle: F.gamma, selfRank: 1, foeRank: 1, foePower: 1, r: 0, foeOpen: true },
       { grade: 'crush', dmgOut: 15, dmgIn: 0, opening: null }],
   ];
   for (const [name, input, expected] of golden) deepEq(judge(input), expected, `골든 ${name}`);
@@ -673,8 +719,8 @@ suite('케이스 5 — 위력은 초식 성에서 나온다 (REQ-721·722)', () 
   eq(styleRank(progress, 'yuun-bo'), 4, '1식 4성');
   eq(styleRank(progress, 'jeok-un'), 7, '2식 7성');
   const foe = foeStyleById('beta');
-  const low = judge({ selfStyle: styleById('yuun-bo'), foeStyle: foe, selfRank: 4, foePower: foePowerOf('A-2') });
-  const high = judge({ selfStyle: styleById('jeok-un'), foeStyle: foe, selfRank: 7, foePower: foePowerOf('A-2') });
+  const low = judge({ selfStyle: styleById('yuun-bo'), foeStyle: foe, selfRank: 4, foeRank: foeRankOf('A-2') });
+  const high = judge({ selfStyle: styleById('jeok-un'), foeStyle: foe, selfRank: 7, foeRank: foeRankOf('A-2') });
   eq(low.dmgOut, Math.round(styleById('yuun-bo').d * powerOf(4) * initiativeOf(0) * BALANCE.grades.disadvantage.outPct),
     '4성 초식의 피해는 그 초식의 N 으로 난다');
   eq(high.dmgOut, styleById('jeok-un').counters === foe.id
@@ -688,14 +734,189 @@ suite('케이스 5 — 위력은 초식 성에서 나온다 (REQ-721·722)', () 
   }
   const clash = judge({
     selfStyle: styleById('haeng-un'), foeStyle: foeStyleById('beta'),
-    selfRank: 1, foePower: foePowerOf('A-3'),
+    selfRank: 1, foeRank: foeRankOf('A-3'),
   });
   eq(clash.grade, 'clash', '동속성은 상쇄');
   eq(clash.dmgIn, Math.round(Math.max(0, foePowerOf('A-3') - powerOf(1)) * foeStyleById('beta').d * BALANCE.clashK),
     '상쇄식 양변이 성으로 성립한다');
   // 등급 승격은 보류 — 성 차가 아무리 벌어져도 판정 등급을 뒤집지 않는다 (REQ-723).
-  eq(judge({ selfStyle: styleById('haeng-un'), foeStyle: foeStyleById('beta'), selfRank: BALANCE.rankMax, foePower: powerOf(1) }).grade,
+  eq(judge({ selfStyle: styleById('haeng-un'), foeStyle: foeStyleById('beta'), selfRank: BALANCE.rankMax, foeRank: 1 }).grade,
     'clash', '12성이어도 상쇄는 상쇄');
+});
+
+// -------- 7-b. 재대련 · 역파 감쇠 (REQ-731~736·771·772) — A-4 가 세운 무대의 규칙
+
+suite('재대련 성 누적 (REQ-734)', () => {
+  const { rankGain, rankCap } = BALANCE.rematch;
+  const base = foeRankOf('A-4');
+  eq(base, foeRankOf('A-3') + 1, 'A-4 도전자 성은 A-3 보다 한 단계만 위 (REQ-733)');
+
+  eq(rematchFoeRank(base, 0), base, '초회 대면은 +0');
+  for (let n = 1; n <= rankCap; n += 1) {
+    eq(rematchFoeRank(base, n), base + rankGain * n, `${n}회 이긴 뒤 재대련은 +${rankGain * n}`);
+  }
+  // 상한은 편의 파라미터가 아니라 도달 가능성 불변식이다 — 상한이 없으면 A-4 반복 실패가
+  // 파운현월 12성(유일 무대 A-4)을 영구 봉쇄한다.
+  eq(rematchFoeRank(base, rankCap + 1), base + rankCap, '상한을 넘긴 회차도 상한에 머문다');
+  eq(rematchFoeRank(base, 99), base + rankCap, '몇 번을 더 쳐도 상한을 넘지 않는다');
+  eq(rematchFoeRank(BALANCE.rankMax, rankCap), BALANCE.rankMax, '강화는 성 상한을 넘지 않는다');
+  throws(() => rematchFoeRank(base, -1), '음수 승수는 throw', '재대련 승수가 0 이상의 정수가 아니다');
+  throws(() => rematchFoeRank(base, 1.5), '비정수 승수는 throw', '재대련 승수가 0 이상의 정수가 아니다');
+
+  // 세션 축 — 회차·강화·무보상·로그가 한 흐름에서 맞물린다.
+  const session = createSession({ now: () => 0 });
+  const stage = challengerOfStage(1);
+  const winOnce = () => settleDuel(session, { win: true, stage: stage.stage });
+
+  eq(isRematch(session, stage.id), false, '이기기 전에는 재대련이 아니다');
+  eq(duelAttemptOf(session, stage.id), 1, '초회 대면은 1번째');
+  deepEq(beatenChallengers(session), [], '이긴 도전자가 없으면 재대련 목록도 없다');
+  deepEq(beginDuel(session, stage.id), { foeRank: foeRankOf(stage.id), attemptN: 1 }, '초회 대면은 무강화');
+  eq(session.log.entries.filter((e) => e.event === 'rematch').length, 0, '초회 대면은 rematch 를 남기지 않는다');
+
+  const first = winOnce();
+  eq(first.rematch, false, '첫 승리는 재대련이 아니다');
+  eq(first.reward, BALANCE.reward.duelWin, '첫 승리에는 재화가 나온다');
+  eq(session.coins, BALANCE.reward.duelWin, '재화가 실제로 적립된다');
+  deepEq(beatenChallengers(session).map((c) => c.id), [stage.id], '이긴 도전자가 재대련 목록에 오른다');
+
+  for (let n = 1; n <= rankCap + 1; n += 1) {
+    const expectedRank = foeRankOf(stage.id) + Math.min(rankCap, rankGain * n);
+    deepEq(beginDuel(session, stage.id), { foeRank: expectedRank, attemptN: n + 1 },
+      `${n + 1}번째 대면 — 도전자 성 ${expectedRank}`);
+    const settled = settleDuel(session, { win: true, stage: stage.stage });
+    eq(settled.rematch, true, `${n + 1}번째 대면 승리는 재대련`);
+    eq(settled.reward, 0, '재대련 승리에는 재화가 없다 (파밍 루프 차단)');
+  }
+  eq(session.coins, BALANCE.reward.duelWin, `재대련 ${rankCap + 1}회를 이겨도 재화는 첫 승리분 그대로다`);
+  eq(duelFoeRank(session, stage.id), foeRankOf(stage.id) + rankCap, '4회째부터는 상한 강화가 유지된다');
+
+  // 중단·패배 후 재진입은 승수를 올리지 않으므로 같은 서수가 다시 찍힌다 — 항목 수가 진입 수이고
+  // 서수의 최댓값이 중단 지점이다. 이 단정이 그 성질을 결정으로 고정한다 (L5 지적 대응).
+  const reentryAt = session.log.entries.length;
+  beginDuel(session, stage.id);
+  beginDuel(session, stage.id);
+  const reentries = session.log.entries.slice(reentryAt).filter((e) => e.event === 'rematch');
+  deepEq(reentries.map((e) => e.attempt_n), [duelAttemptOf(session, stage.id), duelAttemptOf(session, stage.id)],
+    '이기지 않은 재진입은 같은 서수로 다시 찍힌다');
+
+  const logged = session.log.entries.filter((e) => e.event === 'rematch');
+  deepEq(logged.map((e) => e.attempt_n), [2, 3, 4, 5, 6, 6], 'rematch 는 재대련 진입마다 남는다');
+  deepEq(logged.map((e) => e.foe_rank),
+    [1, 2, 3, 3, 3, 3].map((b) => foeRankOf(stage.id) + b), 'rematch.foe_rank 가 그 대면의 강화를 싣는다');
+  deepEq([...new Set(logged.map((e) => e.challenger))], [stage.id], 'rematch.challenger 는 그 도전자다');
+
+  // 패배는 승수를 올리지 않는다 — 「이미 이긴 도전자를 다시 치는 것」이 재대련의 정의다.
+  const loser = createSession({ now: () => 0 });
+  settleDuel(loser, { win: false, stage: stage.stage });
+  eq(isRematch(loser, stage.id), false, '패배 뒤 재도전은 재대련이 아니다');
+  eq(duelFoeRank(loser, stage.id), foeRankOf(stage.id), '패배는 상대를 여물게 하지 않는다');
+});
+
+suite('역파 성 차 감쇠 · 관통 하한 (REQ-771)', () => {
+  const { perRank, pierceFloor } = BALANCE.reversalDecay;
+  const factor = (self, foe) => reversalDecayFactor(self, foe);
+
+  eq(factor(1, 4), 1, '상대보다 여물지 않으면 감쇠가 없다');
+  eq(factor(4, 4), 1, '성이 같아도 감쇠가 없다');
+  for (let diff = 1; diff * perRank < 1 - pierceFloor; diff += 1) {
+    eq(factor(1 + diff, 1), 1 - perRank * diff, `성 차 ${diff} — 계수 ${1 - perRank * diff}`);
+  }
+  const bindAt = Math.round((1 - pierceFloor) / perRank);
+  eq(factor(1 + bindAt, 1), pierceFloor, `성 차 ${bindAt} 에서 관통 하한에 정확히 닿는다`);
+  eq(factor(1 + bindAt + 1, 1), pierceFloor, '그 아래로는 내려가지 않는다');
+  eq(factor(BALANCE.rankMax, 1), pierceFloor, '최대 성 차에서도 하한이다');
+  ok(factor(BALANCE.rankMax, 1) > 0, '하한이 0 이 아니다 — 절초는 여전히 관통한다');
+
+  /**
+   * 하한이 정의역 안에서 실제로 물리는가 (REQ-771). 역파는 절초 보유 도전자에게서만 나므로
+   * 그 무대의 최대 성 차가 감쇠의 정의역 상계이고, 하한이 그보다 뒤에서 물리면 하한은 死表다.
+   */
+  const arenas = CHALLENGERS.filter((c) => finisherOf(c)).map((c) => ({
+    id: c.id,
+    spread: (c.mode === 'duel' ? BALANCE.rankMax : BALANCE.discipleRankMax) - foeRankOf(c.id),
+  }));
+  deepEq(arenas.map((a) => a.id), ['A-4', 'B'], '역파 무대는 A-4(사부) 와 B(제자) 다 (REQ-772)');
+  for (const arena of arenas) {
+    ok(bindAt <= arena.spread,
+      `${arena.id} — 하한이 물리는 성 차 ${bindAt} 가 무대 상계 ${arena.spread} 안에 있다`);
+    eq(factor(foeRankOf(arena.id) + arena.spread, foeRankOf(arena.id)), pierceFloor,
+      `${arena.id} — 가장 여문 초식이 맞으면 정확히 관통 하한이다`);
+  }
+
+  // 감쇠는 피해량 축이지 등급 축이 아니다 — 성 차가 아무리 벌어져도 판정과 빈틈은 그대로다.
+  const at = (selfRank) => judge({
+    selfStyle: styleById('yuun-bo'), foeStyle: foeStyleById('delta'), selfRank, foeRank: foeRankOf('A-4'),
+  });
+  const grades = [1, 6, BALANCE.rankMax].map((r) => at(r));
+  deepEq([...new Set(grades.map((v) => v.grade))], ['reversal'], '성 차와 무관하게 등급은 역파');
+  deepEq([...new Set(grades.map((v) => v.opening))], ['self'], '성 차와 무관하게 나 빈틈');
+  ok(at(1).dmgIn > at(6).dmgIn && at(6).dmgIn > at(BALANCE.rankMax).dmgIn, '성이 높을수록 덜 아프다');
+  eq(at(BALANCE.rankMax).dmgIn,
+    Math.round(foeStyleById('delta').d * powerOf(foeRankOf('A-4')) * pierceFloor),
+    '하한에서의 피격은 정수로 고정된다');
+  // 감쇠가 피격(6단)보다 아프지 않게 만드는 것은 규칙 위반이 아니다 — 역파의 벌칙은 빈틈이 진다.
+  eq(judge({ selfStyle: null, foeStyle: foeStyleById('delta'), selfRank: 1, foeRank: foeRankOf('A-4') }).opening,
+    null, '피격은 빈틈을 열지 않는다');
+});
+
+suite('역파는 회피 대상이다 (REQ-772)', () => {
+  const delta = foeStyleById('delta');
+  const foeRank = foeRankOf('A-4');
+  // δ 예고 수에 파해 대상(유운보)을 내지 않으면 어떤 초식으로도 역파가 나오지 않는다.
+  for (const style of STYLES) {
+    const grade = judge({ selfStyle: style, foeStyle: delta, selfRank: BALANCE.rankMax, foeRank }).grade;
+    if (style.id === delta.counters) eq(grade, 'reversal', `${style.name} 은 δ 의 파해 대상이라 역파`);
+    else ok(grade !== 'reversal', `${style.name} 은 δ 예고 수에도 역파가 아니다 (${BALANCE.grades[grade].label})`);
+  }
+  // 감쇠는 회피 설계의 대체가 아니다 — 피하면 애초에 0 이다.
+  eq(judge({ selfStyle: styleById('pa-un'), foeStyle: delta, selfRank: 1, foeRank }).grade, 'crush',
+    '파해를 내면 절초가 완파당한다 — 예고 공개(REQ-732)가 가르치는 답');
+  // δ 가 예고되지 않은 수에는 파해 대상을 내도 역파가 아니다 — 절초가 실제로 나온 수만 성립한다.
+  for (const foe of FOE_STYLES.filter((f) => !f.finisher)) {
+    ok(judge({ selfStyle: styleById(delta.counters), foeStyle: foe, selfRank: 1, foeRank }).grade !== 'reversal',
+      `${foe.name} 예고 수에는 역파가 없다`);
+  }
+  eq(judge({ selfStyle: styleById(delta.counters), foeStyle: delta, selfRank: 1, foeRank, foeOpen: true }).grade,
+    'crush', '상대 빈틈에는 파해 대상을 내도 완파 취급이다');
+});
+
+suite('예고 화면 슬롯 교체 · 봇 무대 선택 (REQ-731·736)', () => {
+  // 예고 화면의 교체는 그 도전자를 앞두고 내린 판단이라, 도장 교체와 로그에서 갈려야 한다.
+  const session = createSession({ now: () => 0 });
+  for (const style of STYLES) session.progress = setStyleRank(session.progress, style.id, BALANCE.rankGate.unlock);
+  autoEquip(session);
+  const benched = STYLES.find((st) => !session.slots.includes(st.id));
+  eq(session.slots.filter(Boolean).length, BALANCE.slots, '슬롯 3 이 차고 초식 하나가 벤치에 남는다');
+  session.log.clear();
+  ok(equip(session, benched.id, 0, { challenger: 'A-4' }), '예고 화면에서 슬롯 0 을 교체한다');
+  eq(session.slots[0], benched.id, '교체가 슬롯에 반영된다 — 대련 진입이 이 배열을 읽는다');
+  const slots = session.log.entries.filter((e) => e.event === 'slot');
+  deepEq(slots.map((e) => [e.action, e.challenger]), [['unequip', 'A-4'], ['equip', 'A-4']],
+    '해제·장착 양쪽에 도전자가 실린다');
+  deepEq([...new Set(slots.map((e) => e.sv))], [2], 'slot 은 sv:2 로 나간다 (REQ-791)');
+  session.log.clear();
+  equip(session, STYLES.find((st) => !session.slots.includes(st.id)).id, 1);
+  deepEq([...new Set(session.log.entries.filter((e) => e.event === 'slot').map((e) => e.challenger))], [null],
+    '도장 교체는 도전자가 없다 — 「진짜 판단」의 분리 식별자다');
+
+  // 봇은 계단이 요구하는 무대로 간다 (REQ-731) — 최고 차수만 반복하면 완파 무대가 오지 않는다.
+  const at = createSession({ now: () => 0 });
+  at.stage = DUEL_A_STAGES;
+  for (const style of STYLES) at.progress = setStyleRank(at.progress, style.id, 1);
+  at.slots = ['yuun-bo', 'jeok-un', 'haeng-un'];
+  eq(nextDuelStage(at), at.stage, '계단에 선 초식이 없으면 최고 차수를 친다');
+  at.progress = setStyleRank(at.progress, 'jeok-un', BALANCE.rankLadder.crushRank - 1);
+  eq(challengerOfStage(nextDuelStage(at)).styles.includes(styleById('jeok-un').counters), true,
+    '완파를 앞둔 초식은 그 파해 대상을 예고하는 무대로 이끈다');
+  at.slots = ['pa-un', 'jeok-un', 'haeng-un'];
+  at.progress = setStyleRank(at.progress, 'pa-un', BALANCE.rankLadder.crushRank - 1);
+  eq(challengerOfStage(nextDuelStage(at)).id, 'A-4',
+    '파운현월의 완파 무대는 A-4 뿐이라 그리로 간다');
+  const locked = createSession({ now: () => 0 });
+  locked.slots = ['pa-un', null, null];
+  locked.progress = setStyleRank(locked.progress, 'pa-un', BALANCE.rankLadder.crushRank - 1);
+  eq(nextDuelStage(locked), locked.stage, '해금하지 않은 차수는 무대로 고르지 않는다');
 });
 
 // -------------------------------------- 8. 제자 자동 선택 (REQ-403)
@@ -710,7 +931,7 @@ suite('제자 자동 선택 (REQ-403)', () => {
   eq(pick({ foeStyle: delta }).id, 'jeok-un', 'δ(정) 에는 강으로 우세');
 
   // 역파 회피는 절초가 예고된 수에만 걸린다 — 그 밖의 수에서 완파를 버리지 않는다.
-  eq(judge({ selfStyle: pick({ foeStyle: foeStyleById('alpha') }), foeStyle: foeStyleById('alpha'), selfRank: 1 }).grade,
+  eq(judge({ selfStyle: pick({ foeStyle: foeStyleById('alpha') }), foeStyle: foeStyleById('alpha'), selfRank: 1, foeRank: 1 }).grade,
     'crush', 'δ 를 가진 도전자라도 α 예고 수에는 완파가 나온다');
   const fakeFinisher = { id: 'fake', attr: 'fine', d: 20, finisher: true, counters: 'jeok-un' };
   eq(pick({ foeStyle: fakeFinisher }).id, 'haeng-un', '우세 후보가 예고된 절초의 파해 대상이면 상쇄로 내려간다');
@@ -829,7 +1050,7 @@ const unlockSlots = (() => {
  * 사본이 아니라 실루프다 — 제자의 손을 유저 자리에 세워 「창을 놓치지 않는 손」을 모델한다.
  * 그래서 이 게이트는 상계이고, 실수하는 손의 회귀는 사이클 시뮬의 `wins` 단정이 진다.
  */
-function simulateDuelA({ challengerId, styles, rank }) {
+function simulateDuelA({ challengerId, styles, rank, foeRank = undefined }) {
   const session = createSession();
   const timer = createVirtualTimer();
   const trace = [];
@@ -839,6 +1060,7 @@ function simulateDuelA({ challengerId, styles, rank }) {
   const hand = createDiscipleHand({ session, styles, fire: (fired) => match.fire(fired) });
   match = createMatch({
     challenger: challengerById(challengerId),
+    foeRank: foeRank ?? foeRankOf(challengerId),
     selfHpMax: BALANCE.hp.user,
     rankOf: () => rank,
     openLen: () => Math.max(...styles.map((st) => st.seq.length)),
@@ -855,17 +1077,19 @@ function simulateDuelA({ challengerId, styles, rank }) {
   return { win: ended.outcome.win, exchanges: trace.length, foeHp: ended.foeHp, selfHp: ended.selfHp, trace };
 }
 
-suite('A 밸런스 게이트 (REQ-503·507)', () => {
+suite('A 밸런스 게이트 (REQ-503·507·735)', () => {
   // 최저 성 유저가 A 를 넘는가 — 성이 오르면 위력도 오르므로 이것이 곡선의 하계다.
   const rank = 1;
   eq(powerOf(rank), 1.05, '성 1 내공 1.05');
 
-  // A-3 는 두 구성으로 본다 — 첫 조우(4식 미학습)와 입문 시점 구성은 다른 국면이다.
+  // A-3 는 두 구성으로 본다 — 첫 조우(4식 미학습)와 4식 해금 시점 구성은 다른 국면이다.
+  // A-4 는 4식을 해금한 뒤에만 열리므로 그 구성 하나뿐이다 (REQ-731 A-3 승리 후 해금).
   const stages = [
     { id: 'A-1', styles: unlockSlots[0] },
     { id: 'A-2', styles: unlockSlots[1] },
     { id: 'A-3', styles: unlockSlots[2] },
     { id: 'A-3', styles: unlockSlots[unlockSlots.length - 1] },
+    { id: 'A-4', styles: unlockSlots[unlockSlots.length - 1] },
   ];
   for (const stage of stages) {
     const sim = simulateDuelA({ challengerId: stage.id, styles: stage.styles, rank });
@@ -883,6 +1107,16 @@ suite('A 밸런스 게이트 (REQ-503·507)', () => {
     '전 초식 해금 시점 슬롯이 강·정·쾌를 모두 덮는다');
   deepEq(atLast.map((st) => st.id), artStyles(ART).slice(0, BALANCE.slots).map((st) => st.id),
     '자리 양보 폐지로 슬롯은 먼저 찬 1·2·3식에 머문다 (REQ-714)');
+
+  // A-4 는 재대련으로도 강화되므로 상한(+3)까지 밀어 둔 성으로도 게이트가 서야 한다 (REQ-734·735).
+  const capped = rematchFoeRank(foeRankOf('A-4'), BALANCE.rematch.rankCap);
+  const hardened = simulateDuelA({
+    challengerId: 'A-4', styles: unlockSlots[unlockSlots.length - 1], rank: BALANCE.rankGate.oneTap, foeRank: capped,
+  });
+  eq(capped, foeRankOf('A-4') + BALANCE.rematch.rankCap, '재대련 상한 A-4 성');
+  ok(hardened.win, `원터치 성 유저가 상한 강화 A-4 를 이긴다 (남은 HP 적 ${hardened.foeHp} / 유저 ${hardened.selfHp})`);
+  console.log(`    A-4 상한 강화 시뮬(도전자 성 ${capped}): ${hardened.exchanges}수, `
+    + `적 HP ${hardened.foeHp}, 유저 HP ${hardened.selfHp}`);
 });
 
 // ------------------------------- 10. 대련 종료 판정 (REQ-201) — 상태기계와 공유하는 규칙
@@ -1243,6 +1477,10 @@ suite('사이클 시뮬 — 입문 · 12성 · cycle_done (REQ-310·603)', () =>
         done: run.elapsedMs,
         screens: run.screens,
         wins: entries.filter((e) => e.event === 'coins' && e.reason === 'duel_win').length,
+        // 재대련 회차 분포 — A-4 가 세운 무대를 손이 몇 번이나 다시 밟는지의 관측치 (REQ-734).
+        rematches: entries.filter((e) => e.event === 'rematch').length,
+        deepest: entries.filter((e) => e.event === 'rematch')
+          .reduce((m, e) => Math.max(m, e.attempt_n), 0),
         rate: duelVerdicts.filter((e) => isEffectiveSuccess(e.grade)).length / duelVerdicts.length,
       };
     });
@@ -1262,9 +1500,43 @@ suite('사이클 시뮬 — 입문 · 12성 · cycle_done (REQ-310·603)', () =>
       + `${(Math.max(...runs.map((r) => r[key])) / 1000).toFixed(0)}s`;
     console.log(`    ${scenario.label} 시나리오 (실현 ${(median(runs.map((r) => r.rate)) * 100).toFixed(0)}%): `
       + `해금 ${secs('unlock')} · 원터치 ${secs('oneTap')} · 12성 ${secs('twelve')} · `
-      + `cycle_done ${secs('done')} [${span('done')}] · 화면 최대 ${Math.max(...runs.map((r) => r.screens))}`);
+      + `cycle_done ${secs('done')} [${span('done')}] · 화면 최대 ${Math.max(...runs.map((r) => r.screens))} · `
+      + `재대련 진입 ${median(runs.map((r) => r.rematches))}회 (최심 ${Math.max(...runs.map((r) => r.deepest))}번째 대면)`);
   }
   // kill 임계는 여기서 단정하지 않는다 — required check 라 시드 튜닝만으로 이후 PR 이 전부 막힌다.
+});
+
+// ------- 14-b. 손 굶주림 회귀 (REQ-704·731) — 계단이 아닌 초식도 창을 얻는가
+
+/**
+ * 「이기는 색」 동률을 슬롯 순으로 깨면 같은 속성의 앞 슬롯이 창을 독점해 뒤 초식이 적립에서
+ * 굶는다 — A-4 의 예고에 강(α)이 하나뿐이라 쾌 두 초식(유운보·파운현월)이 정확히 그 자리에 선다.
+ * 아래 6시드는 그 고착으로 사이클이 화면 상한을 넘던 실측 표본이다 (L5d 적대 리뷰 지적).
+ */
+suite('손 굶주림 회귀 — 계단 밖 초식의 적립 (REQ-704·731)', () => {
+  const STARVED_SEEDS = [99, 153, 155, 318, 387, 496];
+  for (const seed of STARVED_SEEDS) {
+    const session = createSession({ now: () => 0 });
+    let screens = null;
+    try {
+      ({ screens } = runHeadlessCycle({ session, random: createSeededRandom(seed) }));
+    } catch (err) {
+      failures += 1;
+      console.error(`  ✗ 시드 ${seed} — ${err.message}`);
+    }
+    ok(screens !== null, `시드 ${seed} — 1사이클이 화면 상한 안에서 끝난다`);
+    const ranks = STYLES.map((st) => styleRank(session.progress, st.id));
+    deepEq([...new Set(ranks)], [BALANCE.rankMax],
+      `시드 ${seed} — 전 초식이 12성에 닿는다 (성 ${ranks.join('/')})`);
+  }
+  // 굶주림의 판별자는 「낸 초식의 분포」다 — 어느 초식도 사이클 전체에서 한 자릿수로 밀리지 않는다.
+  const probe = createSession({ now: () => 0 });
+  runHeadlessCycle({ session: probe, random: createSeededRandom(STARVED_SEEDS[0]) });
+  const fired = probe.log.entries.filter((e) => e.event === 'fire');
+  for (const style of STYLES) {
+    const n = fired.filter((e) => e.styleId === style.id).length;
+    ok(n >= BALANCE.rankMax, `${style.name} 이 사이클에서 ${n}회 발동 — 적립에 필요한 창을 얻는다`);
+  }
 });
 
 // ----------------------------------------------- 15. 도장 유도 툴팁 대상 (#15)
@@ -1438,8 +1710,10 @@ suite('BALANCE 파라미터 census (REQ-606)', () => {
     bands: [{ maxRank: 7, cost: 3, train: true }, { maxRank: 10, cost: 6, train: false }],
     finishRank: 11, crushRank: 12,
   }, 'BALANCE.rankLadder (REQ-702 적립 3단)');
-  deepEq(BALANCE.hp, { user: 100, disciple: 100, 'A-1': 30, 'A-2': 45, 'A-3': 80, B: 80 }, 'BALANCE.hp');
-  deepEq(BALANCE.challengerRank, { 'A-1': 1, 'A-2': 2, 'A-3': 3, B: 2 }, 'BALANCE.challengerRank (REQ-722)');
+  deepEq(BALANCE.hp, { user: 100, disciple: 100, 'A-1': 30, 'A-2': 45, 'A-3': 80, 'A-4': 90, B: 80 }, 'BALANCE.hp');
+  deepEq(BALANCE.challengerRank, { 'A-1': 1, 'A-2': 2, 'A-3': 3, 'A-4': 4, B: 2 }, 'BALANCE.challengerRank (REQ-722·733)');
+  deepEq(BALANCE.rematch, { rankGain: 1, rankCap: 3 }, 'BALANCE.rematch (REQ-734 누적·상한)');
+  deepEq(BALANCE.reversalDecay, { perRank: 0.075, pierceFloor: 0.4 }, 'BALANCE.reversalDecay (REQ-771)');
   // 폐기 8키가 하나라도 되살아나면 그 값이 무음 `undefined` 로 판정 수식에 흘러든다 (#64).
   for (const key of RETIRED_KEYS) ok(!(key in BALANCE), `폐기 키 ${key} 가 BALANCE 에 없다`);
   deepEq(BALANCE.reward, { duelWin: 30, dispatchWin: 50 }, 'BALANCE.reward');
@@ -1534,6 +1808,24 @@ suite('밸런스 데이터 스키마 (#45)', () => {
   throwsWith((r) => { r.discipleRankMax = 13; }, 'discipleRankMax: 13 가 성 상한 12 를 넘는다', '제자 상한 > 성 상한');
   throwsWith((r) => { r.challengerRank['A-1'] = 13; }, 'challengerRank.A-1: 13 가 성 상한 12 를 넘는다', '도전자 성 > 성 상한');
 
+  // 관통 하한 도달 가능성 (REQ-771) — 계수를 내리면 하한이 사표가 되므로 로드 시점에 죽는다.
+  throwsWith((r) => { r.reversalDecay.perRank = 0.05; },
+    'reversalDecay.pierceFloor: A-4 무대의 최대 성 차 8 로는 하한 0.4 에 닿지 못한다', '관통 하한 사표');
+  throwsWith((r) => { r.reversalDecay.pierceFloor = 1; },
+    'reversalDecay.pierceFloor: 1 는 0 초과 1 미만의 관통 하한이 아니다', '하한 1 = 감쇠 없음');
+  throwsWith((r) => { r.reversalDecay.pierceFloor = 0; },
+    'reversalDecay.pierceFloor: 0 는 0 초과 1 미만의 관통 하한이 아니다', '하한 0 = 절초 무해');
+  // 감쇠를 끄는 것(계수 0)은 튜닝 선택지라 통과해야 한다 — 하한이 쓰일 자리 자체가 없다.
+  eq(validateBalance(restamp((() => { const r = clone(); r.reversalDecay.perRank = 0; return r; })())).values.reversalDecay.perRank,
+    0, '역파 감쇠 off (perRank 0) 는 JSON 만으로 표현된다');
+  // 재대련 강화 off 도 같은 축이다 — 「튜닝은 JSON 만 고치면 된다」가 이 두 항에서도 성립한다.
+  for (const key of ['rankGain', 'rankCap']) {
+    eq(validateBalance(restamp((() => { const r = clone(); r.rematch[key] = 0; return r; })())).values.rematch[key],
+      0, `재대련 ${key} 0 (강화 off) 은 JSON 만으로 표현된다`);
+  }
+  throwsWith((r) => { r.rematch.rankCap = BALANCE.rankMax; },
+    'rematch.rankCap: 최고 도전자 성 4 에 12 를 더하면 성 상한 12 를 넘는다', '재대련 상한이 성 상한을 넘김');
+
   // rev ↔ 값 결합 (#54) — 값만 고치고 rev 를 그대로 두면 로그 지문이 옛 판본을 달고 나간다.
   const stale = clone();
   stale.telegraphMs = 900;
@@ -1542,13 +1834,13 @@ suite('밸런스 데이터 스키마 (#45)', () => {
   const { rev: _staleRev, ...staleValues } = stale;
   ok(staleMessage !== null && staleMessage.includes(`rev: 값 지문이 "${valueDigest(staleValues)}"`),
     `값을 고치고 rev 를 두면 죽는다 (실제: ${staleMessage})`);
-  ok(staleMessage !== null && staleMessage.includes(`"2026-09-02-a/${valueDigest(staleValues)}" 로 갱신하라`),
+  ok(staleMessage !== null && staleMessage.includes(`"${BALANCE_REV.split('/')[0]}/${valueDigest(staleValues)}" 로 갱신하라`),
     '문면이 그대로 붙여 넣을 rev 를 준다');
   eq(validateBalance(restamp(clone())).rev, BALANCE_REV, '지문을 다시 찍으면 통과한다');
   // rev 축의 두 변형은 restamp 를 태우면 그 자리가 덮이므로 직접 던진다.
   throws(() => validateBalance({ ...clone(), rev: '' }), 'rev 공백은 throw', '비어 있지 않은 판본 문자열');
   const noDigest = clone();
-  noDigest.rev = '2026-09-02-a';
+  [noDigest.rev] = BALANCE_REV.split('/');
   throws(() => validateBalance(noDigest), '지문 없는 rev 는 throw', '값 지문 8자리');
 
   // 오류는 전건 수집 후 한 번에 보고한다 — 첫 건에서 멈추면 고칠 때마다 재실행이 필요하다.

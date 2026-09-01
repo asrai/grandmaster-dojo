@@ -5,8 +5,8 @@
 
 import { responseWindowMs, styleById } from '../core.mjs';
 import {
-  beginTrainVisit, equippedStyles, logEvent, logTimeout, recordDispatchVerdict, recordDuelVerdict,
-  recordEffectiveSuccess,
+  beginDuel, beginTrainVisit, equippedStyles, logEvent, logTimeout, recordDispatchVerdict,
+  recordDuelVerdict, recordEffectiveSuccess,
 } from './session.mjs';
 
 /**
@@ -48,6 +48,12 @@ export function trainWiring(session, { styleId, input }) {
 /** 파견 진입 기록 (REQ-403) — 사이클 로그의 파견 구간 시작점이라 두 호출부가 같은 자리를 쓴다. */
 export const logDispatchStart = (session, challenger) =>
   logEvent(session, 'dispatch', { challenger: challenger.id });
+
+/**
+ * 대련 진입 기록 (REQ-734) — 그 대면의 도전자 성과 재대련 회차가 여기서 확정된다.
+ * 파견 쪽 짝과 같은 자리라, 화면과 헤드리스가 재대련을 서로 다르게 세는 경로가 없다.
+ */
+export const logDuelStart = (session, challenger) => beginDuel(session, challenger.id);
 
 /** 대련 배선 (REQ-201·206~211) — 유저의 손이 치는 창의 계측. */
 export function duelWiring(session, { input }) {

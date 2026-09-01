@@ -7,8 +7,9 @@ import {
 import { arrowRow, attrMark, clear, el, tipAnchor } from '../dom.mjs';
 import { ATTR_VIEW } from '../theme.mjs';
 import {
-  ART_ID, ART_NAME, DISPATCH_CHALLENGER, canEquip, canTransmitNow,
-  challengerOfStage, consumeTooltip, equip, learnStyle, pickTooltip, simulateTraining, unequip,
+  ART_ID, ART_NAME, DISPATCH_CHALLENGER, beatenChallengers, canEquip, canTransmitNow,
+  challengerOfStage, consumeTooltip, duelAttemptOf, equip, learnStyle, pickTooltip,
+  rematchBonusOf, simulateTraining, unequip,
 } from '../session.mjs';
 
 const rankLabel = (rank) => (rank >= BALANCE.rankMax ? `${rank}성 · 완벽히 깨달음` : `${rank}성`);
@@ -131,7 +132,7 @@ function bandActions(ctx) {
       id: 'duel', text: '대련',
       sub: `${stage.name} ${stage.stage}차`, lockedSub: '장착 필요',
       disabled: !session.slots.some(Boolean),
-      onclick: () => ctx.go('duel', { stage: session.stage }),
+      onclick: () => ctx.go('duelPreview', { stage: session.stage }),
     },
     {
       id: 'transmit', text: '전수',
@@ -192,6 +193,36 @@ function styleRow(ctx, style, actions, target, guidedRow, open) {
   ]);
 }
 
+/**
+ * 재대련 항목 (REQ-734) — 이긴 도전자를 다시 칠 수 있다는 것과 그 대가를 같은 자리에서 읽힌다.
+ * 회차·강화를 숨기면 「왜 갑자기 안 이기지」가 되고, 무보상을 숨기면 파밍을 끊는 근거가 사라진다.
+ */
+function rematchCard(ctx) {
+  const { session } = ctx;
+  const beaten = beatenChallengers(session);
+  if (!beaten.length) return null;
+  return el('section', { class: 'card' }, [
+    el('h2', { text: '재대련' }),
+    el('p', { class: 'dim', text: `이긴 도전자는 다시 칠 수 있다 — 대면마다 상대가 한 성씩(+${BALANCE.rematch.rankCap} 까지) 여물고 재화는 나오지 않는다.` }),
+    el('div', { class: 'rows' }, beaten.map((c) => {
+      const bonus = rematchBonusOf(session, c.id);
+      return el('div', { class: 'row' }, [
+        el('div', { class: 'row-head' }, [
+          el('div', { class: 'row-name' }, [
+            el('b', { text: `${c.name} ${c.stage}차` }),
+            el('span', { class: 'tag', text: `${duelAttemptOf(session, c.id)}번째 대면` }),
+            el('span', { class: 'tag', text: bonus > 0 ? `강화 +${bonus}` : '강화 없음' }),
+          ]),
+          el('button', {
+            class: 'small', text: '재대련', disabled: !session.slots.some(Boolean),
+            onclick: () => ctx.go('duelPreview', { stage: c.stage }),
+          }),
+        ]),
+      ]);
+    })),
+  ]);
+}
+
 function discipleCard(session) {
   const styles = discipleStyles(session.disciple, ART_ID);
   return el('section', { class: 'card' }, [
@@ -245,7 +276,8 @@ export function renderDojo(ctx) {
   const guidedRow = rowStyleId(target?.id);
   const openId = openRowOf(session, guidedRow);
 
-  root.append(
+  // 재대련 카드는 이긴 도전자가 생기기 전까지 없다 — `append(null)` 은 "null" 텍스트 노드가 된다.
+  root.append(...[
     el('section', { class: 'card' }, [
       el('h2', { text: `${ART_NAME} ${artById(ART_ID).hanja}` }),
       el('div', { class: 'rows' }, STYLES.map((s, i) => styleRow(ctx, s, rowActions[i], target, guidedRow, s.id === openId))),
@@ -253,7 +285,8 @@ export function renderDojo(ctx) {
         class: 'dim', text: `초식을 수련해 ${BALANCE.rankGate.equip}성에 닿으면 실전 슬롯에 자동으로 장착된다.`,
       }),
     ]),
+    rematchCard(ctx),
     discipleCard(session),
-  );
+  ].filter(Boolean));
   renderBand(ctx, band, target);
 }

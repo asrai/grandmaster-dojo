@@ -1,17 +1,18 @@
-// 사부 대련 (REQ-201·206~211·708) — 유저가 시퀀스를 치는 유일한 실전 화면.
+// 사부 대련 (REQ-201·206~211·708·731~736) — 유저가 시퀀스를 치는 유일한 실전 화면과 그 예고.
 
-import { BALANCE } from '../../balance.mjs';
+import { BALANCE, STYLES } from '../../balance.mjs';
 import { attrMark, clear, el, hpBar } from '../dom.mjs';
 import { ATTR_VIEW, attrLabel, winAttrOf } from '../theme.mjs';
 import { SFX } from '../audio.mjs';
-import { styleById } from '../../core.mjs';
+import { finisherOf, foeStyleById, styleById } from '../../core.mjs';
 import { PHASE, createMatch } from '../match.mjs';
 import { createSequenceInput } from '../sequence-input.mjs';
 import {
-  ART_NAME, challengerOfStage, equippedStyles, logEvent, rankOfStyle,
+  ART_NAME, canEquip, challengerOfStage, duelAttemptOf, equip, equippedStyles,
+  logEvent, rankOfStyle, rematchBonusOf,
 } from '../session.mjs';
 import { hideVerdict, showGradeVerdict } from '../verdict-overlay.mjs';
-import { composeHooks, duelWiring } from '../wiring.mjs';
+import { composeHooks, duelWiring, logDuelStart } from '../wiring.mjs';
 
 function telegraphView(view) {
   if (view.foeOpen) return el('div', { class: 'telegraph open', text: '빈틈! — 아무 초식이나 완주하면 완파' });
@@ -32,9 +33,119 @@ function telegraphView(view) {
   ]);
 }
 
+/**
+ * 절초 파해 공개 (REQ-732) — 역파 벌칙을 가진 유일한 초식이라 그것만 예외로 답을 가르친다.
+ * 감쇠는 맞았을 때의 성장 보상이고 1차 해법은 회피이므로, 여기서 파해를 숨기면 첫 A-4 의
+ * 연속 피격이 「갑자기 어려워졌다」로 읽혀 kill (b) 를 오염시킨다.
+ */
+function finisherNotice(session, finisher) {
+  const answer = styleById(finisher.counters);
+  const equipped = session.slots.includes(answer.id);
+  return el('div', { class: 'card' }, [
+    el('p', {}, [
+      el('b', { text: `절초 ${finisher.name} ${finisher.hanja}` }),
+      el('span', { class: 'dim', text: ` · ${attrLabel(finisher.attr)} · ${finisher.len}수` }),
+    ]),
+    el('p', {}, [
+      el('span', { class: 'dim', text: '파해 — ' }),
+      el('b', { text: answer.name }),
+      el('span', { class: 'tag', text: equipped ? '장착됨' : '미장착' }),
+    ]),
+    el('p', { class: 'dim', text: '그 초식을 내지 않으면 역파는 일어나지 않는다. 예고된 수에 파해를 내면 완파다.' }),
+  ]);
+}
+
+/** 예고 순서대로의 도전자 초식 — 어떤 색이 몇 번 오는지가 슬롯 판단의 입력이다. */
+const foeLineup = (challenger) => el('div', { class: 'icons' }, challenger.styles.map((id) => {
+  const foe = foeStyleById(id);
+  return el('div', { class: 'cand', style: `--attr:${ATTR_VIEW[foe.attr].color}` }, [
+    attrMark(foe.attr),
+    el('span', { class: 'cand-name', text: foe.name }),
+    el('span', { class: 'tag', text: `${attrLabel(foe.attr)} · ${foe.len}수` }),
+    el('span', { class: 'tag', text: `이기는 색 ${attrLabel(winAttrOf(foe.attr))}` }),
+  ]);
+}));
+
+/**
+ * 도전자 예고 화면 (REQ-504·732·736) — 판단의 순간과 조작의 장소를 붙인다. 슬롯 교체를 도장으로
+ * 돌려보내면 A-4 의 슬롯 압박이 판단이 아니라 왕복 잡무가 된다 (도장 동선은 그대로 남는다).
+ */
+export function renderDuelPreview(ctx) {
+  const { session, root, params } = ctx;
+  const challenger = challengerOfStage(params.stage);
+  const finisher = finisherOf(challenger);
+  const attempt = duelAttemptOf(session, challenger.id);
+  const bonus = rematchBonusOf(session, challenger.id);
+  ctx.pad.detach();
+  clear(root);
+
+  // 슬롯을 먼저 고르고 후보를 고른다 — 두 번의 탭이 곧 「무엇을 빼고 무엇을 넣는가」다.
+  let picked = session.slots.findIndex((id) => id === null);
+  if (picked < 0) picked = 0;
+
+  const slotsEl = el('div', { class: 'icons' });
+  const benchEl = el('div', { class: 'icons' });
+
+  function renderSlots() {
+    clear(slotsEl);
+    clear(benchEl);
+    session.slots.forEach((styleId, i) => {
+      const style = styleId ? styleById(styleId) : null;
+      const node = el('button', {
+        class: `cand${i === picked ? ' picked' : ''}`,
+        style: `--attr:${style ? ATTR_VIEW[style.attr].color : 'var(--line)'}`,
+        onclick: () => { picked = i; renderSlots(); },
+      }, [
+        style ? attrMark(style.attr) : null,
+        el('span', { class: 'cand-name', text: style ? style.name : '빈 슬롯' }),
+        el('span', { class: 'tag', text: `슬롯 ${i + 1}` }),
+      ]);
+      slotsEl.appendChild(node);
+    });
+    const benched = STYLES.filter((s) => session.progress.styles[s.id].learned
+      && !session.slots.includes(s.id) && canEquip(session, s.id));
+    if (!benched.length) {
+      benchEl.appendChild(el('span', { class: 'dim', text: '교체할 초식이 없다 — 장착 성에 닿은 초식이 전부 슬롯에 있다.' }));
+      return;
+    }
+    for (const style of benched) {
+      benchEl.appendChild(el('button', {
+        class: 'cand', style: `--attr:${ATTR_VIEW[style.attr].color}`,
+        onclick: () => {
+          equip(session, style.id, picked, { challenger: challenger.id });
+          renderSlots();
+        },
+      }, [
+        attrMark(style.attr),
+        el('span', { class: 'cand-name', text: style.name }),
+        el('span', { class: 'tag', text: `${rankOfStyle(session, style.id)}성` }),
+      ]));
+    }
+  }
+  renderSlots();
+
+  root.append(el('section', { class: 'card' }, [
+    el('h2', { text: `도전자 예고 — ${challenger.name} ${challenger.stage}차` }),
+    el('p', { class: 'dim', text: attempt > 1
+      ? `${attempt}번째 대면 — 상대가 성 +${bonus} 만큼 여물었고 재대련 승리에 재화는 없다.`
+      : `${challenger.hanja} · 처음 만나는 상대다.` }),
+    foeLineup(challenger),
+    finisher ? finisherNotice(session, finisher) : null,
+    el('h2', { text: '실전 슬롯' }),
+    el('p', { class: 'dim', text: '슬롯을 고르고 아래 초식을 누르면 그 자리에서 바뀐다.' }),
+    slotsEl,
+    benchEl,
+    el('div', { class: 'actions' }, [
+      el('button', { class: 'primary', text: '대련 시작', onclick: () => ctx.go('duel', { stage: params.stage }) }),
+      el('button', { class: 'small ghost', text: '도장으로', onclick: () => ctx.go('dojo') }),
+    ]),
+  ]));
+}
+
 export function startDuel(ctx) {
   const { session, root, params } = ctx;
   const challenger = challengerOfStage(params.stage);
+  const { foeRank } = logDuelStart(session, challenger);
   clear(root);
 
   const foeHpEl = el('div', {});
@@ -86,6 +197,7 @@ export function startDuel(ctx) {
 
   const match = createMatch({
     challenger,
+    foeRank,
     selfHpMax: BALANCE.hp.user,
     rankOf: (style) => rankOfStyle(session, style.id),
     openLen: () => Math.max(...equippedStyles(session).map((s) => s.seq.length)),
@@ -147,4 +259,3 @@ export function startDuel(ctx) {
   match.start();
   return () => { match.stop(); hideVerdict(); ctx.pad.detach(); };
 }
-

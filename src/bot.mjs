@@ -11,12 +11,12 @@ import {
 import { createMatch, createVirtualTimer, pumpToEnd } from './ui/match.mjs';
 import { createSequenceInput } from './ui/sequence-input.mjs';
 import {
-  ART_ID, DISPATCH_CHALLENGER, canTransmitNow, challengerOfStage, createSession,
+  ART_ID, DISPATCH_CHALLENGER, DUEL_STAGES, canTransmitNow, challengerOfStage, createSession,
   equip, equippedStyles, learnStyle, logEvent, logSessionMeta, rankOfStyle, runTransmit,
   setBotRunning, settleDispatch, settleDuel, simulateTraining, trainVisitDone,
 } from './ui/session.mjs';
 import {
-  composeHooks, dispatchWiring, duelWiring, logDispatchStart, trainWiring,
+  composeHooks, dispatchWiring, duelWiring, logDispatchStart, logDuelStart, trainWiring,
 } from './ui/wiring.mjs';
 
 const DIRS = ['U', 'D', 'L', 'R'];
@@ -43,21 +43,33 @@ export function createPace(random = Math.random, seed = BALANCE.bot) {
 }
 
 /** 이 창에 낼 초식 — 화면이 상시 병기하는 「이기는 색」을 그대로 따르는 선택이다 (REQ-206). */
-const chooseStyle = (input, foeStyle) =>
-  selectDiscipleStyle({ styles: input.candidates, foeStyle, rankOf: () => 0 });
+const chooseStyle = (input, foeStyle, rankOf) =>
+  selectDiscipleStyle({ styles: input.candidates, foeStyle, rankOf });
+
+/**
+ * 키우는 손의 우선순위 — 「이기는 색」이 같은 후보가 둘이면 **덜 여문** 초식을 낸다. 적립은 실제로
+ * 낸 초식에만 오므로, 동률을 슬롯 순으로 깨면 같은 속성의 앞 슬롯 하나가 창을 독점하고 뒤 초식은
+ * 영영 굶는다 (실측: 유운보·파운현월이 둘 다 쾌라 A-4 에서 유운보가 8성에 고착, 시드 99 등 6건 미완주).
+ * `selectDiscipleStyle` 은 큰 값을 먼저 고르므로 성을 뒤집어 넘기는 것이 그 표현이다.
+ */
+const growthOrder = (session) => (style) => -rankOfStyle(session, style.id);
+
+/** 계단 하나를 앞둔 성인가 — 결정타(11) 와 완파(12) 는 적립이 아니라 사건으로만 열린다 (REQ-704). */
+const atLadderStep = (rank) =>
+  rank === BALANCE.rankLadder.finishRank - 1 || rank === BALANCE.rankLadder.crushRank - 1;
 
 /**
  * 계단을 미는 손 (REQ-704) — 11·12성은 적립이 아니라 결정타·완파로만 열리므로, 사람은 그
  * 계단에 선 초식을 골라 낸다. 봇이 이 선택을 하지 않으면 사이클이 그 계단에서 영영 멈춘다.
- * 완파 계단은 파해 대상이 예고됐거나 상대 빈틈일 때만 성립하므로 그 수에만 민다.
+ * 미는 조건이 「그 수에 완파가 성립한다」인 것은 두 계단 모두에 맞다 — 완파는 12성의 정의이고,
+ * 결정타는 상대를 쓰러뜨린 수라 그 창의 최대 피해가 곧 최선이다. 조건 없이 밀면 계단에 선
+ * 초식 하나가 매 창을 독점해 나머지 초식의 적립이 굶는다.
  */
 export function preferLadderPush(session) {
-  const { finishRank, crushRank } = BALANCE.rankLadder;
   return (input, foeStyle) => {
     const pushable = input.candidates
       .map((style) => ({ style, rank: rankOfStyle(session, style.id) }))
-      .filter(({ style, rank }) => (rank === finishRank - 1)
-        || (rank === crushRank - 1 && (!foeStyle || style.counters === foeStyle.id)))
+      .filter(({ style, rank }) => atLadderStep(rank) && (!foeStyle || style.counters === foeStyle.id))
       .sort((a, b) => a.rank - b.rank);
     return pushable[0]?.style ?? null;
   };
@@ -79,11 +91,14 @@ function strayDir(input, random) {
  * @param {() => void} p.reset
  * @param {(input: object, foeStyle: ?object) => ?object} [p.prefer] 그 창에서 강제할 초식
  *   (없으면 「이기는 색」 선택) — 제자 손처럼 계단을 밀 이유가 없는 호출부는 주지 않는다
+ * @param {(style: object) => number} [p.rankOf] 동률 후보 사이의 우선순위 (큰 값이 먼저)
  *
  * 원터치 성이라도 탭하지 않는다 — 원터치 창은 kill (b) 분모에서 빠지므로,
  * 탭하는 봇은 자기가 재려던 완주율 표본을 스스로 지운다 (REQ-703·793).
  */
-export function createHand({ pace, now, press, reset, random = Math.random, prefer = () => null }) {
+export function createHand({
+  pace, now, press, reset, random = Math.random, prefer = () => null, rankOf = () => 0,
+}) {
   let keys = [];
   let at = 0;
   let readyAt = 0;
@@ -92,7 +107,7 @@ export function createHand({ pace, now, press, reset, random = Math.random, pref
   return {
     /** 창이 열릴 때 한 번 — 낼 초식과 이번에 놓칠 키를 그 자리에서 정한다. */
     arm(input, foeStyle) {
-      const style = prefer(input, foeStyle) ?? chooseStyle(input, foeStyle);
+      const style = prefer(input, foeStyle) ?? chooseStyle(input, foeStyle, rankOf);
       keys = [];
       at = 0;
       strayed = false;
@@ -174,6 +189,22 @@ function nextSwap(session) {
   return { kind: 'swap', styleId: target.id, slotIdx: slotIdx.i, params: {} };
 }
 
+/**
+ * 계단이 요구하는 무대 (REQ-731·734) — 파해 완파는 그 대상을 예고하는 도전자에게서만 나므로
+ * (파운현월은 A-4 뿐), 최고 차수만 반복하는 손은 나머지 초식의 계단을 영영 열지 못한다.
+ * 결정타도 같은 자리를 쓴다 — 그 초식이 최대 피해를 내는 무대가 쓰러뜨리기도 가장 쉽다.
+ * 해금한 차수 중 가장 낮은 무대를 고르는 것이 재대련 강화를 가장 적게 물고 가는 경로다.
+ */
+export function nextDuelStage(session) {
+  const reachable = DUEL_STAGES.filter((c) => c.stage <= session.stage);
+  const stageFor = (style) => reachable.find((c) => c.styles.includes(style.counters)) ?? null;
+  const pushing = session.slots.filter(Boolean).map(styleById)
+    .map((style) => ({ style, rank: rankOfStyle(session, style.id) }))
+    .filter(({ style, rank }) => atLadderStep(rank) && stageFor(style))
+    .sort((a, b) => a.rank - b.rank);
+  return pushing.length ? stageFor(pushing[0].style).stage : session.stage;
+}
+
 /** 도장에서의 다음 한 수 — 브라우저 봇과 헤드리스 사이클이 같은 판단을 쓴다. */
 export function nextDojoAction(session) {
   if (canTransmitNow(session)) return { kind: 'transmit', params: {} };
@@ -186,7 +217,8 @@ export function nextDojoAction(session) {
   if (learnable) return { kind: 'learn', styleId: learnable.id, params: {} };
   const swap = nextSwap(session);
   if (swap) return swap;
-  return { kind: 'duel', params: { stage: session.stage } };
+  // 예고를 건너뛰면 봇이 도는 경로가 사람의 경로와 갈려, 재대련 계측이 화면에서만 나온다 (REQ-736).
+  return { kind: 'duelPreview', params: { stage: nextDuelStage(session) } };
 }
 
 /** kill (d) 종점 감시 — 커서로 훑어 매 폴링마다 버퍼 전량을 다시 읽지 않는다. */
@@ -223,7 +255,10 @@ export function createBot({
   device = 'keyboard', random = Math.random, onDone = () => {},
 }) {
   const pace = createPace(random);
-  const hand = createHand({ pace, now: clock.now, press, reset, random, prefer: preferLadderPush(session) });
+  const hand = createHand({
+    pace, now: clock.now, press, reset, random,
+    prefer: preferLadderPush(session), rankOf: growthOrder(session),
+  });
   let cycleDone = () => false;
   let timer = 0;
   let running = false;
@@ -237,6 +272,7 @@ export function createBot({
       if (trainVisitDone(session)) screen.go('dojo');
       return;
     }
+    if (phase === 'duelPreview') { screen.go('duel', screen.params()); return; }
     if (phase === 'preview') { screen.go('dispatch'); return; }
     if (phase === 'transmit' || phase === 'result') { screen.go('dojo'); return; }
     if (phase !== 'dojo') return;
@@ -364,6 +400,7 @@ function headlessTrain({ session, styleId, pace, timer, random, maxWindows = 200
 
 function headlessDuel({ session, stage, pace, timer, random }) {
   const challenger = challengerOfStage(stage);
+  const { foeRank } = logDuelStart(session, challenger);
   const now = () => timer.now();
   let ended = null;
   let match = null;
@@ -381,12 +418,14 @@ function headlessDuel({ session, stage, pace, timer, random }) {
     now,
     random,
     prefer: preferLadderPush(session),
+    rankOf: growthOrder(session),
     press: (dir) => { const result = input.press(dir, 'keyboard'); if (result.fired) match.fire(result.fired); },
     reset: () => input.reset(),
   });
 
   match = createMatch({
     challenger,
+    foeRank,
     selfHpMax: BALANCE.hp.user,
     rankOf: (style) => rankOfStyle(session, style.id),
     openLen: () => Math.max(...equippedStyles(session).map((s) => s.seq.length)),
@@ -434,8 +473,9 @@ function headlessDispatch({ session, timer }) {
  * @returns {{session: object, elapsedMs: number, screens: number}}
  */
 export function runHeadlessCycle({
-  // 11·12성이 적립이 아니라 결정타·완파로 열려 화면 수의 꼬리가 길다 — 손 정확도 50% 시나리오
-  // 12시드 실측 상계가 500화면이라 그 두 배를 상한으로 둔다 (REQ-704, #64).
+  // 11·12성이 결정타·완파라는 사건으로만 열려 화면 수의 꼬리가 길고, 그 사건이 떨어질 초식은
+  // 확률적이라 시드마다 흔들린다 — 손 정확도 50% 시나리오 12시드 실측 상계 150화면의 8배를
+  // 상한으로 둬, 밸런스 값 한 칸이 그 꼬리를 늘려도 상한이 먼저 울지 않게 한다 (REQ-704).
   session: given = null, random = Math.random, stepMs = 16, maxScreens = 1200, device = 'keyboard',
   paceSeed = BALANCE.bot,
 } = {}) {
@@ -487,6 +527,10 @@ export function runHeadlessCycle({
     if (phase === 'transmit') {
       runTransmit(session);
       go('dojo');
+      continue;
+    }
+    if (phase === 'duelPreview') {
+      go('duel', params);
       continue;
     }
     if (phase === 'preview') {

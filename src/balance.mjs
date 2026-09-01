@@ -71,6 +71,7 @@ export const CHALLENGERS = [
   { id: 'A-1', group: 'A', name: '떠돌이 무인', hanja: '流浪武人', mode: 'duel', stage: 1, styles: ['alpha'] },
   { id: 'A-2', group: 'A', name: '떠돌이 무인', hanja: '流浪武人', mode: 'duel', stage: 2, styles: ['alpha', 'beta'] },
   { id: 'A-3', group: 'A', name: '떠돌이 무인', hanja: '流浪武人', mode: 'duel', stage: 3, styles: ['alpha', 'beta', 'gamma'] },
+  { id: 'A-4', group: 'A', name: '월영문 문도', hanja: '月影門徒', mode: 'duel', stage: 4, styles: ['alpha', 'gamma', 'delta'] },
   { id: 'B',   group: 'B', name: '월영문', hanja: '月影門', mode: 'dispatch', stage: 1, styles: ['alpha', 'gamma', 'delta'] },
 ];
 
@@ -98,6 +99,7 @@ const SHAPE = {
   discipleStartRank: 'int1+', discipleRankMax: 'int1+', discipleFireRatio: 'ratio',
   winColorHintExchanges: 'int1+', simEfficiency: 'pos', simTrainSeconds: 'int1+', buttonHitPx: 'int1+',
   reward: 'map:int+', bot: 'bot', hp: 'map:int1+', challengerRank: 'map:int1+',
+  rematch: 'map:int+', reversalDecay: 'reversalDecay',
 };
 
 /**
@@ -135,6 +137,7 @@ const REQUIRED_MAP_KEYS = {
   hintDelayMs: ['duel', 'train'],
   reward: ['duelWin', 'dispatchWin'],
   rankGate: ['equip', 'unlock', 'oneTap'],
+  rematch: ['rankGain', 'rankCap'],
 };
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
@@ -220,6 +223,20 @@ function checkLadder(value, bad) {
   return undefined;
 }
 
+/**
+ * 역파 감쇠 (REQ-771) — 하한이 0 이면 성 차 하나가 절초를 무해하게 만들고, 1 이면 감쇠 자체가
+ * 없는 것과 같다. 「절초는 무서워야 한다」가 이 두 끝을 다 배제하는 유일한 근거다.
+ */
+function checkReversalDecay(value, bad) {
+  if (!isPlain(value)) return bad('reversalDecay', `${show(value)} 는 map 이 아니다`);
+  checkNum('reversalDecay.perRank', value.perRank, 'ratio', bad);
+  const floor = value.pierceFloor;
+  if (!isNum(floor) || !(floor > 0) || !(floor < 1)) {
+    bad('reversalDecay.pierceFloor', `${show(floor)} 는 0 초과 1 미만의 관통 하한이 아니다`);
+  }
+  return undefined;
+}
+
 /** 성 축 상수 사이의 순서 — 값 하나가 이 사슬을 깨면 계단이 서로를 건너뛴다 (REQ-711·713, #54). */
 function checkRankOrder(values, bad) {
   const ladder = values.rankLadder;
@@ -256,6 +273,35 @@ function checkRankOrder(values, bad) {
   if (isNum(values.discipleStartRank) && isNum(values.discipleRankMax)
     && values.discipleStartRank > values.discipleRankMax) {
     bad('discipleStartRank', `${values.discipleStartRank} 가 제자 성 상한 ${values.discipleRankMax} 를 넘는다`);
+  }
+  // 재대련 강화가 성 상한을 넘으면 `powerOf` 가 규칙 밖의 내공을 내고 도달 가능성 불변식이 흐려진다 (REQ-734).
+  const cap = values.rematch?.rankCap;
+  const topFoe = isPlain(values.challengerRank)
+    ? Object.values(values.challengerRank).reduce((m, v) => Math.max(m, isNum(v) ? v : 0), 0) : 0;
+  if (isNum(cap) && isNum(values.rankMax) && topFoe + cap > values.rankMax) {
+    bad('rematch.rankCap', `최고 도전자 성 ${topFoe} 에 ${cap} 를 더하면 성 상한 ${values.rankMax} 를 넘는다`);
+  }
+}
+
+/**
+ * 관통 하한의 도달 가능성 (REQ-771) — 역파는 절초 보유 도전자에게서만 나므로 그 무대의 최대
+ * 성 차가 감쇠의 정의역 상계다. 하한이 그보다 뒤에서 물리면 하한은 사표(死表)가 되어
+ * 「절초는 무서워야 한다」를 지키는 장치가 아무것도 없다.
+ */
+function checkReversalReach(values, bad) {
+  const decay = values.reversalDecay;
+  if (!isPlain(decay) || !isNum(decay.perRank) || !isNum(decay.pierceFloor)) return;
+  // 계수 0 은 감쇠를 끈 상태라 하한이 쓰일 자리 자체가 없다.
+  if (decay.perRank === 0) return;
+  const bindAt = Math.ceil((1 - decay.pierceFloor) / decay.perRank);
+  for (const c of CHALLENGERS) {
+    if (!c.styles.some((id) => FOE_STYLES.find((f) => f.id === id)?.finisher)) continue;
+    const selfMax = c.mode === 'duel' ? values.rankMax : values.discipleRankMax;
+    const spread = selfMax - (values.challengerRank?.[c.id] ?? 0);
+    if (isNum(selfMax) && bindAt > spread) {
+      bad('reversalDecay.pierceFloor', `${c.id} 무대의 최대 성 차 ${spread} 로는 하한 ${decay.pierceFloor} 에 닿지 못한다`
+        + ` (성 차 ${bindAt} 필요) — perRank 를 ${((1 - decay.pierceFloor) / spread).toFixed(4)} 이상으로 올려라`);
+    }
   }
 }
 
@@ -339,6 +385,7 @@ export function validateBalance(raw) {
     else if (kind === 'grades') checkGrades(v, bad);
     else if (kind === 'bot') checkBot(v, bad);
     else if (kind === 'rankLadder') checkLadder(v, bad);
+    else if (kind === 'reversalDecay') checkReversalDecay(v, bad);
     else if (kind.startsWith('map:')) checkNumMap(key, v, kind.slice(4), bad);
     else checkNum(key, v, kind, bad);
   }
@@ -348,6 +395,7 @@ export function validateBalance(raw) {
   }
 
   checkRankOrder(values, bad);
+  checkReversalReach(values, bad);
   checkContentJoins(values, bad);
 
   if (errors.length > 0) {

@@ -1,4 +1,4 @@
-// 상태기계 1개 — 도장 / 수련 / 사부 대련 / 전수 / 도전자 예고 / 파견 / 결과.
+// 상태기계 1개 — 도장 / 수련 / 대련 예고 · 사부 대련 / 전수 / 파견 예고 · 파견 / 결과.
 // 화면 전환마다 `cycle{phase}` 를 남겨, 로그만으로 구간 예산과 실전 창을 분리 판독할 수 있다.
 
 import { BALANCE } from '../balance.mjs';
@@ -11,7 +11,7 @@ import {
 } from './session.mjs';
 import { renderDojo } from './screens/dojo.mjs';
 import { renderPreview, startDispatch } from './screens/dispatch.mjs';
-import { startDuel } from './screens/duel.mjs';
+import { renderDuelPreview, startDuel } from './screens/duel.mjs';
 import { renderResult } from './screens/result.mjs';
 import { renderTransmit } from './screens/transmit.mjs';
 import { startTrain } from './screens/train.mjs';
@@ -19,6 +19,7 @@ import { startTrain } from './screens/train.mjs';
 const ROUTES = {
   dojo: renderDojo,
   train: startTrain,
+  duelPreview: renderDuelPreview,
   duel: startDuel,
   preview: renderPreview,
   dispatch: startDispatch,

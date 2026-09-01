@@ -1,5 +1,5 @@
 {
-  "rev": "2026-09-02-a/fc2d116a",
+  "rev": "2026-09-02-b/50480cbd",
 
   "telegraphMs": 1000,
   "windowBaseMs": 2600,
@@ -64,6 +64,8 @@
     "pollMs": 30
   },
 
-  "hp": { "user": 100, "disciple": 100, "A-1": 30, "A-2": 45, "A-3": 80, "B": 80 },
-  "challengerRank": { "A-1": 1, "A-2": 2, "A-3": 3, "B": 2 }
+  "hp": { "user": 100, "disciple": 100, "A-1": 30, "A-2": 45, "A-3": 80, "A-4": 90, "B": 80 },
+  "challengerRank": { "A-1": 1, "A-2": 2, "A-3": 3, "A-4": 4, "B": 2 },
+  "rematch": { "rankGain": 1, "rankCap": 3 },
+  "reversalDecay": { "perRank": 0.075, "pierceFloor": 0.4 }
 }
