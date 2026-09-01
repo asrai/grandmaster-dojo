@@ -61,7 +61,16 @@ button.ghost { background: transparent; }
 .row.locked { opacity: .55; }
 .row-head { display: flex; gap: 6px; align-items: center; }
 .row-foot { display: flex; flex-direction: column; gap: 2px; }
-.row-actions { display: flex; gap: 6px; margin-top: 6px; }
+/* 앵커가 툴팁만큼 높아지므로 stretch 를 끊어 형제 버튼이 함께 늘어나지 않게 한다. */
+.row-actions { display: flex; gap: 6px; margin-top: 6px; align-items: flex-start; }
+
+/* 유도 툴팁 — 안내만 하는 말풍선이라 포커스 대상이 아니고 포인터도 그대로 통과시킨다. */
+.tip-anchor { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.tip {
+  pointer-events: none; font-size: 12px; white-space: nowrap;
+  color: var(--gold); background: #201a0c; border: 1px solid var(--gold);
+  border-radius: 6px; padding: 2px 8px;
+}
 .meter { height: 5px; background: #0b0e13; border-radius: 3px; margin: 6px 0; overflow: hidden; }
 .meter i { display: block; height: 100%; background: var(--gold); }
 

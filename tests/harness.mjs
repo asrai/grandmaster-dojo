@@ -11,8 +11,8 @@ import {
 import { createMatch, createVirtualTimer, pumpToEnd } from '../src/ui/match.mjs';
 import { createSequenceInput } from '../src/ui/sequence-input.mjs';
 import {
-  EXPORT_SCHEMA, addCoins, createSession, exportPayload, logEvent, settleDispatch, settleDuel,
-  simulateTraining,
+  EXPORT_SCHEMA, addCoins, consumeTooltip, createSession, createTooltipState, exportPayload,
+  logEvent, pickTooltip, settleDispatch, settleDuel, simulateTraining,
 } from '../src/ui/session.mjs';
 import { KILL, readout } from './kill-readout.mjs';
 import {
@@ -880,7 +880,48 @@ suite('헤드리스 봇 1사이클 (REQ-601·603·605)', () => {
     + (over.length ? ` — 임계(300s·15%) 초과 ${over.length}회, balance-log 회차 필요` : ''));
 });
 
-// -------------------------------------------- 12. BALANCE 파라미터 census (REQ-606)
+// ----------------------------------------------- 12. 도장 유도 툴팁 대상 (#15)
+
+suite('도장 유도 툴팁 대상 (#15)', () => {
+  // 도장 화면이 주는 것과 같은 형태의 후보 — 우선순위 오름차순, `disabled` 는 화면의 술어값.
+  const render = (state, locked) => pickTooltip(state, [
+    { id: 'train:yuun-bo', disabled: false },
+    { id: 'learn:jeok-un', disabled: locked.includes('learn:jeok-un') },
+    { id: 'duel', disabled: locked.includes('duel') },
+    { id: 'transmit', disabled: locked.includes('transmit') },
+  ]);
+  const ALL_LOCKED = ['learn:jeok-un', 'duel', 'transmit'];
+
+  const state = createTooltipState();
+  deepEq(render(state, ALL_LOCKED), { id: 'train:yuun-bo', kind: 'start' },
+    '최초 진입 — 우선순위 순서상 처음으로 잠기지 않은 버튼을 지목한다');
+  deepEq(render(state, ALL_LOCKED), { id: 'train:yuun-bo', kind: 'start' },
+    '누르지 않은 안내는 다음 렌더에도 남는다 — 다른 화면을 다녀와도 유도가 사라지지 않는다');
+
+  consumeTooltip(state, 'train:yuun-bo');
+  eq(render(state, ALL_LOCKED), null, '누른 버튼의 안내는 사라진다');
+  eq(render(state, ALL_LOCKED), null, '같은 조건으로 다시 뜨지 않는다');
+
+  deepEq(render(state, ['learn:jeok-un', 'transmit']), { id: 'duel', kind: 'unlocked' },
+    '직전 렌더에서 잠겨 있다가 풀린 버튼이 새 안내가 된다');
+  deepEq(render(state, ['learn:jeok-un', 'transmit']), { id: 'duel', kind: 'unlocked' },
+    '풀린 채로 유지되는 동안 그 안내도 유지된다');
+
+  eq(render(state, ALL_LOCKED), null, '다시 잠기면 안내는 그 자리에서 사라진다');
+  eq(render(state, ['learn:jeok-un', 'transmit']), null,
+    '장착·해제로 잠금이 오가도 같은 축을 재고지하지 않는다');
+
+  deepEq(render(state, []), { id: 'learn:jeok-un', kind: 'unlocked' },
+    '한 렌더에서 둘이 함께 풀리면 우선순위가 앞선 쪽이 안내된다');
+
+  // 안내는 우선순위표가 아니라 잠금 전이에서 나온다 — 직전 렌더에 없던 버튼은 고지 대상이 아니다.
+  const late = createTooltipState();
+  deepEq(pickTooltip(late, [{ id: 'duel', disabled: true }]), null, '전부 잠긴 첫 렌더는 안내가 없다');
+  eq(pickTooltip(late, [{ id: 'duel', disabled: true }, { id: 'train:pa-un', disabled: false }]), null,
+    '직전 렌더에 없던 버튼은 신규 활성화가 아니다');
+});
+
+// -------------------------------------------- 13. BALANCE 파라미터 census (REQ-606)
 
 suite('BALANCE 파라미터 census (REQ-606)', () => {
   // spec § 데이터 구조 파라미터 표의 시드값 — 값이 바뀌면 밸런스 로그 회차가 필요하다.
