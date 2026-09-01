@@ -10,24 +10,39 @@
   --gold: #ffd166; --hit: 56px;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html, body { margin: 0; height: 100%; }
+html, body { margin: 0; height: 100dvh; overflow: hidden; }
 body {
   background: var(--bg); color: var(--fg); font: 15px/1.5 -apple-system, "Noto Sans KR", sans-serif;
   overscroll-behavior: none;
 }
-#app { display: flex; flex-direction: column; height: 100%; max-width: 520px; margin: 0 auto; }
+/* 스케일 계수는 무단위 비율이어야 하는데 min() 은 길이와 수를 못 섞는다 — tan(atan2()) 가 길이비를 수로 환산한다. */
+#frame {
+  --k: min(tan(atan2(100vw, 393px)), tan(atan2(100dvh, 852px)), 1);
+  position: relative; width: 100vw; height: 100dvh;
+  display: grid; place-items: center; overflow: hidden;
+}
+/* 논리 해상도를 393x852 로 못박고 창에는 축소로만 맞춘다 — 내부 좌표가 창·기기와 무관해진다. */
+#stage {
+  position: relative; z-index: 1; width: 393px; height: 852px;
+  transform: scale(var(--k)); transform-origin: center;
+  background: var(--bg); border-radius: 18px; overflow: hidden;
+  box-shadow: 0 0 0 1px var(--line);
+}
+#app { display: flex; flex-direction: column; height: 100%; }
 /* 플렉스 자식의 기본 min-width:auto 가 긴 한글 줄을 뷰포트 밖으로 밀어낸다. */
 #app, #screen, .card, .row, .telegraph, .head, .row-foot > *, .tip-anchor { min-width: 0; }
 
+/* 폭에 따라 줄 수가 바뀌면 헤더 높이가 흔들리므로 2줄 구조를 마크업으로 못박는다. */
 #top {
-  display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; padding: 10px 14px;
-  border-bottom: 1px solid var(--line); font-size: 13px;
+  display: flex; flex-direction: column; justify-content: center; gap: 3px;
+  height: 56px; padding: 0 14px; border-bottom: 1px solid var(--line); font-size: 13px;
 }
+.top-row { display: flex; gap: 10px; align-items: center; min-width: 0; }
 #top #label { font-weight: 700; color: var(--gold); }
 #top #coins { margin-left: auto; }
 #top label { display: flex; gap: 4px; align-items: center; color: var(--dim); }
-/* 검증 도구는 헤더 아래 줄로 흘려 놓는다 — 플레이 중 손이 닿는 자리가 아니다. */
-#tools { display: flex; gap: 6px; width: 100%; }
+/* 검증 도구는 게임 UI 가 아니라 레터박스 여백에 산다 — 스테이지 스크린샷에 잡히면 안 된다. */
+#tools { position: absolute; top: 8px; left: 8px; z-index: 0; display: flex; gap: 6px; }
 #tools button { padding: 4px 8px; font-size: 12px; }
 #tools button.urge { border-color: var(--gold); color: var(--gold); }
 
@@ -125,8 +140,9 @@ button.ghost { background: transparent; }
 .toast { min-height: 20px; text-align: center; color: var(--gold); opacity: 0; transition: opacity .2s; }
 .toast.show { opacity: 1; }
 
-#pad { border-top: 1px solid var(--line); padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); background: var(--panel); }
-#pad[hidden] { display: none; }
+#pad { border-top: 1px solid var(--line); padding: 8px 12px; background: var(--panel); height: 248px; }
+/* 감춰도 자리는 지킨다 — display:none 이면 화면 전환마다 #screen 높이가 튄다. */
+#pad.detached { visibility: hidden; }
 #pad.idle { opacity: .4; }
 #pad.idle #dpad button { pointer-events: none; }
 /* 봇 점유 중 사람 입력은 무시되므로, 눌러도 되는 것처럼 보이지 않게 한다. */
@@ -159,32 +175,41 @@ button.ghost { background: transparent; }
 </style>
 </head>
 <body>
-<div id="app">
-  <header id="top">
-    <span id="label">문하생</span>
-    <span id="rank" class="dim">유운검법 1성</span>
-    <span id="coins">元 0</span>
-    <label><input type="checkbox" id="a11y">응수 창 ×1.3 (쉬움)</label>
-    <div id="tools">
-      <button id="exportBtn" class="ghost">로그 내보내기</button>
-      <button id="botBtn" class="ghost">봇 v2 실행</button>
-    </div>
-  </header>
+<div id="frame">
+  <div id="tools">
+    <button id="exportBtn" class="ghost">로그 내보내기</button>
+    <button id="botBtn" class="ghost">봇 v2 실행</button>
+  </div>
 
-  <main id="screen"></main>
+  <div id="stage">
+  <div id="app">
+    <header id="top">
+      <div class="top-row">
+        <span id="label">문하생</span>
+        <span id="rank" class="dim">유운검법 1성</span>
+        <span id="coins">元 0</span>
+      </div>
+      <div class="top-row">
+        <label><input type="checkbox" id="a11y">응수 창 ×1.3 (쉬움)</label>
+      </div>
+    </header>
 
-  <footer id="pad" hidden>
-    <div id="padColor" class="pad-color none"></div>
-    <div id="candidates" class="candidates"></div>
-    <div id="seq"></div>
-    <div id="dpad">
-      <button data-dir="U" aria-label="위">↑</button>
-      <button data-dir="L" aria-label="왼쪽">←</button>
-      <button data-dir="D" aria-label="아래">↓</button>
-      <button data-dir="R" aria-label="오른쪽">→</button>
-      <button id="resetBtn">리셋<br><span class="dim">Space</span></button>
-    </div>
-  </footer>
+    <main id="screen"></main>
+
+    <footer id="pad" class="detached">
+      <div id="padColor" class="pad-color none"></div>
+      <div id="candidates" class="candidates"></div>
+      <div id="seq"></div>
+      <div id="dpad">
+        <button data-dir="U" aria-label="위">↑</button>
+        <button data-dir="L" aria-label="왼쪽">←</button>
+        <button data-dir="D" aria-label="아래">↓</button>
+        <button data-dir="R" aria-label="오른쪽">→</button>
+        <button id="resetBtn">리셋<br><span class="dim">Space</span></button>
+      </div>
+    </footer>
+  </div>
+  </div>
 </div>
 <script type="module" src="src/ui/app.mjs"></script>
 </body>
