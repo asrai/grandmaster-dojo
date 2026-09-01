@@ -20,6 +20,7 @@ body {
   --k: min(tan(atan2(100vw, 393px)), tan(atan2(100dvh, 852px)), 1);
   position: relative; width: 100vw; height: 100dvh;
   display: grid; place-content: center; overflow: hidden;
+  background: #05070a;
 }
 /* 논리 해상도를 393x852 로 못박고 창에는 축소로만 맞춘다 — 내부 좌표가 창·기기와 무관해진다. */
 #stage {
@@ -36,6 +37,7 @@ body {
 #top {
   display: flex; flex-direction: column; justify-content: center; gap: 3px;
   height: 56px; padding: 0 14px; border-bottom: 1px solid var(--line); font-size: 13px;
+  overflow: hidden;
 }
 .top-row { display: flex; gap: 10px; align-items: center; min-width: 0; }
 #top #label { font-weight: 700; color: var(--gold); }
@@ -140,7 +142,7 @@ button.ghost { background: transparent; }
 .toast { min-height: 20px; text-align: center; color: var(--gold); opacity: 0; transition: opacity .2s; }
 .toast.show { opacity: 1; }
 
-#pad { border-top: 1px solid var(--line); padding: 8px 12px; background: var(--panel); height: 256px; }
+#pad { border-top: 1px solid var(--line); padding: 8px 12px; background: var(--panel); height: 272px; }
 /* 감춰도 자리는 지킨다 — display:none 이면 화면 전환마다 #screen 높이가 튄다. */
 #pad.detached { visibility: hidden; }
 #pad.idle { opacity: .4; }
@@ -176,39 +178,39 @@ button.ghost { background: transparent; }
 </head>
 <body>
 <div id="frame">
+  <div id="stage">
+    <div id="app">
+      <header id="top">
+        <div class="top-row">
+          <span id="label">문하생</span>
+          <span id="rank" class="dim">유운검법 1성</span>
+          <span id="coins">元 0</span>
+        </div>
+        <div class="top-row">
+          <label><input type="checkbox" id="a11y">응수 창 ×1.3 (쉬움)</label>
+        </div>
+      </header>
+
+      <main id="screen"></main>
+
+      <footer id="pad" class="detached">
+        <div id="padColor" class="pad-color none"></div>
+        <div id="candidates" class="candidates"></div>
+        <div id="seq"></div>
+        <div id="dpad">
+          <button data-dir="U" aria-label="위">↑</button>
+          <button data-dir="L" aria-label="왼쪽">←</button>
+          <button data-dir="D" aria-label="아래">↓</button>
+          <button data-dir="R" aria-label="오른쪽">→</button>
+          <button id="resetBtn">리셋<br><span class="dim">Space</span></button>
+        </div>
+      </footer>
+    </div>
+  </div>
+
   <div id="tools">
     <button id="exportBtn" class="ghost">로그 내보내기</button>
     <button id="botBtn" class="ghost">봇 v2 실행</button>
-  </div>
-
-  <div id="stage">
-  <div id="app">
-    <header id="top">
-      <div class="top-row">
-        <span id="label">문하생</span>
-        <span id="rank" class="dim">유운검법 1성</span>
-        <span id="coins">元 0</span>
-      </div>
-      <div class="top-row">
-        <label><input type="checkbox" id="a11y">응수 창 ×1.3 (쉬움)</label>
-      </div>
-    </header>
-
-    <main id="screen"></main>
-
-    <footer id="pad" class="detached">
-      <div id="padColor" class="pad-color none"></div>
-      <div id="candidates" class="candidates"></div>
-      <div id="seq"></div>
-      <div id="dpad">
-        <button data-dir="U" aria-label="위">↑</button>
-        <button data-dir="L" aria-label="왼쪽">←</button>
-        <button data-dir="D" aria-label="아래">↓</button>
-        <button data-dir="R" aria-label="오른쪽">→</button>
-        <button id="resetBtn">리셋<br><span class="dim">Space</span></button>
-      </div>
-    </footer>
-  </div>
   </div>
 </div>
 <script type="module" src="src/ui/app.mjs"></script>
