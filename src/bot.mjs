@@ -46,6 +46,23 @@ export function createPace(random = Math.random, seed = BALANCE.bot) {
 const chooseStyle = (input, foeStyle) =>
   selectDiscipleStyle({ styles: input.candidates, foeStyle, rankOf: () => 0 });
 
+/**
+ * 계단을 미는 손 (REQ-704) — 11·12성은 적립이 아니라 결정타·완파로만 열리므로, 사람은 그
+ * 계단에 선 초식을 골라 낸다. 봇이 이 선택을 하지 않으면 사이클이 그 계단에서 영영 멈춘다.
+ * 완파 계단은 파해 대상이 예고됐거나 상대 빈틈일 때만 성립하므로 그 수에만 민다.
+ */
+export function preferLadderPush(session) {
+  const { finishRank, crushRank } = BALANCE.rankLadder;
+  return (input, foeStyle) => {
+    const pushable = input.candidates
+      .map((style) => ({ style, rank: rankOfStyle(session, style.id) }))
+      .filter(({ style, rank }) => (rank === finishRank - 1)
+        || (rank === crushRank - 1 && (!foeStyle || style.counters === foeStyle.id)))
+      .sort((a, b) => a.rank - b.rank);
+    return pushable[0]?.style ?? null;
+  };
+}
+
 /** 어떤 후보의 다음 키도 아닌 방향 — 눌러도 후보가 0이라 `ignore` 로만 남는다. */
 function strayDir(input, random) {
   const valid = new Set(input.candidates.map((s) => s.seq[input.buffer.length]).filter(Boolean));
@@ -60,11 +77,13 @@ function strayDir(input, random) {
  * @param {() => number} p.now
  * @param {(dir: string) => void} p.press 사람 입력과 같은 경로
  * @param {() => void} p.reset
+ * @param {(input: object, foeStyle: ?object) => ?object} [p.prefer] 그 창에서 강제할 초식
+ *   (없으면 「이기는 색」 선택) — 제자 손처럼 계단을 밀 이유가 없는 호출부는 주지 않는다
  *
  * 원터치 성이라도 탭하지 않는다 — 원터치 창은 kill (b) 분모에서 빠지므로,
  * 탭하는 봇은 자기가 재려던 완주율 표본을 스스로 지운다 (REQ-703·793).
  */
-export function createHand({ pace, now, press, reset, random = Math.random }) {
+export function createHand({ pace, now, press, reset, random = Math.random, prefer = () => null }) {
   let keys = [];
   let at = 0;
   let readyAt = 0;
@@ -73,7 +92,7 @@ export function createHand({ pace, now, press, reset, random = Math.random }) {
   return {
     /** 창이 열릴 때 한 번 — 낼 초식과 이번에 놓칠 키를 그 자리에서 정한다. */
     arm(input, foeStyle) {
-      const style = chooseStyle(input, foeStyle);
+      const style = prefer(input, foeStyle) ?? chooseStyle(input, foeStyle);
       keys = [];
       at = 0;
       strayed = false;
@@ -204,7 +223,7 @@ export function createBot({
   device = 'keyboard', random = Math.random, onDone = () => {},
 }) {
   const pace = createPace(random);
-  const hand = createHand({ pace, now: clock.now, press, reset, random });
+  const hand = createHand({ pace, now: clock.now, press, reset, random, prefer: preferLadderPush(session) });
   let cycleDone = () => false;
   let timer = 0;
   let running = false;
@@ -361,6 +380,7 @@ function headlessDuel({ session, stage, pace, timer, random }) {
     pace,
     now,
     random,
+    prefer: preferLadderPush(session),
     press: (dir) => { const result = input.press(dir, 'keyboard'); if (result.fired) match.fire(result.fired); },
     reset: () => input.reset(),
   });
@@ -414,7 +434,9 @@ function headlessDispatch({ session, timer }) {
  * @returns {{session: object, elapsedMs: number, screens: number}}
  */
 export function runHeadlessCycle({
-  session: given = null, random = Math.random, stepMs = 16, maxScreens = 600, device = 'keyboard',
+  // 11·12성이 적립이 아니라 결정타·완파로 열려 화면 수의 꼬리가 길다 — 손 정확도 50% 시나리오
+  // 12시드 실측 상계가 500화면이라 그 두 배를 상한으로 둔다 (REQ-704, #64).
+  session: given = null, random = Math.random, stepMs = 16, maxScreens = 1200, device = 'keyboard',
   paceSeed = BALANCE.bot,
 } = {}) {
   const timer = createVirtualTimer({ stepMs });

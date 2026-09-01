@@ -112,13 +112,13 @@ const RETIRED = [
 
 /** 의미 제약 — 「숫자이기만 하면 통과」가 튜닝 오타를 조용히 게임 규칙으로 만든다 (#54). */
 const NUM_RULES = {
-  num: { test: (v) => isNum(v), why: '유한 수' },
-  nonneg: { test: (v) => isNum(v) && v >= 0, why: '0 이상의 유한 수' },
-  pos: { test: (v) => isNum(v) && v > 0, why: '양수' },
-  ratio: { test: (v) => isNum(v) && v >= 0 && v <= 1, why: '0~1 비율' },
-  'ratio<1': { test: (v) => isNum(v) && v >= 0 && v < 1, why: '0 이상 1 미만의 비율' },
-  'int+': { test: (v) => Number.isInteger(v) && v >= 0, why: '0 이상의 정수' },
-  'int1+': { test: (v) => Number.isInteger(v) && v >= 1, why: '1 이상의 정수' },
+  num: { test: (v) => isNum(v), why: '유한 수가 아니다' },
+  nonneg: { test: (v) => isNum(v) && v >= 0, why: '0 이상의 유한 수가 아니다' },
+  pos: { test: (v) => isNum(v) && v > 0, why: '양수가 아니다' },
+  ratio: { test: (v) => isNum(v) && v >= 0 && v <= 1, why: '0~1 비율이 아니다' },
+  'ratio<1': { test: (v) => isNum(v) && v >= 0 && v < 1, why: '0 이상 1 미만의 비율이 아니다' },
+  'int+': { test: (v) => Number.isInteger(v) && v >= 0, why: '0 이상의 정수가 아니다' },
+  'int1+': { test: (v) => Number.isInteger(v) && v >= 1, why: '1 이상의 정수가 아니다' },
 };
 
 /** 6단 판정표의 구조 축 — 등급 id 집합과 수식 분기 키는 튜닝 대상이 아니라 코드가 분기하는 값이다. */
@@ -143,7 +143,7 @@ const show = (v) => JSON.stringify(v) ?? String(v);
 const setEq = (a, b) => a.length === b.length && a.every((k, i) => k === b[i]);
 
 function checkNum(path, value, rule, bad) {
-  if (!NUM_RULES[rule].test(value)) bad(path, `${show(value)} 는 ${NUM_RULES[rule].why}가 아니다`);
+  if (!NUM_RULES[rule].test(value)) bad(path, `${show(value)} 는 ${NUM_RULES[rule].why}`);
 }
 
 function checkNumMap(path, value, rule, bad) {
@@ -287,8 +287,9 @@ function checkContentJoins(values, bad) {
  * 값 지문 (#54) — `rev` 가 값 변경을 반드시 따라가게 하는 결합. 값만 고치고 `rev` 를 두면
  * 내보낸 로그의 지문이 옛 판본을 달고 나가 실험 회차 귀속이 조용히 틀리므로 로드 시점에 죽인다.
  * 키 순서에 무관하도록 정렬해 직렬화하고, 브라우저에서도 도는 FNV-1a 로 32bit 를 낸다.
+ * 튜너가 부를 수 있게 열어 둔다 — 지문을 손으로 계산할 방법이 없으면 오류 문면이 유일한 공급원이 된다.
  */
-function digestOf(values) {
+export function valueDigest(values) {
   const canonical = (v) => {
     if (Array.isArray(v)) return v.map(canonical);
     if (isPlain(v)) return Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical(v[k])]));
@@ -309,7 +310,7 @@ function checkRev(rev, values, bad) {
   if (typeof rev !== 'string' || rev.trim() === '') {
     return bad('rev', `${show(rev)} 는 비어 있지 않은 판본 문자열이 아니다`);
   }
-  const digest = digestOf(values);
+  const digest = valueDigest(values);
   const parsed = REV_PATTERN.exec(rev);
   if (!parsed) return bad('rev', `${show(rev)} 가 "<판본>/<값 지문 8자리>" 꼴이 아니다 — "${rev}/${digest}" 로 갱신하라`);
   if (parsed[2] !== digest) bad('rev', `값 지문이 ${show(digest)} 인데 rev 는 ${show(parsed[2])} 다 — "${parsed[1]}/${digest}" 로 갱신하라`);

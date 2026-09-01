@@ -11,7 +11,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { BALANCE } from '../src/balance.mjs';
 import { isEffectiveSuccess, responseWindowMs } from '../src/core.mjs';
-import { LOG_SCHEMA, TIME_FIELD, validate } from '../src/log.mjs';
+import { LOG_SCHEMA, SCHEMA_VERSION_FIELD, TIME_FIELD, validate } from '../src/log.mjs';
 import { EXPORT_SCHEMA, balanceDigest, exportPayload } from '../src/ui/session.mjs';
 import { createSeededRandom, runHeadlessCycle } from '../src/bot.mjs';
 
@@ -51,6 +51,13 @@ function loadPayload(raw) {
   };
 }
 
+/**
+ * 봇 사이클이 구조적으로 낼 수 없는 이벤트 — 계측 구멍이 아니라 「그 손이 그 자리에 못 간다」다.
+ * `rank_wall` 은 봇이 장착 성까지만 수련해 8성 벽을 두드릴 일이 없고, `cheat` 는 봇 구동 중
+ * 강제 off 라 원리적으로 발화하지 않는다 (REQ-783).
+ */
+const BOT_UNREACHABLE = ['rank_wall', 'cheat'];
+
 /** 필드 결손 0 의 기계적 증명 — 스키마 대조 + 전 종류 방출 확인 (수용 케이스 11). */
 function auditEntries(entries) {
   const problems = [];
@@ -60,13 +67,20 @@ function auditEntries(entries) {
     seen.add(event);
     if (!(TIME_FIELD in rest)) problems.push(`#${i} ${event}: ${TIME_FIELD} 결손`);
     delete rest[TIME_FIELD];
+    // 스키마 판별 토큰은 적재 층이 붙이는 것이라 필드 대조의 대상이 아니다 — 값만 맞는지 본다 (REQ-791).
+    const declared = LOG_SCHEMA[event]?.sv;
+    if (declared !== undefined && rest[SCHEMA_VERSION_FIELD] !== declared) {
+      problems.push(`#${i} ${event}: ${SCHEMA_VERSION_FIELD} 가 ${declared} 이 아니다`);
+    }
+    delete rest[SCHEMA_VERSION_FIELD];
     try {
       validate(event, rest);
     } catch (err) {
       problems.push(`#${i} ${err.message}`);
     }
   });
-  const missing = Object.keys(LOG_SCHEMA).filter((event) => !seen.has(event));
+  const missing = Object.keys(LOG_SCHEMA)
+    .filter((event) => !seen.has(event) && !BOT_UNREACHABLE.includes(event));
   return { problems, missing, seen };
 }
 
@@ -305,7 +319,7 @@ function main(argv) {
     failures += 1;
   }
   if (!audit.missing.length) {
-    console.log(`✓ 통합 로그 스키마 ${Object.keys(LOG_SCHEMA).length}종 전부 최소 1회 emit`);
+    console.log(`✓ 통합 로그 스키마 ${Object.keys(LOG_SCHEMA).length - BOT_UNREACHABLE.length}종 전부 최소 1회 emit`);
   } else if (selfTest) {
     // 자체 생성 사이클은 계측 빌드 자체의 검증이라, 여기서 빠진 종은 계측 구멍이다 (REQ-601).
     console.error(`✗ 계측 사이클 미방출 ${audit.missing.length}종: ${audit.missing.join(', ')}`
