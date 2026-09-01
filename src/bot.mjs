@@ -1,20 +1,21 @@
 // 사람 속도 봇 v2 (REQ-605) — 손 대신 같은 입력 경로를 두드려 1사이클을 자동 완주한다.
 // 화면·시계·난수가 주입이라 브라우저와 헤드리스가 지연 모델·입력기·대련 루프를 공유한다
-// (화면 배선은 각자 갖는다 — 브라우저는 폴링, 헤드리스는 프레임이라 페이스가 정확히 같지는 않다).
+// 계측 배선도 `ui/wiring.mjs` 한 벌이고 각자 갖는 것은 렌더·구동뿐이다 — 브라우저는 폴링,
+// 헤드리스는 프레임이라 페이스가 정확히 같지는 않다.
 // 여기서 나오는 수치는 페이스 회귀 참고치이고 kill 판정 표본이 아니다.
 
 import { BALANCE, STYLES } from './balance.mjs';
 import {
-  canLearn, discipleRankOf, discipleStyles, responseWindowMs, selectDiscipleStyle, styleById,
+  canLearn, discipleRankOf, discipleStyles, selectDiscipleStyle, styleById,
 } from './core.mjs';
 import { createMatch, createVirtualTimer, pumpToEnd } from './ui/match.mjs';
 import { createSequenceInput } from './ui/sequence-input.mjs';
 import {
   ART_ID, DISPATCH_CHALLENGER, artRank, canTransmitNow, challengerOfStage, createSession,
-  equippedStyles, learnStyle, logEvent, logSessionMeta, logTimeout, masteryOf,
-  recordDispatchVerdict, recordDuelVerdict, recordEffectiveSuccess, runTransmit,
+  equippedStyles, learnStyle, logEvent, logSessionMeta, masteryOf, runTransmit,
   settleDispatch, settleDuel, simulateTraining,
 } from './ui/session.mjs';
+import { composeHooks, dispatchWiring, duelWiring, trainWiring } from './ui/wiring.mjs';
 
 const DIRS = ['U', 'D', 'L', 'R'];
 const between = (random, [min, max]) => min + random() * (max - min);
@@ -294,19 +295,19 @@ function headlessTrain({ session, styleId, pace, timer, random, maxWindows = 200
     press: (dir) => { const result = input.press(dir, 'keyboard'); if (result.fired) fired = result.fired; },
     reset: () => input.reset(),
   });
+  const wiring = trainWiring(session, { styleId, input });
 
   for (let i = 0; i < maxWindows; i += 1) {
     if (session.progress.styles[styleId].trainHits >= BALANCE.trainGraduateHits) return;
-    windowMs = responseWindowMs(style.seq.length, { accessibility: session.accessibility });
+    windowMs = wiring.onArm();
     startedAt = now();
     fired = null;
-    input.arm();
     hand.arm(input, null);
     while (!fired && now() - startedAt < windowMs) {
       timer.tick();
       hand.tick(input);
     }
-    if (fired) recordEffectiveSuccess(session, styleId, 'train');
+    if (fired) wiring.onFire();
     advance(timer, BALANCE.resolveMs);
   }
   throw new Error(`수련이 ${maxWindows} 창 안에 졸업하지 못했다: ${styleId}`);
@@ -341,14 +342,11 @@ function headlessDuel({ session, stage, pace, timer, random }) {
     openLen: () => Math.max(...equippedStyles(session).map((s) => s.seq.length)),
     accessibility: () => session.accessibility,
     timer,
-    hooks: {
-      onTelegraph() { input.arm(equippedStyles(session)); },
-      onWindow(view) { input.arm(equippedStyles(session)); hand.arm(input, view.telegraphed); },
+    hooks: composeHooks(duelWiring(session, { input }), {
+      onWindow(view) { hand.arm(input, view.telegraphed); },
       onTick() { hand.tick(input); },
-      onTimeout() { logTimeout(session, input); },
-      onVerdict(view) { recordDuelVerdict(session, view); },
       onEnd(view) { ended = view; },
-    },
+    }),
   });
 
   pumpToEnd(match, timer);
@@ -369,13 +367,10 @@ function headlessDispatch({ session, timer }) {
     openLen: () => Math.max(...styles.map((s) => s.seq.length)),
     accessibility: () => session.accessibility,
     timer,
-    hooks: {
-      onTelegraph() { disciple.arm(); },
-      // 파견 무지시 — 지시 인자를 주지 않는 것이 REQ-605 의 관전 조건이다.
-      onTick(view) { disciple.tick(view); },
-      onVerdict(view) { recordDispatchVerdict(session, view); },
+    // 파견 무지시 — 배선에 지시 콜백을 주지 않는 것이 REQ-605 의 관전 조건이다.
+    hooks: composeHooks(dispatchWiring(session, { disciple }), {
       onEnd(view) { ended = view; },
-    },
+    }),
   });
 
   logEvent(session, 'dispatch', { challenger: challenger.id });
