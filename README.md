@@ -36,7 +36,7 @@ node tests/harness.mjs        # 헤드리스 회귀 — 판정 등급·피해 �
 node tests/kill-readout.mjs   # kill 판독 — 봇 1사이클을 만들어 (a)(b)(d)·ignore_rate 를 산출
 ```
 
-`src/balance.mjs`(데이터) · `src/core.mjs`(순수 로직) · `src/log.mjs`(로그 스키마) · `src/bot.mjs`(봇·헤드리스 사이클)는 DOM 을 모르므로 브라우저와 하네스가 같은 모듈을 쓴다. DOM 을 아는 코드는 `src/ui/` 아래에 있고, 그중 입력기 `src/ui/sequence-input.mjs` 와 대련 루프 `src/ui/match.mjs` 는 DOM-free 라 하네스가 함께 회귀한다 — 파견 밸런스 게이트도 사본이 아니라 이 대련 루프를 가상 시계로 돌려 검증한다.
+`src/balance.mjs`(데이터) · `src/core.mjs`(순수 로직) · `src/log.mjs`(로그 스키마) · `src/bot.mjs`(봇·헤드리스 사이클)는 DOM 을 모르므로 브라우저와 하네스가 같은 모듈을 쓴다. DOM 을 아는 코드는 `src/ui/` 아래에 있고, 그중 입력기 `src/ui/sequence-input.mjs` · 대련 루프 `src/ui/match.mjs` · 세션 상태 `src/ui/session.mjs` · 계측 배선 `src/ui/wiring.mjs` 는 DOM-free 라 하네스가 함께 회귀한다 — 파견 밸런스 게이트도 사본이 아니라 이 대련 루프를 가상 시계로 돌려 검증하고, 화면과 헤드리스 사이클은 같은 계측 배선 한 벌 위에 각자의 렌더·구동만 얹는다.
 
 ### 로그 내보내기 · kill 판독
 
