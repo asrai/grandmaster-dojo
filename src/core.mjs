@@ -92,7 +92,10 @@ export function foeRankOf(challengerId) {
   return rank;
 }
 
-/** 도전자 내공 — 재대련 강화가 없는 초회 대면의 값이다. */
+/**
+ * 도전자 내공 — 재대련 강화가 **없는** 초회 대면의 값이다. 실전 경로는 강화가 실린
+ * `foeRank` 를 `createMatch` 로 받으므로, 이 export 는 그 파생 관계를 대조하는 하네스의 자리다.
+ */
 export const foePowerOf = (challengerId) => powerOf(foeRankOf(challengerId));
 
 /**

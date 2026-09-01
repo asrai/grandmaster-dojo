@@ -99,7 +99,7 @@ const SHAPE = {
   discipleStartRank: 'int1+', discipleRankMax: 'int1+', discipleFireRatio: 'ratio',
   winColorHintExchanges: 'int1+', simEfficiency: 'pos', simTrainSeconds: 'int1+', buttonHitPx: 'int1+',
   reward: 'map:int+', bot: 'bot', hp: 'map:int1+', challengerRank: 'map:int1+',
-  rematch: 'map:int1+', reversalDecay: 'reversalDecay',
+  rematch: 'map:int+', reversalDecay: 'reversalDecay',
 };
 
 /**
@@ -283,6 +283,28 @@ function checkRankOrder(values, bad) {
   }
 }
 
+/**
+ * 관통 하한의 도달 가능성 (REQ-771) — 역파는 절초 보유 도전자에게서만 나므로 그 무대의 최대
+ * 성 차가 감쇠의 정의역 상계다. 하한이 그보다 뒤에서 물리면 하한은 사표(死表)가 되어
+ * 「절초는 무서워야 한다」를 지키는 장치가 아무것도 없다.
+ */
+function checkReversalReach(values, bad) {
+  const decay = values.reversalDecay;
+  if (!isPlain(decay) || !isNum(decay.perRank) || !isNum(decay.pierceFloor)) return;
+  // 계수 0 은 감쇠를 끈 상태라 하한이 쓰일 자리 자체가 없다.
+  if (decay.perRank === 0) return;
+  const bindAt = Math.ceil((1 - decay.pierceFloor) / decay.perRank);
+  for (const c of CHALLENGERS) {
+    if (!c.styles.some((id) => FOE_STYLES.find((f) => f.id === id)?.finisher)) continue;
+    const selfMax = c.mode === 'duel' ? values.rankMax : values.discipleRankMax;
+    const spread = selfMax - (values.challengerRank?.[c.id] ?? 0);
+    if (isNum(selfMax) && bindAt > spread) {
+      bad('reversalDecay.pierceFloor', `${c.id} 무대의 최대 성 차 ${spread} 로는 하한 ${decay.pierceFloor} 에 닿지 못한다`
+        + ` (성 차 ${bindAt} 필요) — perRank 를 ${((1 - decay.pierceFloor) / spread).toFixed(4)} 이상으로 올려라`);
+    }
+  }
+}
+
 /** 콘텐츠 테이블과의 결합 — 이 세 축이 어긋나면 화면·판정이 조용히 빈 값을 읽는다. */
 function checkContentJoins(values, bad) {
   const challengerIds = CHALLENGERS.map((c) => c.id);
@@ -373,6 +395,7 @@ export function validateBalance(raw) {
   }
 
   checkRankOrder(values, bad);
+  checkReversalReach(values, bad);
   checkContentJoins(values, bad);
 
   if (errors.length > 0) {

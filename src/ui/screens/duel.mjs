@@ -4,12 +4,12 @@ import { BALANCE, STYLES } from '../../balance.mjs';
 import { attrMark, clear, el, hpBar } from '../dom.mjs';
 import { ATTR_VIEW, attrLabel, winAttrOf } from '../theme.mjs';
 import { SFX } from '../audio.mjs';
-import { finisherOf, foeRankOf, foeStyleById, styleById } from '../../core.mjs';
+import { finisherOf, foeStyleById, styleById } from '../../core.mjs';
 import { PHASE, createMatch } from '../match.mjs';
 import { createSequenceInput } from '../sequence-input.mjs';
 import {
-  ART_NAME, canEquip, challengerOfStage, duelAttemptOf, duelFoeRank, equip, equippedStyles,
-  logEvent, rankOfStyle,
+  ART_NAME, canEquip, challengerOfStage, duelAttemptOf, equip, equippedStyles,
+  logEvent, rankOfStyle, rematchBonusOf,
 } from '../session.mjs';
 import { hideVerdict, showGradeVerdict } from '../verdict-overlay.mjs';
 import { composeHooks, duelWiring, logDuelStart } from '../wiring.mjs';
@@ -75,7 +75,7 @@ export function renderDuelPreview(ctx) {
   const challenger = challengerOfStage(params.stage);
   const finisher = finisherOf(challenger);
   const attempt = duelAttemptOf(session, challenger.id);
-  const foeRank = duelFoeRank(session, challenger.id);
+  const bonus = rematchBonusOf(session, challenger.id);
   ctx.pad.detach();
   clear(root);
 
@@ -127,7 +127,7 @@ export function renderDuelPreview(ctx) {
   root.append(el('section', { class: 'card' }, [
     el('h2', { text: `도전자 예고 — ${challenger.name} ${challenger.stage}차` }),
     el('p', { class: 'dim', text: attempt > 1
-      ? `${attempt}번째 대면 — 상대가 성 +${foeRank - foeRankOf(challenger.id)} 만큼 여물었고 재대련 승리에 재화는 없다.`
+      ? `${attempt}번째 대면 — 상대가 성 +${bonus} 만큼 여물었고 재대련 승리에 재화는 없다.`
       : `${challenger.hanja} · 처음 만나는 상대다.` }),
     foeLineup(challenger),
     finisher ? finisherNotice(session, finisher) : null,

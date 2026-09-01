@@ -2,14 +2,14 @@
 
 import { BALANCE, STYLES } from '../../balance.mjs';
 import {
-  artById, canLearn, discipleStyleRank, discipleStyles, foeRankOf, ladderBandAt,
+  artById, canLearn, discipleStyleRank, discipleStyles, ladderBandAt,
 } from '../../core.mjs';
 import { arrowRow, attrMark, clear, el, tipAnchor } from '../dom.mjs';
 import { ATTR_VIEW } from '../theme.mjs';
 import {
   ART_ID, ART_NAME, DISPATCH_CHALLENGER, beatenChallengers, canEquip, canTransmitNow,
-  challengerOfStage, consumeTooltip, duelAttemptOf, duelFoeRank, equip, learnStyle, pickTooltip,
-  simulateTraining, unequip,
+  challengerOfStage, consumeTooltip, duelAttemptOf, equip, learnStyle, pickTooltip,
+  rematchBonusOf, simulateTraining, unequip,
 } from '../session.mjs';
 
 const rankLabel = (rank) => (rank >= BALANCE.rankMax ? `${rank}성 · 완벽히 깨달음` : `${rank}성`);
@@ -203,9 +203,9 @@ function rematchCard(ctx) {
   if (!beaten.length) return null;
   return el('section', { class: 'card' }, [
     el('h2', { text: '재대련' }),
-    el('p', { class: 'dim', text: '이긴 도전자는 다시 칠 수 있다 — 대면마다 상대가 한 성씩 여물고 재화는 나오지 않는다.' }),
+    el('p', { class: 'dim', text: `이긴 도전자는 다시 칠 수 있다 — 대면마다 상대가 한 성씩(+${BALANCE.rematch.rankCap} 까지) 여물고 재화는 나오지 않는다.` }),
     el('div', { class: 'rows' }, beaten.map((c) => {
-      const bonus = duelFoeRank(session, c.id) - foeRankOf(c.id);
+      const bonus = rematchBonusOf(session, c.id);
       return el('div', { class: 'row' }, [
         el('div', { class: 'row-head' }, [
           el('div', { class: 'row-name' }, [

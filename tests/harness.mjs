@@ -1501,7 +1501,7 @@ suite('사이클 시뮬 — 입문 · 12성 · cycle_done (REQ-310·603)', () =>
     console.log(`    ${scenario.label} 시나리오 (실현 ${(median(runs.map((r) => r.rate)) * 100).toFixed(0)}%): `
       + `해금 ${secs('unlock')} · 원터치 ${secs('oneTap')} · 12성 ${secs('twelve')} · `
       + `cycle_done ${secs('done')} [${span('done')}] · 화면 최대 ${Math.max(...runs.map((r) => r.screens))} · `
-      + `재대련 ${median(runs.map((r) => r.rematches))}회 (최심 ${Math.max(...runs.map((r) => r.deepest))}번째 대면)`);
+      + `재대련 진입 ${median(runs.map((r) => r.rematches))}회 (최심 ${Math.max(...runs.map((r) => r.deepest))}번째 대면)`);
   }
   // kill 임계는 여기서 단정하지 않는다 — required check 라 시드 튜닝만으로 이후 PR 이 전부 막힌다.
 });
@@ -1774,6 +1774,24 @@ suite('밸런스 데이터 스키마 (#45)', () => {
   throwsWith((r) => { r.rankLadder.finishRank = 12; }, 'rankLadder.finishRank: 12 가 적립 상한 10 의 다음 계단이 아니다', '결정타 계단이 적립 상한과 이어지지 않음');
   throwsWith((r) => { r.discipleRankMax = 13; }, 'discipleRankMax: 13 가 성 상한 12 를 넘는다', '제자 상한 > 성 상한');
   throwsWith((r) => { r.challengerRank['A-1'] = 13; }, 'challengerRank.A-1: 13 가 성 상한 12 를 넘는다', '도전자 성 > 성 상한');
+
+  // 관통 하한 도달 가능성 (REQ-771) — 계수를 내리면 하한이 사표가 되므로 로드 시점에 죽는다.
+  throwsWith((r) => { r.reversalDecay.perRank = 0.05; },
+    'reversalDecay.pierceFloor: A-4 무대의 최대 성 차 8 로는 하한 0.4 에 닿지 못한다', '관통 하한 사표');
+  throwsWith((r) => { r.reversalDecay.pierceFloor = 1; },
+    'reversalDecay.pierceFloor: 1 는 0 초과 1 미만의 관통 하한이 아니다', '하한 1 = 감쇠 없음');
+  throwsWith((r) => { r.reversalDecay.pierceFloor = 0; },
+    'reversalDecay.pierceFloor: 0 는 0 초과 1 미만의 관통 하한이 아니다', '하한 0 = 절초 무해');
+  // 감쇠를 끄는 것(계수 0)은 튜닝 선택지라 통과해야 한다 — 하한이 쓰일 자리 자체가 없다.
+  eq(validateBalance(restamp((() => { const r = clone(); r.reversalDecay.perRank = 0; return r; })())).values.reversalDecay.perRank,
+    0, '역파 감쇠 off (perRank 0) 는 JSON 만으로 표현된다');
+  // 재대련 강화 off 도 같은 축이다 — 「튜닝은 JSON 만 고치면 된다」가 이 두 항에서도 성립한다.
+  for (const key of ['rankGain', 'rankCap']) {
+    eq(validateBalance(restamp((() => { const r = clone(); r.rematch[key] = 0; return r; })())).values.rematch[key],
+      0, `재대련 ${key} 0 (강화 off) 은 JSON 만으로 표현된다`);
+  }
+  throwsWith((r) => { r.rematch.rankCap = BALANCE.rankMax; },
+    'rematch.rankCap: 최고 도전자 성 4 에 12 를 더하면 성 상한 12 를 넘는다', '재대련 상한이 성 상한을 넘김');
 
   // rev ↔ 값 결합 (#54) — 값만 고치고 rev 를 그대로 두면 로그 지문이 옛 판본을 달고 나간다.
   const stale = clone();

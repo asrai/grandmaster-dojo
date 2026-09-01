@@ -148,6 +148,10 @@ export const isRematch = (session, challengerId) => duelWinsOf(session, challeng
 export const duelFoeRank = (session, challengerId) =>
   rematchFoeRank(foeRankOf(challengerId), duelWinsOf(session, challengerId));
 
+/** 그 대면에 실린 강화량 — 예고 화면과 도장 재대련 카드가 같은 수를 말하게 하는 한 자리. */
+export const rematchBonusOf = (session, challengerId) =>
+  duelFoeRank(session, challengerId) - foeRankOf(challengerId);
+
 /** 이미 이긴 도전자 목록 — 도장 재대련 항목의 원본 (REQ-734). */
 export const beatenChallengers = (session) => DUEL_STAGES.filter((c) => isRematch(session, c.id));
 
@@ -166,8 +170,9 @@ export function beginDuel(session, challengerId) {
 }
 
 /**
- * @param {?string} [challenger] 그 교체가 일어난 도전자 예고 화면의 도전자 (도장에서는 null) —
- *   「A-4 를 앞두고 진짜 슬롯 판단을 했는가」가 REQ-736 의 지표라 장소가 곧 그 판별자다.
+ * @param {?string} [challenger] 그 교체가 일어난 도전자 예고 화면의 도전자 — 「A-4 를 앞두고
+ *   진짜 슬롯 판단을 했는가」가 REQ-736 의 지표라 장소가 곧 그 판별자다. null 은 예고 화면 **밖**
+ *   전부다 (도장 교체 · 적립이 부르는 `autoEquip`), 그 둘을 다시 가르는 것은 이 필드의 몫이 아니다.
  */
 export function equip(session, styleId, slotIdx, { challenger = null } = {}) {
   if (!canEquip(session, styleId)) return false;
