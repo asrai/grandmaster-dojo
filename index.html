@@ -182,7 +182,7 @@ button.ghost { background: transparent; }
 .verdict-pop { padding: 0 12px; text-align: center; text-shadow: 0 2px 16px #000, 0 0 32px #000; animation: verdict-pop .5s ease-out forwards; }
 .verdict-mark { display: block; font-size: 88px; font-weight: 800; line-height: 1; }
 .verdict-label { display: block; margin-top: 8px; font-size: 22px; font-weight: 800; letter-spacing: 3px; }
-/* 마크 없이 뜨는 판정은 라벨이 그 자리를 대신 이끈다 — 22px 로는 중앙 오버레이로 읽히지 않는다 (#46). */
+/* 마크 없이 뜨는 판정은 기본 라벨 크기로는 중앙 오버레이로 읽히지 않아, 라벨이 그 자리를 대신 이끈다 (#46). */
 .verdict-label.lead { margin-top: 0; font-size: 56px; letter-spacing: 6px; line-height: 1; }
 /* 위 .5s 는 폴백이고 실제 재생 시간은 showVerdict 가 인라인으로 덮는다 — 주입이 비어도 판정은 보여야 한다. */
 @keyframes verdict-pop {
