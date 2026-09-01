@@ -1,12 +1,15 @@
-// 결과 화면 (REQ-209·406) — 패배는 무손실이고, 재도전은 같은 차수를 HP 만 되돌려 다시 연다.
+// 결과 화면 (REQ-209·406·708) — 패배는 무손실이고, 재도전은 같은 차수를 HP 만 되돌려 다시 연다.
 
+import { styleById } from '../../core.mjs';
 import { clear, el } from '../dom.mjs';
 import { settleDispatch, settleDuel } from '../session.mjs';
 
 function duelLines(session, params) {
-  if (!params.win) return ['잃은 것은 없다 — 숙련·성·재화는 그대로다'];
+  if (!params.win) return ['잃은 것은 없다 — 성·재화는 그대로다'];
   const { reward, unlocked, cleared } = settleDuel(session, params);
   const lines = [`재화 +${reward} 元`];
+  // 어느 초식이 끝냈는지가 11·12성 계단의 유일한 인과라, 결과 화면이 그것을 말하지 않으면 규칙이 안 보인다.
+  if (params.finisher) lines.unshift(`결정타 — ${styleById(params.finisher).name}`);
   if (unlocked) lines.push(`${unlocked.name} ${unlocked.stage}차 해금`);
   else if (cleared) lines.push('사부 대련 전 차수 격파 — 남은 것은 전수와 파견이다');
   return lines;
@@ -15,9 +18,6 @@ function duelLines(session, params) {
 function dispatchLines(session, params) {
   const { reward } = settleDispatch(session, params);
   const lines = [params.win ? `재화 +${reward} 元` : '도전자는 도주했다 — 잃은 것은 없다'];
-  lines.push(params.rankTo > params.rankFrom
-    ? `제자 성 ${params.rankFrom} → ${params.rankTo}`
-    : `제자 성 ${params.rankTo} (변화 없음)`);
   return lines;
 }
 

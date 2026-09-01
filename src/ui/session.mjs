@@ -4,8 +4,9 @@
 import { ART_SETS, BALANCE, BALANCE_REV, CHALLENGERS, STYLES } from '../balance.mjs';
 import { createLogBuffer, validate } from '../log.mjs';
 import {
-  applyEffectiveSuccess, canTransmit, createDisciple, createProgress, discipleRankOf,
-  isEffectiveSuccess, learn, masteryPct, rankForPts, rankOf, styleById, transmit,
+  accrueDiscipleStyle, applyEffectiveSuccess, applyOutcome, artStyles, canEquipRank, canTransmit,
+  createDisciple, createProgress, discipleStyleRank, isEffectiveSuccess, learn, setStyleRank,
+  styleById, styleRank, trainHitsToNext, transmit,
 } from '../core.mjs';
 
 /** 내보낸 로그의 판독 계약 이름 — `tests/kill-readout.mjs` 가 이 값으로 파일을 받아들인다. */
@@ -72,6 +73,10 @@ export function createSession({ now } = {}) {
     label: '문하생',
     transmitted: false,
     tooltip: createTooltipState(),
+    // 한 방문에 채우는 수련 창 수 — 누적이 아니라 방문 단위라야 도장↔수련 왕복이 리듬이 된다.
+    trainVisit: { styleId: null, hits: 0 },
+    cheat: createCheatState(),
+    botRunning: false,
   };
 }
 
@@ -108,10 +113,9 @@ export function consumeTooltip(state, id) {
   if (state.target?.id === id) state.target = null;
 }
 
-export const masteryOf = (session, styleId) => masteryPct(session.progress, styleId);
-export const artRank = (session) => rankOf(session.progress, ART_ID);
+export const rankOfStyle = (session, styleId) => styleRank(session.progress, styleId);
 export const equippedStyles = (session) => session.slots.filter(Boolean).map(styleById);
-export const canEquip = (session, styleId) => masteryOf(session, styleId) >= BALANCE.equipMasteryPct;
+export const canEquip = (session, styleId) => canEquipRank(rankOfStyle(session, styleId));
 export const challengerOfStage = (stage) => DUEL_STAGES[stage - 1];
 export const isLastStage = (stage) => stage >= DUEL_STAGES.length;
 
@@ -145,21 +149,16 @@ export function unequip(session, slotIdx) {
 }
 
 /**
- * 빈 슬롯 채우기 + 입문 전 자리 양보 (REQ-305·310). 입문 전 구간에서는 장착이 선택이 아니다 —
- * 전 초식 숙련 100% 가 성 게이지를 여는 필수 경로라, 아직 덜 찬 초식이 이미 100% 인 초식의
- * 자리를 받는다 (#38). 전부 100% 가 되면 교체가 멈추고 그때부터 슬롯 구성이 진짜 선택이 된다.
+ * 빈 슬롯 자동 채움 (REQ-714) — 자리 양보는 폐지다. 입문 소멸로 「덜 찬 초식에 자리를 준다」는
+ * 근거가 사라졌고, 자동 교체는 슬롯 3·초식 4 가 만드는 선택을 대신 해 버린다.
  */
 export function autoEquip(session) {
   for (const style of STYLES) {
     if (session.slots.includes(style.id)) continue;
     if (!session.progress.styles[style.id].learned) continue;
     if (!canEquip(session, style.id)) continue;
-    if (session.slots.includes(null)) { equip(session, style.id); continue; }
-    if (masteryOf(session, style.id) >= BALANCE.masteryFullPct) continue;
-    // 자리를 내주는 것은 이미 100% 인 초식뿐 — 미완성끼리는 서로의 진행을 뺏지 않는다.
-    const full = session.slots.findIndex((id) => id && masteryOf(session, id) >= BALANCE.masteryFullPct);
-    if (full < 0) continue;
-    equip(session, style.id, full);
+    if (!session.slots.includes(null)) continue;
+    equip(session, style.id);
   }
 }
 
@@ -168,29 +167,48 @@ export function learnStyle(session, styleId) {
   autoEquip(session);
 }
 
-/** 유효 성공 1회 적립 + 그 변화분을 통합 로그로 흘린다 (REQ-301~304). */
-export function recordEffectiveSuccess(session, styleId, mode) {
-  const { progress, changes } = applyEffectiveSuccess(session.progress, styleId, { mode });
-  session.progress = progress;
-  if (changes.mastery) logEvent(session, 'mastery', changes.mastery);
-  if (changes.initiate) logEvent(session, 'initiate', changes.initiate);
-  if (changes.rank) logEvent(session, 'rank', changes.rank);
+/** 사부의 성 변화분을 통합 로그로 흘린다 — 적립과 계단이 같은 자리를 쓴다 (REQ-702·704·706·711). */
+function emitMasterChanges(session, changes) {
+  if (changes.wall) logEvent(session, 'rank_wall', { actor: 'master', ...changes.wall });
+  if (changes.rank) logEvent(session, 'rank', { actor: 'master', ...changes.rank });
   if (changes.unlock) logEvent(session, 'unlock', changes.unlock);
   autoEquip(session);
   return changes;
 }
 
-/** 제자도 같은 성 포인트 룰로 오르되 상한이 10 이다 (REQ-401) — 12성은 유저만의 증표다. */
-export function accrueDiscipleRank(session, styleId) {
-  const art = session.disciple.arts[ART_ID];
-  if (!art) return null;
-  const from = discipleRankOf(session.disciple, ART_ID);
-  art.rankPts += BALANCE.rankPtsPerStyle[styleId];
-  const to = rankForPts(art.rankPts, { max: BALANCE.discipleRankMax });
-  if (to === from) return null;
-  logEvent(session, 'rank', { style_set: ART_ID, from, to, pts: art.rankPts });
-  return { from, to };
+/** 유효 성공 1회 적립 (REQ-702·703) — 수련 방문 계수도 이 한 자리를 지난다. */
+export function recordEffectiveSuccess(session, styleId, mode) {
+  const { progress, changes } = applyEffectiveSuccess(session.progress, styleId, { mode });
+  session.progress = progress;
+  if (mode === 'train' && session.trainVisit.styleId === styleId) session.trainVisit.hits += 1;
+  return emitMasterChanges(session, changes);
 }
+
+/** 결정타·완파가 여는 계단 (REQ-704) — 적립이 멈춘 10성 위는 이 경로로만 오른다. */
+export function recordOutcomeRank(session, styleId, outcome) {
+  const { progress, changes } = applyOutcome(session.progress, styleId, outcome);
+  session.progress = progress;
+  return emitMasterChanges(session, changes);
+}
+
+/** 제자도 같은 사다리를 타되 상한이 10 이다 (REQ-705) — 11·12성은 자동 전투가 하지 않는 판단이다. */
+export function accrueDiscipleRank(session, styleId, { via = 'mission' } = {}) {
+  const result = accrueDiscipleStyle(session.disciple, ART_ID, styleId, { mode: 'duel' });
+  session.disciple = result.disciple;
+  if (result.to === null || result.to === result.from) return null;
+  logEvent(session, 'rank', { actor: 'disciple', style: styleId, from: result.from, to: result.to, via });
+  return { from: result.from, to: result.to };
+}
+
+/** 수련 방문 시작 (REQ-715) — 방문 계수의 유일한 초기화 지점. */
+export function beginTrainVisit(session, styleId) {
+  session.trainVisit = { styleId, hits: 0 };
+}
+
+export const trainVisitDone = (session) => session.trainVisit.hits >= BALANCE.trainGraduateHits;
+
+/** 이 초식의 다음 계단까지 남은 수련 완주 수 — 수련 화면의 진척 표시가 읽는다. */
+export const trainHitsLeft = (session, styleId) => trainHitsToNext(session.progress.styles[styleId]);
 
 export function addCoins(session, delta, reason) {
   session.coins += delta;
@@ -225,19 +243,83 @@ export function logTimeout(session, input) {
   logEvent(session, 'timeout', { styleTop: input.top()?.id ?? null, buffer_len: input.buffer.length });
 }
 
-/** 한 수의 판정을 로그와 성장에 함께 반영한다 — 대련 화면과 헤드리스 봇이 이 한 자리를 공유한다. */
+/**
+ * 한 수의 판정을 로그와 성장에 함께 반영한다 — 대련 화면과 헤드리스 봇이 이 한 자리를 공유한다.
+ * 적립과 계단을 한 수에 한 번씩만 부르는 것이 REQ-704 의 「한 수 최대 1계단」이다.
+ */
 export function recordDuelVerdict(session, view) {
   logVerdict(session, view.verdict, 'user');
-  if (!view.fire || !isEffectiveSuccess(view.verdict.grade)) return null;
-  return recordEffectiveSuccess(session, view.fire.style.id, 'duel');
+  if (!view.fire) return null;
+  const styleId = view.fire.style.id;
+  const finish = Boolean(view.outcome?.over && view.outcome.win);
+  const crush = view.verdict.grade === 'crush';
+  if (finish) logFinish(session, view, styleId);
+  const accrued = isEffectiveSuccess(view.verdict.grade)
+    ? recordEffectiveSuccess(session, styleId, 'duel') : null;
+  const promoted = recordOutcomeRank(session, styleId, { finish, crush });
+  return promoted.rank ? promoted : accrued;
 }
 
-/** 파견 쪽 짝 — 제자는 숙련이 없고 성 포인트만 오른다 (REQ-401). */
+/**
+ * 결정타 기록 (REQ-708) — 어느 초식이 끝냈는지의 인과를 남긴다. `intended` 는 그 수가 11성
+ * 계단을 노리던 초식에 떨어졌는가다: 결정타의 통제 불가는 의도된 난이도이고 재는 것은 배분이다.
+ */
+function logFinish(session, view, styleId) {
+  logEvent(session, 'finish', {
+    style: styleId,
+    challenger: view.challenger.id,
+    intended: rankOfStyle(session, styleId) === BALANCE.rankLadder.finishRank - 1,
+  });
+}
+
+/** 파견 쪽 짝 — 제자는 같은 사다리를 상한 10성으로 탄다 (REQ-705). */
 export function recordDispatchVerdict(session, view) {
   logVerdict(session, view.verdict, 'disciple');
   if (!view.fire || !isEffectiveSuccess(view.verdict.grade)) return null;
   return accrueDiscipleRank(session, view.fire.style.id);
 }
+
+// ---------------------------------------------------------- 개발자 치트 (REQ-781~783)
+
+export const createCheatState = () => ({ enabled: false, used: false });
+
+/**
+ * 치트 패널 노출 토글 (REQ-781·783). 봇이 도는 동안은 켜지지 않는다 — 페이스 표본에 주입이
+ * 섞이면 그 회차가 무엇을 잰 것인지 로그로 가를 수 없다.
+ */
+export function setCheatEnabled(session, enabled) {
+  session.cheat.enabled = Boolean(enabled) && !session.botRunning;
+  return session.cheat.enabled;
+}
+
+/** 봇 구동 상태 — 치트 강제 off 의 근거이자 유일한 전환 지점이다 (REQ-783). */
+export function setBotRunning(session, running) {
+  session.botRunning = Boolean(running);
+  if (session.botRunning) session.cheat.enabled = false;
+}
+
+/**
+ * 치트 주입 (REQ-781·782) — 세션에 지워지지 않는 플래그를 남긴다. 주입은 축적을 건너뛰므로
+ * 그 세션은 balance-log 회차와 kill (b)(c)(d) 표본에서 통째로 빠진다.
+ * @param {() => void} mutate 세션 상태를 실제로 바꾸는 일 — 로그·플래그와 원자적으로 묶인다
+ */
+export function applyCheat(session, action, mutate) {
+  if (!session.cheat.enabled) return false;
+  mutate();
+  session.cheat.used = true;
+  logEvent(session, 'cheat', { action, session_flagged: true });
+  return true;
+}
+
+/** 초식 성 직접 주입 — 전수 직전 등 임의 시점에서 플레이를 시작하기 위한 개발·QA 경로다. */
+export function cheatSetStyleRank(session, styleId, rank) {
+  return applyCheat(session, `rank:${styleId}=${rank}`, () => {
+    session.progress = setStyleRank(session.progress, styleId, rank);
+    autoEquip(session);
+  });
+}
+
+export const isCheatFlagged = (session) => session.cheat.used;
 
 /** 대련 결과 정산 (REQ-209·604) — 문구는 화면이 만들고 여기서는 상태만 움직인다. */
 export function settleDuel(session, { win, stage }) {
@@ -272,6 +354,8 @@ export function exportPayload(session, { exportedAt = new Date().toISOString() }
     accessibility: session.accessibilityAtDone?.on ?? session.accessibility,
     accessibility_toggles: session.accessibilityAtDone?.toggles ?? session.accessibilityToggles,
     balance: balanceDigest(),
+    // 주입 세션은 축적을 건너뛴 표본이라 판독기가 회차에서 통째로 빼야 한다 (REQ-782).
+    cheat_flagged: isCheatFlagged(session),
     log_violations: session.logViolations.map((v) => ({ ...v })),
     entries: session.log.entries.map((e) => ({ ...e })),
   };
