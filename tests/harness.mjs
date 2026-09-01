@@ -1007,8 +1007,12 @@ suite('계측 배선 공유 (#11)', () => {
     const source = readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
     // 주석·문자열의 심볼 언급은 배선이 아니다 — required check 를 오탐으로 막지 않게 import 만 본다.
     const imports = (source.match(/^import[\s\S]*?';$/gm) ?? []).join('\n');
+    const body = source.replace(/^import[\s\S]*?';$/gm, '');
     deepEq(expected.filter((name) => imports.includes(name)), expected,
-      `${path} 가 공유 배선을 그대로 소비한다`);
+      `${path} 가 공유 배선을 import 한다`);
+    // 쓰이지 않는 import 를 남긴 채 hook 을 인라인으로 되돌리는 우회를 막는다.
+    deepEq(expected.filter((name) => body.includes(`${name}(`)), expected,
+      `${path} 가 그 배선을 실제로 호출한다`);
     ok(/from '[^']*\/wiring\.mjs'/.test(imports), `${path} 의 배선 출처가 wiring.mjs 다`);
     deepEq(INSTRUMENTS.filter((name) => imports.includes(name)), [],
       `${path} 는 계측 함수를 직접 쥐지 않는다 — 배선은 한 벌이어야 한다`);
