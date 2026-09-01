@@ -985,14 +985,19 @@ suite('계측 배선 공유 (#11)', () => {
   const bare = composeHooks({ onTick: () => '계측만' });
   eq(bare.onTick(), '계측만', '렌더를 얹지 않아도 계측은 그대로 돈다');
 
+  // 계측 반환값은 인자 뒤에 붙는다 — hook 인자가 늘면 얹은 쪽의 그 자리도 함께 밀린다.
+  const wide = composeHooks({ onVerdict: () => '계측값' }, { onVerdict: (...got) => calls.push(got.join('|')) });
+  wide.onVerdict('a', 'b');
+  eq(calls.at(-1), 'a|b|계측값', '계측 인자가 늘어도 반환값이 마지막 자리를 지킨다');
+
   // 위 단정은 팩토리가 바뀔 때만 red 다. 이슈가 이름 붙인 재발 경로는 그 반대편 —
   // 화면이 팩토리를 우회해 자기 hook 에 계측을 직접 다는 것 — 이라 소비처를 원문으로 잠근다.
   // 화면 모듈은 DOM 을 만져 하네스가 import 할 수 없으므로 원문 대조가 유일한 수단이다.
   const CONSUMERS = {
     'src/ui/screens/train.mjs': ['trainWiring'],
     'src/ui/screens/duel.mjs': ['composeHooks', 'duelWiring'],
-    'src/ui/screens/dispatch.mjs': ['composeHooks', 'dispatchWiring'],
-    'src/bot.mjs': ['composeHooks', 'dispatchWiring', 'duelWiring', 'trainWiring'],
+    'src/ui/screens/dispatch.mjs': ['composeHooks', 'dispatchWiring', 'logDispatchStart'],
+    'src/bot.mjs': ['composeHooks', 'dispatchWiring', 'duelWiring', 'logDispatchStart', 'trainWiring'],
   };
   // 로깅·성장을 실제로 움직이는 함수 — 화면이 이 이름을 직접 쥐면 배선이 두 벌이 된다.
   const INSTRUMENTS = [
@@ -1000,10 +1005,12 @@ suite('계측 배선 공유 (#11)', () => {
   ];
   for (const [path, expected] of Object.entries(CONSUMERS)) {
     const source = readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
-    const imported = expected.filter((name) => source.includes(name));
-    deepEq(imported, expected, `${path} 가 공유 배선을 그대로 소비한다`);
-    ok(/from '[^']*\/wiring\.mjs'/.test(source), `${path} 의 배선 출처가 wiring.mjs 다`);
-    deepEq(INSTRUMENTS.filter((name) => source.includes(name)), [],
+    // 주석·문자열의 심볼 언급은 배선이 아니다 — required check 를 오탐으로 막지 않게 import 만 본다.
+    const imports = (source.match(/^import[\s\S]*?';$/gm) ?? []).join('\n');
+    deepEq(expected.filter((name) => imports.includes(name)), expected,
+      `${path} 가 공유 배선을 그대로 소비한다`);
+    ok(/from '[^']*\/wiring\.mjs'/.test(imports), `${path} 의 배선 출처가 wiring.mjs 다`);
+    deepEq(INSTRUMENTS.filter((name) => imports.includes(name)), [],
       `${path} 는 계측 함수를 직접 쥐지 않는다 — 배선은 한 벌이어야 한다`);
   }
 });

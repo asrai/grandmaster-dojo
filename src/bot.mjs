@@ -15,7 +15,9 @@ import {
   equippedStyles, learnStyle, logEvent, logSessionMeta, masteryOf, runTransmit,
   settleDispatch, settleDuel, simulateTraining,
 } from './ui/session.mjs';
-import { composeHooks, dispatchWiring, duelWiring, trainWiring } from './ui/wiring.mjs';
+import {
+  composeHooks, dispatchWiring, duelWiring, logDispatchStart, trainWiring,
+} from './ui/wiring.mjs';
 
 const DIRS = ['U', 'D', 'L', 'R'];
 const between = (random, [min, max]) => min + random() * (max - min);
@@ -373,7 +375,7 @@ function headlessDispatch({ session, timer }) {
     }),
   });
 
-  logEvent(session, 'dispatch', { challenger: challenger.id });
+  logDispatchStart(session, challenger);
   pumpToEnd(match, timer);
   return ended;
 }

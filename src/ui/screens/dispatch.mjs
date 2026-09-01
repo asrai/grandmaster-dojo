@@ -8,8 +8,8 @@ import { attrMark, clear, el, hpBar } from '../dom.mjs';
 import { ATTR_VIEW, GRADE_VIEW, attrLabel, gradeLabel, winAttrOf } from '../theme.mjs';
 import { SFX } from '../audio.mjs';
 import { createMatch } from '../match.mjs';
-import { ART_ID, ART_NAME, DISPATCH_CHALLENGER, logEvent } from '../session.mjs';
-import { composeHooks, dispatchWiring } from '../wiring.mjs';
+import { ART_ID, ART_NAME, DISPATCH_CHALLENGER } from '../session.mjs';
+import { composeHooks, dispatchWiring, logDispatchStart } from '../wiring.mjs';
 
 const styleIcon = (style, extra = '') => el('div', {
   class: `cand${extra ? ` ${extra}` : ''}`, style: `--attr:${ATTR_VIEW[style.attr].color}`,
@@ -159,7 +159,7 @@ export function startDispatch(ctx) {
     }),
   });
 
-  logEvent(session, 'dispatch', { challenger: challenger.id });
+  logDispatchStart(session, challenger);
   match.start();
   return () => match.stop();
 }

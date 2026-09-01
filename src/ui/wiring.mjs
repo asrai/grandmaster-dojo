@@ -1,10 +1,12 @@
 // 계측 배선 (#11) — 「어떤 hook 이 무엇을 로깅·성장시키는가」의 유일한 자리.
-// 헤드리스 사이클이 그대로 import 하므로 DOM 은 여기 들어올 수 없고, 화면은 계측 위에
-// 자기 렌더를 얹는다 (`composeHooks`) — 방향이 반대가 되면 두 배선이 다시 갈라진다.
+// 헤드리스 사이클이 그대로 import 하므로 DOM 은 여기 들어올 수 없고, 호출부는 계측 위에
+// 자기 렌더·구동을 얹는다 (`createMatch` 를 쓰는 두 축은 `composeHooks`, 수련은 직접 호출)
+// — 방향이 반대가 되면 두 배선이 다시 갈라진다.
 
 import { responseWindowMs, styleById } from '../core.mjs';
 import {
-  equippedStyles, logTimeout, recordDispatchVerdict, recordDuelVerdict, recordEffectiveSuccess,
+  equippedStyles, logEvent, logTimeout, recordDispatchVerdict, recordDuelVerdict,
+  recordEffectiveSuccess,
 } from './session.mjs';
 
 /**
@@ -19,7 +21,8 @@ export function composeHooks(wiring, overlay = {}) {
   const names = [...new Set([...Object.keys(wiring), ...Object.keys(overlay)])];
   return Object.fromEntries(names.map((name) => [name, (...args) => {
     const measured = wiring[name]?.(...args);
-    overlay[name]?.(...args, measured);
+    // 상속 멤버가 hook 으로 불리지 않도록 own key 로만 얹는다.
+    if (Object.hasOwn(overlay, name)) overlay[name](...args, measured);
     return measured;
   }]));
 }
@@ -40,6 +43,10 @@ export function trainWiring(session, { styleId, input }) {
   };
 }
 
+/** 파견 진입 기록 (REQ-403) — 사이클 로그의 파견 구간 시작점이라 두 호출부가 같은 자리를 쓴다. */
+export const logDispatchStart = (session, challenger) =>
+  logEvent(session, 'dispatch', { challenger: challenger.id });
+
 /** 대련 배선 (REQ-201·206~211) — 유저의 손이 치는 창의 계측. */
 export function duelWiring(session, { input }) {
   return {
@@ -55,7 +62,8 @@ export function duelWiring(session, { input }) {
 /**
  * 파견 배선 (REQ-403~407) — 손을 놓고 보는 창이라 계측이 곧 제자의 실행 시점이다.
  * @param {object} p.disciple `createDiscipleHand` 의 손
- * @param {() => ?object} [p.instructed] 그 수의 지시 초식 — 관전만 하는 호출부는 주지 않는다
+ * @param {() => ?object} [p.instructed] 그 수의 지시 초식 — 관전만 하는 호출부는 주지 않는다.
+ *   그 수 한정이라 호출부가 `onTelegraph` 에서 비워야 한다 (안 비우면 직전 수의 지시가 이어진다).
  */
 export function dispatchWiring(session, { disciple, instructed = () => null }) {
   return {
