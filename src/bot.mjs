@@ -43,8 +43,16 @@ export function createPace(random = Math.random, seed = BALANCE.bot) {
 }
 
 /** 이 창에 낼 초식 — 화면이 상시 병기하는 「이기는 색」을 그대로 따르는 선택이다 (REQ-206). */
-const chooseStyle = (input, foeStyle) =>
-  selectDiscipleStyle({ styles: input.candidates, foeStyle, rankOf: () => 0 });
+const chooseStyle = (input, foeStyle, rankOf) =>
+  selectDiscipleStyle({ styles: input.candidates, foeStyle, rankOf });
+
+/**
+ * 키우는 손의 우선순위 — 「이기는 색」이 같은 후보가 둘이면 **덜 여문** 초식을 낸다. 적립은 실제로
+ * 낸 초식에만 오므로, 동률을 슬롯 순으로 깨면 같은 속성의 앞 슬롯 하나가 창을 독점하고 뒤 초식은
+ * 영영 굶는다 (실측: 유운보·파운현월이 둘 다 쾌라 A-4 에서 유운보가 8성에 고착, 시드 99 등 6건 미완주).
+ * `selectDiscipleStyle` 은 큰 값을 먼저 고르므로 성을 뒤집어 넘기는 것이 그 표현이다.
+ */
+const growthOrder = (session) => (style) => -rankOfStyle(session, style.id);
 
 /** 계단 하나를 앞둔 성인가 — 결정타(11) 와 완파(12) 는 적립이 아니라 사건으로만 열린다 (REQ-704). */
 const atLadderStep = (rank) =>
@@ -83,11 +91,14 @@ function strayDir(input, random) {
  * @param {() => void} p.reset
  * @param {(input: object, foeStyle: ?object) => ?object} [p.prefer] 그 창에서 강제할 초식
  *   (없으면 「이기는 색」 선택) — 제자 손처럼 계단을 밀 이유가 없는 호출부는 주지 않는다
+ * @param {(style: object) => number} [p.rankOf] 동률 후보 사이의 우선순위 (큰 값이 먼저)
  *
  * 원터치 성이라도 탭하지 않는다 — 원터치 창은 kill (b) 분모에서 빠지므로,
  * 탭하는 봇은 자기가 재려던 완주율 표본을 스스로 지운다 (REQ-703·793).
  */
-export function createHand({ pace, now, press, reset, random = Math.random, prefer = () => null }) {
+export function createHand({
+  pace, now, press, reset, random = Math.random, prefer = () => null, rankOf = () => 0,
+}) {
   let keys = [];
   let at = 0;
   let readyAt = 0;
@@ -96,7 +107,7 @@ export function createHand({ pace, now, press, reset, random = Math.random, pref
   return {
     /** 창이 열릴 때 한 번 — 낼 초식과 이번에 놓칠 키를 그 자리에서 정한다. */
     arm(input, foeStyle) {
-      const style = prefer(input, foeStyle) ?? chooseStyle(input, foeStyle);
+      const style = prefer(input, foeStyle) ?? chooseStyle(input, foeStyle, rankOf);
       keys = [];
       at = 0;
       strayed = false;
@@ -244,7 +255,10 @@ export function createBot({
   device = 'keyboard', random = Math.random, onDone = () => {},
 }) {
   const pace = createPace(random);
-  const hand = createHand({ pace, now: clock.now, press, reset, random, prefer: preferLadderPush(session) });
+  const hand = createHand({
+    pace, now: clock.now, press, reset, random,
+    prefer: preferLadderPush(session), rankOf: growthOrder(session),
+  });
   let cycleDone = () => false;
   let timer = 0;
   let running = false;
@@ -404,6 +418,7 @@ function headlessDuel({ session, stage, pace, timer, random }) {
     now,
     random,
     prefer: preferLadderPush(session),
+    rankOf: growthOrder(session),
     press: (dir) => { const result = input.press(dir, 'keyboard'); if (result.fired) match.fire(result.fired); },
     reset: () => input.reset(),
   });

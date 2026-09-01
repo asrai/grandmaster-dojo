@@ -1506,6 +1506,39 @@ suite('사이클 시뮬 — 입문 · 12성 · cycle_done (REQ-310·603)', () =>
   // kill 임계는 여기서 단정하지 않는다 — required check 라 시드 튜닝만으로 이후 PR 이 전부 막힌다.
 });
 
+// ------- 14-b. 손 굶주림 회귀 (REQ-704·731) — 계단이 아닌 초식도 창을 얻는가
+
+/**
+ * 「이기는 색」 동률을 슬롯 순으로 깨면 같은 속성의 앞 슬롯이 창을 독점해 뒤 초식이 적립에서
+ * 굶는다 — A-4 의 예고에 강(α)이 하나뿐이라 쾌 두 초식(유운보·파운현월)이 정확히 그 자리에 선다.
+ * 아래 6시드는 그 고착으로 사이클이 화면 상한을 넘던 실측 표본이다 (L5d 적대 리뷰 지적).
+ */
+suite('손 굶주림 회귀 — 계단 밖 초식의 적립 (REQ-704·731)', () => {
+  const STARVED_SEEDS = [99, 153, 155, 318, 387, 496];
+  for (const seed of STARVED_SEEDS) {
+    const session = createSession({ now: () => 0 });
+    let screens = null;
+    try {
+      ({ screens } = runHeadlessCycle({ session, random: createSeededRandom(seed) }));
+    } catch (err) {
+      failures += 1;
+      console.error(`  ✗ 시드 ${seed} — ${err.message}`);
+    }
+    ok(screens !== null, `시드 ${seed} — 1사이클이 화면 상한 안에서 끝난다`);
+    const ranks = STYLES.map((st) => styleRank(session.progress, st.id));
+    deepEq([...new Set(ranks)], [BALANCE.rankMax],
+      `시드 ${seed} — 전 초식이 12성에 닿는다 (성 ${ranks.join('/')})`);
+  }
+  // 굶주림의 판별자는 「낸 초식의 분포」다 — 어느 초식도 사이클 전체에서 한 자릿수로 밀리지 않는다.
+  const probe = createSession({ now: () => 0 });
+  runHeadlessCycle({ session: probe, random: createSeededRandom(STARVED_SEEDS[0]) });
+  const fired = probe.log.entries.filter((e) => e.event === 'fire');
+  for (const style of STYLES) {
+    const n = fired.filter((e) => e.styleId === style.id).length;
+    ok(n >= BALANCE.rankMax, `${style.name} 이 사이클에서 ${n}회 발동 — 적립에 필요한 창을 얻는다`);
+  }
+});
+
 // ----------------------------------------------- 15. 도장 유도 툴팁 대상 (#15)
 
 suite('도장 유도 툴팁 대상 (#15)', () => {
