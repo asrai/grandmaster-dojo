@@ -33,7 +33,7 @@ python3 -m http.server 8000
 
 - 수치 정본은 `src/balance.data.json` 하나다 — 값을 고치고 브라우저를 새로고침(또는 `node tests/kill-readout.mjs` 재실행)하면 브라우저와 헤드리스가 같은 값을 본다. 불량 값은 폴백 없이 즉시 죽고, 어느 필드가 왜 틀렸는지가 화면(또는 stderr)에 뜬다.
 - 실험 변형은 최상위 `rev` 를 바꿔 구분한다 — 내보낸 로그의 밸런스 지문에 `rev` 가 박혀 어느 변형에서 나온 회차인지 드러난다.
-- 확정 반영만 커밋한다: JSON + `tests/harness.mjs` 의 파라미터 census 시드 + `docs/balance-log.md` 회차를 한 PR 로 (하네스가 강제한다).
+- 확정 반영만 커밋한다: JSON + `tests/harness.mjs` 의 파라미터 census 시드(하네스가 강제한다) + `docs/balance-log.md` 회차를 한 PR 로.
 
 ## 검증
 

@@ -936,6 +936,7 @@ suite('재화 · 정산 · 내보내기 (REQ-602·604·209)', () => {
 
   const payload = exportPayload(session, { exportedAt: '2026-09-02T00:00:00.000Z' });
   eq(payload.schema, EXPORT_SCHEMA, '내보내기 스키마 이름');
+  eq(payload.balance.rev, BALANCE_REV, '밸런스 지문에 판본 rev 가 실린다 (#45)');
   eq(payload.coins, session.coins, '재화 스냅샷 동봉');
   eq(payload.entries.length, session.log.entries.length, '세션 버퍼 전량이 실린다');
   deepEq(payload.log_violations, [], '위반 0건이면 빈 배열');
@@ -1315,6 +1316,9 @@ suite('밸런스 데이터 스키마 (#45)', () => {
   throwsWith((r) => { r.rev = ''; }, 'rev: "" 는 비어 있지 않은 판본 문자열이 아니다', 'rev 공백');
   throwsWith((r) => { delete r.damageByLen['5']; }, 'damageByLen: 초식 길이 5 의 피해가 없다', 'damageByLen 이 초식 길이를 못 덮음');
   throwsWith((r) => { r.nonesuch = 1; }, 'nonesuch: 스키마에 없는 필드', '스키마 밖 필드');
+  throwsWith((r) => { delete r.challengerPower.A; }, 'challengerPower: 키 "A" 누락', '도전자 군 위력 키 누락');
+  throwsWith((r) => { delete r.reward.dispatchWin; }, 'reward: 키 "dispatchWin" 누락', '보상 키 누락');
+  throwsWith((r) => { delete r.hintDelayMs.duel; }, 'hintDelayMs: 키 "duel" 누락', '힌트 지연 키 누락');
 
   // 오류는 전건 수집 후 한 번에 보고한다 — 첫 건에서 멈추면 고칠 때마다 재실행이 필요하다.
   const many = clone();

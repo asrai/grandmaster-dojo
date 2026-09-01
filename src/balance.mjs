@@ -108,6 +108,13 @@ const GRADE_OPENINGS = [null, 'foe', 'self'];
 const BOT_RANGES = ['reactionMs', 'keyMs', 'navMs'];
 const BOT_SCALARS = ['missRate', 'misHitRate', 'pollMs'];
 
+/** 소비처가 키로 직접 인덱싱하는 map — 키가 빠지면 값이 undefined 로 흘러 수식이 조용히 NaN 이 된다. */
+const REQUIRED_MAP_KEYS = {
+  hintDelayMs: ['duel', 'train'],
+  reward: ['duelWin', 'dispatchWin'],
+  challengerPower: [...new Set(CHALLENGERS.map((c) => c.group))],
+};
+
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 const isPlain = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 const show = (v) => JSON.stringify(v) ?? String(v);
@@ -116,6 +123,7 @@ const setEq = (a, b) => a.length === b.length && a.every((k, i) => k === b[i]);
 function checkNumMap(path, value, bad) {
   if (!isPlain(value)) return bad(path, `${show(value)} 는 map 이 아니다`);
   for (const [k, v] of Object.entries(value)) if (!isNum(v)) bad(`${path}.${k}`, `${show(v)} 는 유한 수가 아니다`);
+  for (const k of REQUIRED_MAP_KEYS[path] ?? []) if (!(k in value)) bad(path, `키 ${show(k)} 누락`);
   return undefined;
 }
 
