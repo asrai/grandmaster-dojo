@@ -1215,10 +1215,23 @@ suite('계측 배선 공유 (#11)', () => {
     'src/ui/screens/dispatch.mjs': ['composeHooks', 'dispatchWiring', 'logDispatchStart'],
     'src/bot.mjs': ['composeHooks', 'dispatchWiring', 'duelWiring', 'logDispatchStart', 'trainWiring'],
   };
-  // 로깅·성장을 실제로 움직이는 함수 — 화면이 이 이름을 직접 쥐면 배선이 두 벌이 된다.
-  const INSTRUMENTS = [
-    'logTimeout', 'logVerdict', 'recordDispatchVerdict', 'recordDuelVerdict', 'recordEffectiveSuccess',
-  ];
+  // `log*`/`record*` 규약으로 도출한 계측 함수 — 화면이 이 이름을 직접 쥐면 배선이 두 벌이 된다.
+  // 수기 열거는 새로 생긴 계측 함수를 조용히 놓치므로 session.mjs export 에서 도출한다 (#31).
+  const sessionSource = readFileSync(new URL('../src/ui/session.mjs', import.meta.url), 'utf8');
+  const sessionExports = [...sessionSource.matchAll(/^export (?:async )?function (\w+)|^export const (\w+)/gm)]
+    .map((m) => m[1] ?? m[2]);
+  // 미지원 선언 문법(`export let`·`export {}` 등)은 조용한 누락이 되므로 계수로 loud fail 시킨다.
+  eq(sessionExports.length, (sessionSource.match(/^export /gm) ?? []).length,
+    'session.mjs 의 export 를 하나도 빠뜨리지 않고 이름으로 뽑았다');
+  // 규약을 지키지만 화면이 정당하게 직접 쥐는 이름 — 도출에 넣으면 green 이어야 할 단정이 red 가 된다.
+  const NOT_INSTRUMENTS = ['logEvent', 'logSessionMeta'];
+  const INSTRUMENTS = sessionExports
+    .filter((name) => /^(log|record)[A-Z]/.test(name) && !NOT_INSTRUMENTS.includes(name));
+  deepEq(NOT_INSTRUMENTS.filter((name) => sessionExports.includes(name)), NOT_INSTRUMENTS,
+    '제외 목록의 이름이 아직 session.mjs export 다');
+  // 부재 단정은 도출이 비어도 통과한다 — 양성 대조가 그 공허 통과를 막는다.
+  ok(INSTRUMENTS.includes('recordDuelVerdict'), '도출이 실제 계측 함수를 집는다');
+  ok(!INSTRUMENTS.includes('equippedStyles'), '화면이 정당하게 쥐는 이름은 도출에 없다');
   for (const [path, expected] of Object.entries(CONSUMERS)) {
     const source = readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
     // 주석·문자열의 심볼 언급은 배선이 아니다 — required check 를 오탐으로 막지 않게 import 만 본다.
