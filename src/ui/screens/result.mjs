@@ -48,7 +48,7 @@ export function renderResult(ctx) {
             class: 'primary', text: '재도전',
             // 진 자리에서 바로 같은 슬롯으로 되돌아가면 절초 공개·슬롯 교체(REQ-732·736)가 가장 필요한
             // 순간에만 빠진다 — 예고를 거치는 것이 그 학습 계단의 자리다.
-            onclick: () => ctx.go('duelPreview', { stage: params.stage }),
+            onclick: () => ctx.go('select', { stage: params.stage }),
           }) : null,
           el('button', { class: 'primary', text: '도장으로', onclick: () => ctx.go('dojo') }),
         ]),

@@ -243,7 +243,7 @@ export function nextDojoAction(session) {
   const swap = nextSwap(session);
   if (swap) return swap;
   // 예고를 건너뛰면 봇이 도는 경로가 사람의 경로와 갈려, 재대련 계측이 화면에서만 나온다 (REQ-736).
-  return { kind: 'duelPreview', params: { stage: nextDuelStage(session) } };
+  return { kind: 'select', params: { stage: nextDuelStage(session) } };
 }
 
 /** kill (d) 종점 감시 — 커서로 훑어 매 폴링마다 버퍼 전량을 다시 읽지 않는다. */
@@ -297,7 +297,7 @@ export function createBot({
       if (trainVisitDone(session)) screen.go('dojo');
       return;
     }
-    if (phase === 'duelPreview') { screen.go('duel', screen.params()); return; }
+    if (phase === 'select') { screen.go('duel', screen.params()); return; }
     if (phase === 'preview') { screen.go('dispatch'); return; }
     if (phase === 'transmit' || phase === 'result') { screen.go('dojo'); return; }
     if (phase !== 'dojo') return;
@@ -602,7 +602,7 @@ export function runHeadlessCycle({
       go('dojo');
       continue;
     }
-    if (phase === 'duelPreview') {
+    if (phase === 'select') {
       go('duel', params);
       continue;
     }
