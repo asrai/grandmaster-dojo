@@ -184,9 +184,14 @@ function emitScreenView(session) {
   return true;
 }
 
-/** 화면을 떠나는 자리 — 낸 뒤 다음 화면의 시계를 걸고, 그 화면이 어디서 왔는지를 기억한다. */
+/**
+ * 화면을 떠나는 자리 — 낸 뒤 다음 화면의 시계를 걸고, 그 화면이 어디서 왔는지를 기억한다.
+ * 같은 화면으로 다시 들어오는 것은 전환이 아니라 **재렌더**라 접는다 (도장은 조작마다 자기를
+ * 다시 그린다) — 접지 않으면 한 번의 체류가 조각나고 방문 수가 부풀어 판독이 무의미해진다.
+ */
 function leaveScreen(session, next) {
   const previous = session.screen.route;
+  if (previous === next) return;
   emitScreenView(session);
   session.screen = { route: next, at: session.now(), from: previous };
 }

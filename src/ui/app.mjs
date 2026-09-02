@@ -5,6 +5,7 @@ import { BALANCE } from '../balance.mjs';
 import { createBot } from '../bot.mjs';
 import { $ } from './dom.mjs';
 import { initAudio, resumeAudio } from './audio.mjs';
+import { SCREEN } from './theme.mjs';
 import { mountCheatPanel } from './cheat.mjs';
 import { createPad } from './pad.mjs';
 import {
@@ -70,10 +71,39 @@ function go(nextPhase, params = {}) {
   phase = nextPhase;
   enterPhase(session, phase);
   teardown = route(ctx) ?? null;
+  announceScreen(nextPhase);
+  releaseVerdictLive();
+}
+
+/** 직전에 낭독한 화면 — 도장은 조작마다 자기를 다시 그리므로, 그 재렌더는 전환이 아니다. */
+let announcedScreen = null;
+
+/**
+ * 전환 낭독 (#102) — 판정 전용 `#live` 와 **분리한** 리전에 화면 이름을 한 번 싣는다.
+ * 한 리전을 나눠 쓰면 같은 프레임에 겹친 두 낭독 중 뒤가 앞을 덮는다.
+ */
+function announceScreen(nextPhase) {
+  if (announcedScreen === nextPhase) return;
+  announcedScreen = nextPhase;
+  $('nav-live').textContent = SCREEN[nextPhase].label;
+}
+
+/**
+ * 판정 낭독의 잔류를 끊는다 (#101) — 비우는 시점이 다음 화면 렌더 **뒤 한 틱**인 것이 계약이다.
+ * 렌더 전으로 당기면 대련 마지막 수의 판정이 결과 화면 전환에 잘린다. 그 한 틱 사이에 새 화면이
+ * 자기 문면을 실었으면 그것은 남긴다 — 비우려던 것은 떠난 화면의 잔상뿐이다.
+ */
+function releaseVerdictLive() {
+  const region = $('live');
+  const leftover = region.textContent;
+  if (!leftover) return;
+  window.setTimeout(() => { if (region.textContent === leftover) region.textContent = ''; }, 0);
 }
 
 // 낭독 리전이 사라지면 판정이 에러 없이 침묵한다 — 그 마크업 계약을 부팅 때 터뜨린다 (REQ-807).
 if (!$('live')) throw new Error('낭독 리전 #live 가 스테이지에 없다');
+// 전환 낭독도 같은 실패 모드다 — 리전이 없으면 화면이 바뀐 사실이 비시각 사용자에게 침묵한다 (#102).
+if (!$('nav-live')) throw new Error('전환 낭독 리전 #nav-live 가 스테이지에 없다');
 // 셸이 없으면 흔들림이 스테이지로 올라가 완파·역파마다 배율이 날아간다 (REQ-816).
 if (!$('shell')) throw new Error('흔들림 래퍼 #shell 이 스테이지에 없다');
 

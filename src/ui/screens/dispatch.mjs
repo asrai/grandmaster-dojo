@@ -98,7 +98,12 @@ export function renderPreview(ctx) {
       '', `${discipleStyleRank(session.disciple, ART_ID, s.id)}성`))),
     el('div', { class: 'actions' }, [
       el('button', {
-        class: 'primary', text: '파견 보내기', disabled: !unlocked, onclick: () => ctx.go('dispatch'),
+        class: 'primary',
+        text: '파견 보내기',
+        // 잠긴 차수의 사유는 위 잠금 카드가 전부 지므로 버튼은 잠겼다는 사실만 말한다 (REQ-911·743).
+        disabled: !unlocked,
+        'aria-disabled': String(!unlocked),
+        onclick: () => ctx.go('dispatch'),
       }),
     ]),
   ].filter(Boolean)) });

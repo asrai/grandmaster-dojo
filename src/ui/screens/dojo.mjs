@@ -203,7 +203,10 @@ function bandActions(ctx) {
 function actionButton(ctx, action, target) {
   const button = el('button', {
     class: action.class ?? '',
+    // 잠금은 상태이지 장식이 아니다 — 네이티브 `disabled` 가 포커스를 막고 `aria-disabled` 가
+    // 그 사실을 낭독으로 말한다. 왜 잠겼는지는 밴드의 부제·행 안내가 따로 진다 (REQ-911·836).
     disabled: action.disabled,
+    'aria-disabled': String(Boolean(action.disabled)),
     text: action.text,
     onclick: () => { consumeTooltip(ctx.session.tooltip, action.id); action.onclick(); },
   });
@@ -292,6 +295,7 @@ function pupilBlock(ctx, bar) {
         style: `--attr:${attrTone(s.attr)}`,
         // 8성 벽 위는 파견 전용이라 지정 자체가 열리지 않는다 (REQ-706).
         disabled: designated || !canDiscipleTrain(session, s.id),
+        'aria-disabled': String(designated || !canDiscipleTrain(session, s.id)),
         onclick: () => { designateDiscipleTraining(session, s.id); ctx.go('dojo'); },
       }, [
         el('span', { class: 'nm', text: s.name }),

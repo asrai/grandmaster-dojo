@@ -58,11 +58,19 @@
   --letterbox: color-mix(in srgb, var(--c1) 62%, var(--shadow));
   --fg: var(--c3);
   --dim: color-mix(in srgb, var(--c3) 55%, transparent);
+  /* 규칙을 나르는 문구 (REQ-912) — 다음 계단 안내·판정 칩·상태 배지·지시 안내는 보조 설명이
+     아니라 규칙 그 자체라 본문과 같은 대비에 선다. 넷을 한 이름 아래 모아 두는 것이 이 토큰의
+     일이다: 가장 중요한 규칙이 가장 낮은 대비로 되돌아가는 회귀가 한 줄에서 막힌다. */
+  --rule: var(--fg);
   --line: color-mix(in srgb, var(--c3) 12%, transparent);
   --gold: var(--c4);
   --sunken: color-mix(in srgb, var(--shadow) 55%, transparent);
   --raised: color-mix(in srgb, var(--c3) 8%, var(--c2));
   --hit: 56px;  /* 부팅 직후 app.mjs 가 BALANCE.buttonHitPx 로 덮는다 — 첫 페인트 폴백이다 */
+  /* 히트 영역의 하한 (REQ-910) — `--hit` 는 십자 키가 겨냥하는 크기이고 이쪽은 **어떤 탭 대상도
+     그 아래로 내려가지 않는다**는 바닥이다. 촘촘한 줄에서 `--hit` 만큼 넓히면 확장분이 이웃 줄의
+     버튼을 덮으므로, 그 자리들은 이 하한까지만 넓힌다. */
+  --hit-min: 44px;
 
   /* 서체 역할 (REQ-812·813) — 한 패밀리 'Dojo' 안에서 unicode-range 가 F1/F2 를 가른다. */
   --font-body: 15px/1.5 'Dojo', serif;
@@ -279,6 +287,14 @@ body {
 }
 .top-row { display: flex; gap: 10px; align-items: center; min-width: 0; white-space: nowrap; }
 .top-row > * { overflow: hidden; text-overflow: ellipsis; }
+/* 설정 줄의 두 컨트롤도 탭 대상이다 (REQ-910) — 띠 높이가 56 으로 고정이라 컨트롤을 키우는 대신
+   의사요소로만 넓힌다. `overflow: hidden` 인 띠에서 확장분은 잘리지 않는다: 넓히는 것이 페인트가
+   아니라 히트 상자뿐이고, 세로 44 는 띠 안에 든다. */
+.top-band label, .top-band .mute { position: relative; }
+.top-band label::after, .top-band .mute::after {
+  content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 100%; height: var(--hit-min); min-width: var(--hit-min);
+}
 /* 물러나기는 띠를 쓰는 화면의 좌측 첫 자리에 고정된다 (REQ-897) — 시각 크기는 두고 히트 영역만
    최소치까지 넓혀, 조판을 흔들지 않으면서 손가락에 닿는다. */
 .leave {
@@ -341,7 +357,7 @@ body {
   border: 1px solid var(--gold); color: var(--gold); font-size: 12px;
 }
 .badge.max { background: var(--gold); color: var(--c1); font-weight: 700; }
-.tag { font-size: 11px; color: var(--dim); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+.tag { font-size: 11px; color: var(--rule); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
 
 button {
   font: inherit; color: var(--fg); background: var(--raised); border: 1px solid var(--line);
@@ -364,6 +380,13 @@ button.ghost { background: transparent; }
 .row.locked .row-name, .row.locked > .rank-next, .row.locked > .arrows { opacity: .55; }
 .row-head { display: flex; gap: 6px; align-items: center; min-height: 44px; }
 .row-head button { min-height: 40px; }
+/* 히트 영역 확장 (REQ-910) — 시각 크기는 그대로 두고 의사요소가 손가락 몫을 진다. 버튼 자체를
+   키우면 줄 높이가 함께 자라 도장 본문의 스크롤 경계가 밀린다. */
+.row-head button, .band-sim { position: relative; }
+.row-head button::after, .band-sim::after {
+  content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 100%; height: var(--hit-min); min-width: var(--hit-min);
+}
 /* 접기 토글은 진짜 버튼이라야 키보드로 닿는다 — 줄 이름 전체가 그 히트 영역이다. */
 .row-name {
   flex: 1; display: flex; gap: 6px; align-items: center;
@@ -443,7 +466,10 @@ button.ghost { background: transparent; }
   -webkit-mask: url('assets/icons/reset.svg') center / contain no-repeat;
 }
 
-.mark { font-size: 15px; line-height: 1; }
+/* 도형은 접근성 트리 밖이고 그 옆의 `.sr-only` 이름이 낭독을 진다 (#48 · REQ-911) — 시각은
+   그대로라 색·형태 2축이 줄지 않는다. */
+.mark { display: inline-flex; align-items: center; font-size: 15px; line-height: 1; }
+.mark .glyph { font-style: normal; }
 .mark.big { font-size: 24px; }
 .arrows { display: flex; gap: 6px; margin: 4px 0; }
 .arrows i { font-style: normal; font-size: 20px; width: 24px; text-align: center; color: color-mix(in srgb, var(--c3) 22%, transparent); }
@@ -697,7 +723,7 @@ button.ghost { background: transparent; }
 .chips { display: grid; grid-template-columns: repeat(var(--chips, 6), 1fr); gap: 4px; }
 .chips .c {
   display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 5px 2px;
-  font-size: 10px; letter-spacing: -.2px; color: var(--dim);
+  font-size: 10px; letter-spacing: -.2px; color: var(--rule);
   box-shadow: 0 0 0 1px var(--line) inset;
 }
 .chips .c.on { color: var(--fg); box-shadow: 0 0 0 1px color-mix(in srgb, var(--tone) 45%, transparent) inset; }
@@ -866,7 +892,7 @@ button.ghost { background: transparent; }
 .progress { position: absolute; left: var(--scroll-x); bottom: 22px; z-index: 5; display: flex; align-items: center; gap: 8px; }
 .steps.visits { flex: none; }
 .steps.visits .st { flex: none; width: var(--visit-w); }
-.progress .cap { font-size: 11px; color: var(--dim); }
+.progress .cap { font-size: 11px; color: var(--rule); }
 .progress .cap b { color: var(--gold); font-weight: 800; }
 
 /* ══ 초식 해설 (REQ-844) ══ 파해 1:1 대응이 그동안 비급 구결에만 있었고, 수련은 그 초식만 보는
@@ -892,7 +918,7 @@ button.ghost { background: transparent; }
   flex: 1; min-height: 0; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 7px; text-align: center; padding: 0 8px;
 }
-.judge-cap { font-size: 10px; letter-spacing: 3px; color: var(--hj-tone); }
+.judge-cap { font-size: 10px; letter-spacing: 3px; color: var(--dim); }
 .judge-now { margin: 0; font-size: 15px; font-weight: 800; }
 .judge-now b { color: var(--gold); }
 .judge-now .mark { margin-left: 4px; }
@@ -901,7 +927,7 @@ button.ghost { background: transparent; }
 /* 선택이라는 사실은 바닥에 조용히 있어야 관전을 재촉하지 않는다 (REQ-857 · REQ-407). */
 .handoff {
   flex: none; height: 32px; display: flex; align-items: center; justify-content: center;
-  font-size: 11px; color: var(--dim); border-top: 1px solid var(--line);
+  font-size: 11px; color: var(--rule); border-top: 1px solid var(--line);
 }
 .handoff b { color: var(--c6); font-weight: 800; }
 
@@ -1025,7 +1051,7 @@ button.ghost { background: transparent; }
 .art-head { display: flex; gap: 8px; align-items: baseline; }
 .art-head .kr { font-size: 17px; letter-spacing: .5px; }
 /* 다음 계단 안내 (REQ-830) — 적립 수단이 구간마다 바뀌는 규칙이 눈금 옆에서 읽힌다. */
-.rank-next { margin: 5px 0 0; font-size: 11px; color: var(--dim); }
+.rank-next { margin: 5px 0 0; font-size: 11px; color: var(--rule); }
 .rank-next.wall { color: color-mix(in srgb, var(--c5) 80%, var(--c3)); }
 
 /* 제자 블록 (REQ-833) — 존재·정서는 정경 실루엣이 지고 여기는 조작·수치만 진다. */
@@ -1098,7 +1124,7 @@ button.ghost { background: transparent; }
 .foe .nm b { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .foe .state { flex: none; text-align: right; white-space: nowrap; }
 .foe .state .t { display: block; font-size: 12px; font-weight: 700; }
-.foe .state .s { display: block; margin-top: 2px; font-size: 11px; color: var(--dim); }
+.foe .state .s { display: block; margin-top: 2px; font-size: 11px; color: var(--rule); }
 /* 이미 이긴 상대는 회색 보통 굵기다 — 주사색은 막힘 전용이라 여기 오지 않는다 (REQ-811·887). */
 .foe .state.beat .t { font-weight: 400; color: var(--dim); }
 .foe .state.now .t { color: var(--gold); }
@@ -1155,6 +1181,9 @@ button.ghost { background: transparent; }
     <div id="stage">
       <div id="shell" class="shell"><div id="app"></div></div>
       <div id="live" class="sr-only" role="status" aria-live="polite"></div>
+      <!-- 전환 낭독은 판정 낭독(#live)과 **다른** 리전이다 (#102) — 한 리전을 나눠 쓰면 같은
+           프레임에 겹친 두 낭독 중 뒤가 앞을 덮는다. -->
+      <div id="nav-live" class="sr-only" role="status" aria-live="polite"></div>
     </div>
   </div>
 </div>

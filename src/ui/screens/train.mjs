@@ -63,7 +63,7 @@ function styleDetail(style) {
       el('span', { class: 'sub', text: ` · ${ART_NAME} 제${style.order}초식` }),
     ]),
     line('특성', [
-      attrMark(style.attr),
+      attrMark(style.attr, { silent: true }),
       el('b', { text: attrLabel(style.attr) }),
       el('span', { class: 'sub', text: ` · ${style.seq.length}수 · ${attrLabel(ATTRS[style.attr].beats)}에 우세` }),
     ]),

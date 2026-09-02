@@ -67,7 +67,9 @@ export function renderSelect(ctx) {
   const emptySlot = session.slots.indexOf(null);
   let pickedSlot = emptySlot < 0 ? 0 : emptySlot;
 
-  const listEl = el('div', { class: 'list', role: 'group', 'aria-label': '도전자' });
+  // 한 줄만 고를 수 있는 목록이라 그룹이 아니라 radio 그룹이다 (REQ-911) — 「몇 중 몇 번째를
+  // 골랐는가」가 낭독으로 나오고, 방향키 순회가 그 역할에서 따라온다.
+  const listEl = el('div', { class: 'list', role: 'radiogroup', 'aria-label': '도전자' });
   const briefEl = el('div', { class: 'brief' });
   const entry = () => roster[pickedFoe];
   // 재렌더가 누른 버튼 노드를 파기하므로, 포커스를 되돌리려면 같은 자리를 id 로 다시 찾아야 한다.
@@ -83,7 +85,10 @@ export function renderSelect(ctx) {
       const { challenger } = row;
       listEl.appendChild(el('button', {
         id: `select-foe-${challenger.stage}`,
-        class: `foe${i === pickedFoe ? ' on' : ''}`, 'aria-pressed': String(i === pickedFoe),
+        class: `foe${i === pickedFoe ? ' on' : ''}`,
+        role: 'radio', 'aria-checked': String(i === pickedFoe),
+        // 고르지 않은 행은 탭 순회에서 빠진다 — radio 그룹의 탭 정지점은 고른 하나다.
+        tabindex: i === pickedFoe ? '0' : '-1',
         onclick: () => { pickedFoe = i; repaint(paintList); paintBrief(); },
       }, [
         el('span', { class: 'id' }, [
@@ -103,6 +108,8 @@ export function renderSelect(ctx) {
         id: slotId(i),
         class: `sl${style ? '' : ' empty'}${i === pickedSlot ? ' hit' : ''}`,
         style: `--attr:${style ? attrTone(style.attr) : 'var(--line)'}`,
+        // 고른 슬롯이 테두리에만 있으면 낭독으로는 다음 탭이 어디로 들어가는지 알 수 없다.
+        'aria-pressed': String(i === pickedSlot),
         onclick: () => { pickedSlot = i; repaint(paintBrief); },
       }, [
         el('span', { class: 'n', text: style ? style.name : '빈 슬롯' }),
@@ -141,7 +148,9 @@ export function renderSelect(ctx) {
       warn ? el('p', { class: `warn ${warn.cls}`.trim(), text: warn.text }) : null,
       el('button', {
         class: 'go', text: row.firstEncounter ? '대련 시작' : '재대련 시작',
+        // 잠긴 버튼은 포커스를 받지 않고, 왜 잠겼는지는 바로 위 경고 줄이 진다 (REQ-911·886).
         disabled: !session.slots.some(Boolean),
+        'aria-disabled': String(!session.slots.some(Boolean)),
         onclick: () => ctx.go('duel', { stage: row.challenger.stage }),
       }),
     ].filter(Boolean));

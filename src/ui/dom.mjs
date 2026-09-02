@@ -47,10 +47,15 @@ export function composeScreen(ctx, {
     root.appendChild(top.node);
     ctx.ownTop(top.paint);
   }
-  const main = el('main', { class: `screen-body${padded ? ' padded' : ''}` },
+  // 프로그램이 옮기는 포커스라 탭 순서에는 들어가지 않는다 — `-1` 이 그 구분이다.
+  const main = el('main', { class: `screen-body${padded ? ' padded' : ''}`, tabindex: '-1' },
     [].concat(body).filter(Boolean));
   root.appendChild(main);
   if (bottom) root.appendChild(bottom);
+  // 전환 직후 포커스가 body 로 떨어지면 키보드·낭독기 사용자는 새 화면의 첫 요소까지 Tab 을
+  // 다시 짚어야 한다. 조립의 소유가 이 함수라 화면마다 반복되는 자리가 생기지 않는다 (#102).
+  // 스크롤을 막는 것은 본문이 스크롤 상자여서 — 포커스가 그것을 맨 위로 당기면 안 된다.
+  main.focus({ preventScroll: true });
   return main;
 }
 
