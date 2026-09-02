@@ -2,17 +2,18 @@
 
 import { BALANCE } from '../../balance.mjs';
 import { styleById } from '../../core.mjs';
-import { arrowRow, attrMark, composeScreen, el, topBand } from '../dom.mjs';
-import { ATTR_VIEW, GRADE_VIEW } from '../theme.mjs';
+import { arrowRow, composeScreen, el, topBand } from '../dom.mjs';
+import { attrMark, attrTone } from '../components/attr-mark.mjs';
+import { hanja } from '../components/hanja.mjs';
 import { SFX } from '../audio.mjs';
 import { createSequenceInput } from '../sequence-input.mjs';
 import { ART_NAME, logEvent, rankOfStyle, trainHitsLeft } from '../session.mjs';
 import { createVerdictOverlay } from '../verdict-overlay.mjs';
 import { trainWiring } from '../wiring.mjs';
 
-// 수련에는 등급이 없다 — 등급 마크를 빌리면 성공이 「우세 판정」으로 오학습되므로 색만 빌린다 (#46).
+// 수련에는 등급이 없다 — 등급 마크를 빌리면 성공이 「우세 판정」으로 오학습되므로 자리와 색만 빌린다 (#46).
 const TRAIN_VIEW = {
-  done: { color: GRADE_VIEW.advantage.color, label: '성공' },
+  done: { cls: 'train-done', label: '성공' },
 };
 
 export function startTrain(ctx) {
@@ -25,18 +26,20 @@ export function startTrain(ctx) {
   const windowFill = el('i', {});
 
   composeScreen(ctx, {
-    top: topBand(session, ART_NAME),
+    top: topBand(session, ART_NAME, { onLeave: () => ctx.go('dojo') }),
     body: el('section', { class: 'card arena' }, [
       el('div', { class: 'head' }, [
         el('b', { text: `수련 — ${style.name}` }),
-        el('span', { class: 'hanja', text: style.hanja }),
-        el('button', { class: 'small ghost', text: '도장으로', onclick: () => ctx.go('dojo') }),
+        hanja(style.hanja),
       ]),
-      el('div', { class: 'telegraph', style: `--attr:${ATTR_VIEW[style.attr].color}` }, [
+      el('div', { class: 'telegraph', style: `--attr:${attrTone(style.attr)}` }, [
         el('div', { class: 'tg-foe' }, [attrMark(style.attr, { size: 'big' }), el('span', { text: style.gugyeol })]),
       ]),
       // 수련은 그 초식만 보는 유일한 화면이라 해설의 제자리다 (REQ-844·891).
-      el('p', { class: 'dim', text: `창안 — ${style.founder.name} ${style.founder.hanja}` }),
+      el('p', { class: 'dim' }, [
+        el('span', { text: `창안 — ${style.founder.name}` }),
+        hanja(style.founder.hanja),
+      ]),
       arrowRow(style.seq, 0, style.seq.length),
       el('div', { class: 'window' }, [windowFill]),
       progressEl,

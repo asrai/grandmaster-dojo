@@ -2,7 +2,6 @@
 // 전부 src/ui/ 아래에만 산다.
 
 import { ARROW } from '../balance.mjs';
-import { ATTR_VIEW } from './theme.mjs';
 
 export const $ = (id) => document.getElementById(id);
 
@@ -58,10 +57,13 @@ export function composeScreen(ctx, {
  * 표준 상단 띠 (REQ-801) — 띠를 쓰는 화면이 각자 만들고, 갱신 주체도 그 화면이다.
  * @param {object} session
  * @param {string} artName 무공 이름 — 성이 초식 단위로 내려가 무공에는 표시할 성이 없다 (REQ-701·707)
+ * @param {object} [p]
+ * @param {Function} [p.onLeave] 물러나기 — 띠의 좌측 첫 자리에 고정된다 (REQ-897). 넘기지 않는
+ *   화면은 그 자리를 비운다: 홈은 돌아갈 곳이 없어 예외이고, 결과는 띠 자체를 쓰지 않는다.
  * @returns {{node: HTMLElement, paint: () => void}} `paint` 를 `ctx.ownTop` 에 넘기면
  *   `ctx.refreshTop()` 이 그 화면의 띠만 다시 그린다
  */
-export function topBand(session, artName) {
+export function topBand(session, artName, { onLeave = null } = {}) {
   const labelEl = el('b', { class: 'top-label' });
   const coinsEl = el('span', { class: 'top-coins' });
   const a11y = el('input', { id: 'a11y-window', type: 'checkbox' });
@@ -75,6 +77,7 @@ export function topBand(session, artName) {
 
   const node = el('header', { class: 'top-band' }, [
     el('div', { class: 'top-row' }, [
+      onLeave ? el('button', { class: 'leave', text: '←', 'aria-label': '물러나기', onclick: onLeave }) : null,
       labelEl,
       el('span', { class: 'dim', text: artName }),
       coinsEl,
@@ -92,12 +95,6 @@ export function topBand(session, artName) {
   };
   paint();
   return { node, paint };
-}
-
-/** 속성 = 색 + 형태 중복 표현 (REQ-112). */
-export function attrMark(attrId, { size = '' } = {}) {
-  const view = ATTR_VIEW[attrId];
-  return el('span', { class: `mark ${size}`.trim(), text: view.shape, style: `color:${view.color}` });
 }
 
 export function hpBar(hp, max) {

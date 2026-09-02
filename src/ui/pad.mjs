@@ -4,9 +4,10 @@
 
 import { ARROW, BALANCE } from '../balance.mjs';
 import { isOneTapRank } from '../core.mjs';
-import { arrowRow, attrMark, clear, el, shake } from './dom.mjs';
+import { arrowRow, clear, el, shake } from './dom.mjs';
 import { createTablets } from './tablets.mjs';
-import { ATTR_VIEW, attrLabel } from './theme.mjs';
+import { attrLabel } from './theme.mjs';
+import { attrMark, attrTone } from './components/attr-mark.mjs';
 import { SFX } from './audio.mjs';
 
 const KEYMAP = {
@@ -96,7 +97,7 @@ export function createPad() {
     colorEl.className = `pad-color${top ? '' : ' none'}`;
     clear(colorEl);
     if (top) {
-      colorEl.style.color = ATTR_VIEW[top.attr].color;
+      colorEl.style.color = attrTone(top.attr);
       colorEl.append(
         attrMark(top.attr, { size: 'big' }),
         el('b', { text: attrLabel(top.attr) }),

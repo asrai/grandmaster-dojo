@@ -1,8 +1,10 @@
 // 사부 대련 (REQ-201·206~211·708·731~736) — 유저가 시퀀스를 치는 유일한 실전 화면과 그 예고.
 
 import { BALANCE, STYLES } from '../../balance.mjs';
-import { attrMark, clear, composeScreen, el, hpBar, topBand } from '../dom.mjs';
-import { ATTR_VIEW, attrLabel, winAttrOf } from '../theme.mjs';
+import { clear, composeScreen, el, hpBar, topBand } from '../dom.mjs';
+import { attrLabel, winAttrOf } from '../theme.mjs';
+import { attrMark, attrTone } from '../components/attr-mark.mjs';
+import { hanja } from '../components/hanja.mjs';
 import { SFX } from '../audio.mjs';
 import { finisherOf, foeStyleById, styleById } from '../../core.mjs';
 import { PHASE, createMatch } from '../match.mjs';
@@ -18,14 +20,14 @@ function telegraphView(view) {
   if (view.foeOpen) return el('div', { class: 'telegraph open', text: '빈틈! — 아무 초식이나 완주하면 완파' });
   const foe = view.telegraphed;
   const win = winAttrOf(foe.attr);
-  return el('div', { class: 'telegraph', style: `--attr:${ATTR_VIEW[foe.attr].color}` }, [
+  return el('div', { class: 'telegraph', style: `--attr:${attrTone(foe.attr)}` }, [
     el('div', { class: 'tg-foe' }, [
       attrMark(foe.attr, { size: 'big' }),
       el('b', { text: foe.name }),
-      el('span', { class: 'hanja', text: foe.hanja }),
+      hanja(foe.hanja),
       el('span', { class: 'dim', text: `${attrLabel(foe.attr)} · ${foe.len}수` }),
     ]),
-    el('div', { class: 'tg-win', style: `--attr:${ATTR_VIEW[win].color}` }, [
+    el('div', { class: 'tg-win', style: `--attr:${attrTone(win)}` }, [
       el('span', { class: 'dim', text: '이기는 색' }),
       attrMark(win, { size: 'big' }),
       el('b', { text: attrLabel(win) }),
@@ -50,7 +52,8 @@ function finisherNotice(session, finisher, firstEncounter) {
   const equipped = session.slots.includes(answer.id);
   return el('div', { class: 'card' }, [
     el('p', {}, [
-      el('b', { text: `절초 ${finisher.name} ${finisher.hanja}` }),
+      el('b', { text: `절초 ${finisher.name}` }),
+      hanja(finisher.hanja),
       el('span', { class: 'dim', text: ` · ${attrLabel(finisher.attr)} · ${finisher.len}수` }),
     ]),
     el('p', {}, [
@@ -75,7 +78,7 @@ const foeLineup = (challenger, firstEncounter) => el('div', { class: 'icons' }, 
       el('span', { class: 'tag', text: '절초' }),
     ]);
   }
-  return el('div', { class: 'cand', style: `--attr:${ATTR_VIEW[foe.attr].color}` }, [
+  return el('div', { class: 'cand', style: `--attr:${attrTone(foe.attr)}` }, [
     attrMark(foe.attr),
     el('span', { class: 'cand-name', text: foe.name }),
     el('span', { class: 'tag', text: `${attrLabel(foe.attr)} · ${foe.len}수` }),
@@ -110,7 +113,7 @@ export function renderDuelPreview(ctx) {
       const style = styleId ? styleById(styleId) : null;
       const node = el('button', {
         class: `cand${i === picked ? ' picked' : ''}`,
-        style: `--attr:${style ? ATTR_VIEW[style.attr].color : 'var(--line)'}`,
+        style: `--attr:${style ? attrTone(style.attr) : 'var(--line)'}`,
         onclick: () => { picked = i; renderSlots(); },
       }, [
         style ? attrMark(style.attr) : null,
@@ -127,7 +130,7 @@ export function renderDuelPreview(ctx) {
     }
     for (const style of benched) {
       benchEl.appendChild(el('button', {
-        class: 'cand', style: `--attr:${ATTR_VIEW[style.attr].color}`,
+        class: 'cand', style: `--attr:${attrTone(style.attr)}`,
         onclick: () => {
           equip(session, style.id, picked, { challenger: challenger.id });
           renderSlots();
@@ -142,12 +145,12 @@ export function renderDuelPreview(ctx) {
   renderSlots();
 
   composeScreen(ctx, {
-    top: topBand(session, ART_NAME),
+    top: topBand(session, ART_NAME, { onLeave: () => ctx.go('dojo') }),
     body: el('section', { class: 'card' }, [
     el('h2', { text: `도전자 예고 — ${challenger.name} ${challenger.stage}차` }),
-    el('p', { class: 'dim', text: firstEncounter
-      ? `${challenger.hanja} · 아직 이겨 본 적 없는 상대다.`
-      : `${attempt}번째 대면 — 상대가 성 +${bonus} 만큼 여물었고 재대련 승리에 재화는 없다.` }),
+    firstEncounter
+      ? el('p', { class: 'dim' }, [hanja(challenger.hanja), el('span', { text: ' · 아직 이겨 본 적 없는 상대다.' })])
+      : el('p', { class: 'dim', text: `${attempt}번째 대면 — 상대가 성 +${bonus} 만큼 여물었고 재대련 승리에 재화는 없다.` }),
     foeLineup(challenger, firstEncounter),
     finisher ? finisherNotice(session, finisher, firstEncounter) : null,
     el('h2', { text: '실전 슬롯' }),
@@ -156,7 +159,6 @@ export function renderDuelPreview(ctx) {
     benchEl,
     el('div', { class: 'actions' }, [
       el('button', { class: 'primary', text: '대련 시작', onclick: () => ctx.go('duel', { stage: params.stage }) }),
-      el('button', { class: 'small ghost', text: '도장으로', onclick: () => ctx.go('dojo') }),
     ]),
   ]) });
 }
@@ -174,12 +176,11 @@ export function startDuel(ctx) {
   const banner = el('div', { class: 'toast' });
 
   composeScreen(ctx, {
-    top: topBand(session, ART_NAME),
+    top: topBand(session, ART_NAME, { onLeave: () => ctx.go('dojo') }),
     body: el('section', { class: 'card arena' }, [
       el('div', { class: 'head' }, [
         el('b', { text: `${challenger.name} ${challenger.stage}차` }),
-        el('span', { class: 'hanja', text: challenger.hanja }),
-        el('button', { class: 'small ghost', text: '도장으로', onclick: () => ctx.go('dojo') }),
+        hanja(challenger.hanja),
       ]),
       foeHpEl,
       telegraphEl,

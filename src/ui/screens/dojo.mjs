@@ -4,8 +4,10 @@ import { BALANCE, STYLES } from '../../balance.mjs';
 import {
   artById, canLearn, discipleStyleRank, discipleStyles, ladderBandAt, styleById, trainAccrualCap,
 } from '../../core.mjs';
-import { arrowRow, attrMark, clear, composeScreen, el, tipAnchor, topBand } from '../dom.mjs';
-import { ATTR_VIEW } from '../theme.mjs';
+import { arrowRow, clear, composeScreen, el, tipAnchor, topBand } from '../dom.mjs';
+import { attrMark, attrTone } from '../components/attr-mark.mjs';
+import { hanja } from '../components/hanja.mjs';
+import { rankStair } from '../components/rank-stair.mjs';
 import {
   ART_ID, ART_NAME, DISPATCH_CHALLENGER, beatenChallengers, canDiscipleTrain, canDispatch,
   canEquip, canTransmitNow, challengerOfStage, consumeTooltip, designateDiscipleTraining,
@@ -50,25 +52,15 @@ const rowToggleId = (styleId) => `row-toggle-${styleId}`;
 let chosen = null;
 
 /**
- * 초식 성 게이지 (REQ-707) — 연속 막대에 계단 눈금 12 를 얹고 성 숫자는 배지로 병기한다.
- * 11·12 눈금만 표식이 다른 것은 그 둘이 적립이 아니라 결정타·완파로 열리기 때문이다.
+ * 초식 성 게이지 (REQ-707·817) — 계단 자체는 4화면이 공유하는 컴포넌트가 그리고, 여기서는
+ * 그 옆에 성 배지와 다음 계단 안내를 붙인다.
  */
 function rankGauge(session, style) {
   const { rank, pts } = session.progress.styles[style.id];
   const band = ladderBandAt(rank);
-  const filled = band ? Math.round((pts / band.cost) * 100) : 0;
-  const ticks = Array.from({ length: BALANCE.rankMax }, (_, i) => {
-    const at = i + 1;
-    const mark = STEP_MARK[at];
-    return el('i', {
-      class: `tick${at <= rank ? ' lit' : ''}${mark ? ' gate' : ''}`,
-      title: mark ? `${at}성 — ${mark}` : `${at}성`,
-    });
-  });
   const need = band ? null : STEP_MARK[rank + 1] ?? null;
   return el('div', { class: 'rank-gauge' }, [
-    el('div', { class: 'meter' }, [el('i', { style: `width:${filled}%` })]),
-    el('div', { class: 'ticks' }, ticks),
+    rankStair({ rank, progress: band ? pts / band.cost : 0 }),
     el('span', {
       class: `badge${rank >= BALANCE.rankMax ? ' max' : ''}`, text: rankLabel(rank),
     }),
@@ -174,7 +166,7 @@ function styleRow(ctx, style, actions, target, guidedRow, open) {
   const learned = session.progress.styles[style.id].learned;
   const slotIdx = session.slots.indexOf(style.id);
 
-  return el('div', { class: `row${learned ? '' : ' locked'}${open ? ' open' : ''}`, style: `--attr:${ATTR_VIEW[style.attr].color}` }, [
+  return el('div', { class: `row${learned ? '' : ' locked'}${open ? ' open' : ''}`, style: `--attr:${attrTone(style.attr)}` }, [
     el('div', { class: 'row-head' }, [
       el('button', {
         id: rowToggleId(style.id), class: 'row-name', 'aria-expanded': String(open),
@@ -186,7 +178,7 @@ function styleRow(ctx, style, actions, target, guidedRow, open) {
       }, [
         attrMark(style.attr),
         el('b', { text: style.name }),
-        el('span', { class: 'hanja', text: style.hanja }),
+        hanja(style.hanja),
         slotIdx >= 0 ? el('span', { class: 'tag', text: `슬롯 ${slotIdx + 1}` }) : null,
       ]),
       ...actions.map((a) => actionButton(ctx, a, target)),
@@ -255,7 +247,7 @@ function discipleCard(ctx, bar) {
     el('div', { class: 'rows' }, styles.map((s) => {
       const rank = discipleStyleRank(session.disciple, ART_ID, s.id);
       const designated = progress?.styleId === s.id;
-      return el('div', { class: `row${designated ? ' open' : ''}`, style: `--attr:${ATTR_VIEW[s.attr].color}` }, [
+      return el('div', { class: `row${designated ? ' open' : ''}`, style: `--attr:${attrTone(s.attr)}` }, [
         el('div', { class: 'row-head' }, [
           el('div', { class: 'row-name' }, [
             attrMark(s.attr),
@@ -347,7 +339,7 @@ export function renderDojo(ctx) {
     // 재대련 카드는 이긴 도전자가 생기기 전까지 없다 — `append(null)` 은 "null" 텍스트 노드가 된다.
     body: [
       el('section', { class: 'card' }, [
-        el('h2', { text: `${ART_NAME} ${artById(ART_ID).hanja}` }),
+        el('h2', {}, [el('span', { text: ART_NAME }), hanja(artById(ART_ID).hanja)]),
         el('div', { class: 'rows' }, STYLES.map((s, i) => styleRow(ctx, s, rowActions[i], target, guidedRow, s.id === openId))),
         session.slots.some(Boolean) ? null : el('p', {
           class: 'dim', text: `초식을 수련해 ${BALANCE.rankGate.equip}성에 닿으면 실전 슬롯에 자동으로 장착된다.`,

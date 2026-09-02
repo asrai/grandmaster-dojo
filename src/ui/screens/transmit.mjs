@@ -3,13 +3,13 @@
 
 import { BALANCE } from '../../balance.mjs';
 import { artStyles, discipleStyleRank, discipleStyles, styleRank } from '../../core.mjs';
-import { attrMark, clear, composeScreen, el, topBand } from '../dom.mjs';
-import { ATTR_VIEW } from '../theme.mjs';
+import { clear, composeScreen, el, topBand } from '../dom.mjs';
+import { attrMark, attrTone } from '../components/attr-mark.mjs';
 import { SFX } from '../audio.mjs';
 import { ART_ID, ART_NAME, runTransmit } from '../session.mjs';
 
 const icons = (styles, cls) => el('div', { class: 'icons' }, styles.map((s) => el('div', {
-  class: `cand ${cls}`, style: `--attr:${ATTR_VIEW[s.attr].color}`,
+  class: `cand ${cls}`, style: `--attr:${attrTone(s.attr)}`,
 }, [attrMark(s.attr), el('span', { class: 'cand-name', text: s.name })])));
 
 // 제자 칸은 한 화면 안에서 전수 전 → 후로 갈아 끼워지므로, 두 시점을 같은 모양으로 떠 둔다 (#36).
@@ -42,7 +42,7 @@ export function renderTransmit(ctx) {
   paintDisciple(discipleSide, before);
 
   composeScreen(ctx, {
-    top: topBand(session, ART_NAME),
+    top: topBand(session, ART_NAME, { onLeave: () => ctx.go('dojo') }),
     body: el('section', { class: 'card transmit' }, [
     el('p', {}, [el('span', {
       class: 'badge max',

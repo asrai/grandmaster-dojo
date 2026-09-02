@@ -72,6 +72,8 @@ function go(nextPhase, params = {}) {
 
 // 낭독 리전이 사라지면 판정이 에러 없이 침묵한다 — 그 마크업 계약을 부팅 때 터뜨린다 (REQ-807).
 if (!$('live')) throw new Error('낭독 리전 #live 가 스테이지에 없다');
+// 셸이 없으면 흔들림이 스테이지로 올라가 완파·역파마다 배율이 날아간다 (REQ-816).
+if (!$('shell')) throw new Error('흔들림 래퍼 #shell 이 스테이지에 없다');
 
 // 히트 영역 최소치도 BALANCE 값이라, CSS 가 그 값을 변수로 받아 간다 (REQ-101).
 document.documentElement.style.setProperty('--hit', `${BALANCE.buttonHitPx}px`);
