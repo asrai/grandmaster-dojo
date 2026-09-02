@@ -579,10 +579,12 @@ function noteFinisher(session, view, styleId) {
 /** 파견 쪽 짝 — 제자는 같은 사다리를 상한 10성으로 탄다 (REQ-705). */
 export function recordDispatchVerdict(session, view) {
   logVerdict(session, view.verdict, 'disciple');
-  if (!view.fire || !isEffectiveSuccess(view.verdict.grade)) return null;
+  if (!view.fire) return null;
   const styleId = view.fire.style.id;
-  // 결과 화면의 결정타 줄이 대련·파견을 가르지 않으므로 그 사실을 붙잡는 자리도 하나여야 한다.
+  // 끝낸 초는 등급과 무관하다 — 유효 성공은 **적립**의 조건이지 결정타의 조건이 아니라서, 그 필터
+  // 뒤에 두면 열세로 끝낸 판이 결과 화면에서 「끝내지 못했다」로 뜬다 (REQ-708).
   if (isFinishingBlow(view)) noteFinisher(session, view, styleId);
+  if (!isEffectiveSuccess(view.verdict.grade)) return null;
   const accrued = accrueDiscipleRank(session, styleId);
   noteGain(session, accrued && { style: styleId, ...accrued });
   return accrued;

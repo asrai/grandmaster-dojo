@@ -2338,6 +2338,21 @@ suite('판 원장 — 그 판의 판정 분포·성 변화·결정타 (REQ-872·
   deepEq(missionLedger.verdicts, { crush: 1 }, '파견 판정도 같은 원장에 쌓인다');
   eq(missionLedger.finisher, dstyle.id, '제자의 결정타도 같은 자리에 실린다');
   eq(missionLedger.attempt, 0, '임무에는 회차 축이 없다');
+
+  // 유효 성공은 적립의 조건이지 결정타의 조건이 아니다 — 열세로 끝낸 판도 끝낸 초가 있다 (REQ-708).
+  ok(!isEffectiveSuccess('disadvantage'), '열세는 유효 성공이 아니다');
+  const lowGrade = createSession();
+  lowGrade.progress = masteredProgress;
+  runTransmit(lowGrade);
+  dispatchWiring(lowGrade, { disciple: { arm() {}, tick: () => null } });
+  recordDispatchVerdict(lowGrade, {
+    verdict: { grade: 'disadvantage', dmgOut: 4, dmgIn: 12, opening: null },
+    fire: { style: dstyle },
+    outcome: { over: true, win: true, by: 'hp' },
+    challenger: DISPATCH_CHALLENGER,
+  });
+  eq(boutLedger(lowGrade).finisher, dstyle.id, '적립되지 않는 등급으로 끝내도 결정타는 남는다');
+  deepEq(boutLedger(lowGrade).gains, [], '그 초는 적립되지 않으므로 성 변화는 없다');
 });
 
 suite('결과 정산은 진입 1회 — 재렌더 멱등 (#70)', () => {
