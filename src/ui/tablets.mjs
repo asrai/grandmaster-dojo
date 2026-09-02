@@ -97,10 +97,12 @@ export function createTablets({ soloEmphasis = false } = {}) {
         slip.paint(byId.get(id), shown);
         live.set(id, slip);
       }
-      // 살아남은 매와 가라앉는 매를 한 순서로 다시 꽂는다 — `appendChild` 는 이동이라 노드가 유지된다.
-      for (const { id } of states) {
-        const slip = live.get(id) ?? sinking.get(id);
-        if (slip) node.appendChild(slip.node);
+      // 이미 그 순서면 손대지 않는다 — 재삽입은 가라앉는 중인 매를 확정 매 앞으로 밀어 올려
+      // 금테가 옆으로 튀게 만든다. 어긋났을 때만 옮긴다(`appendChild` 는 이동이라 노드가 유지된다).
+      const want = states.map(({ id }) => (live.get(id) ?? sinking.get(id))?.node).filter(Boolean);
+      const have = [...node.children].filter((child) => want.includes(child));
+      if (have.length !== want.length || have.some((child, i) => child !== want[i])) {
+        for (const slip of want) node.appendChild(slip);
       }
       // 폭은 매수가 정한다 — 좁혀짐의 계단은 원장이 갖고 여기는 그 매수만 건넨다 (REQ-824).
       node.dataset.n = String(next.length);
