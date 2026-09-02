@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "spec": "spec_화면_UI_아트_재설계.md",
+  "note": "sfx 합성 레시피 = SoT. .ogg 는 빌드 프로덕트다. 렌더러는 dotfiles#1573 의 scripts/gamedev/sfx_render.py. 어휘는 noise / partial 2종 고정이며, 어휘 밖 요구는 근사하지 않고 외부 생성으로 넘긴다. bgm 은 영구 제외 (절차적 합성의 영역이 아님).",
+  "opus_bitrate": "96k",
+  "recipes": {
+    "sfx_key": {
+      "brief": "dry percussive tick, wooden clave, almost no sustain, no reverb tail, no pitch character of its own, 0.1s",
+      "rationale": "재생 시 코드가 피치를 랜덤화하므로(REQ-922) 원본이 음정을 주장하면 안 된다. 부분음을 비조화 비율(1:1.47)로 두어 음정으로 뭉치지 않게 한다.",
+      "duration_ms": 100,
+      "fade_out_ms": 2,
+      "peak_dbfs": -3.0,
+      "seed": 20260902,
+      "layers": [
+        {"kind": "noise", "center_hz": 2600, "bandwidth_oct": 0.85, "highpass_hz": 400, "attack_ms": 1.0, "decay_tau_ms": 14, "amp": 0.78},
+        {"kind": "partial", "freq_hz": 1750, "attack_ms": 0.5, "decay_tau_ms": 10, "amp": 0.30},
+        {"kind": "partial", "freq_hz": 2570, "attack_ms": 0.5, "decay_tau_ms": 7, "amp": 0.18}
+      ]
+    },
+    "sfx_lock": {
+      "brief": "crisp latch click with faint metallic ring decaying immediately, confident and final, not sharp or alarming, 0.25s",
+      "rationale": "금테 확대(REQ-826)와 동시 발화. 「단호함」은 저역 thunk 이 담당하고, 금속 링은 amp 를 낮게 둬 alarming 으로 넘어가지 않게 한다.",
+      "duration_ms": 250,
+      "fade_out_ms": 4,
+      "peak_dbfs": -3.0,
+      "seed": 20260903,
+      "layers": [
+        {"kind": "noise", "center_hz": 3200, "bandwidth_oct": 0.70, "highpass_hz": 800, "attack_ms": 0.5, "decay_tau_ms": 8, "amp": 0.70},
+        {"kind": "partial", "freq_hz": 420, "attack_ms": 0.8, "decay_tau_ms": 30, "amp": 0.34},
+        {"kind": "partial", "freq_hz": 4200, "attack_ms": 0.5, "decay_tau_ms": 35, "amp": 0.20},
+        {"kind": "partial", "freq_hz": 6300, "attack_ms": 0.5, "decay_tau_ms": 22, "amp": 0.09}
+      ]
+    },
+    "sfx_break": {
+      "brief": "deep body-thud layered with sharp cloth snap and brief low resonance, triumphant and heavy, no musical tone, no metallic clang, 0.6s",
+      "rationale": "6단 중 유일하게 통쾌해야 하는 소리(REQ-924). thud 는 150→55Hz 하강 스윕이 담당하고, 금속성 배제를 위해 4kHz 이상 부분음을 두지 않는다 — 고역은 천 스냅 노이즈로만 낸다.",
+      "duration_ms": 600,
+      "fade_out_ms": 25,
+      "peak_dbfs": -2.0,
+      "seed": 20260904,
+      "layers": [
+        {"kind": "partial", "freq_hz": 150, "freq_end_hz": 55, "attack_ms": 1.0, "decay_tau_ms": 90, "amp": 0.90},
+        {"kind": "partial", "freq_hz": 80, "attack_ms": 2.0, "decay_tau_ms": 150, "amp": 0.42},
+        {"kind": "noise", "center_hz": 4200, "bandwidth_oct": 1.10, "highpass_hz": 1500, "attack_ms": 0.3, "decay_tau_ms": 18, "amp": 0.55},
+        {"kind": "noise", "center_hz": 380, "bandwidth_oct": 1.20, "highpass_hz": 60, "attack_ms": 1.0, "decay_tau_ms": 60, "amp": 0.48}
+      ]
+    },
+    "sfx_clash": {
+      "brief": "two strikes meeting mid-air, dry collision of cloth and wood with light scatter of debris, neutral in weight, 0.35s",
+      "rationale": "우세·상쇄·열세 3등급을 한 소리로 덮으므로 승패를 말하면 안 된다(REQ-924). 저역 thud(승리감)와 눌린 tail(피해감)을 둘 다 빼고 중역 건조음만 남긴다.",
+      "duration_ms": 350,
+      "fade_out_ms": 12,
+      "peak_dbfs": -3.5,
+      "seed": 20260905,
+      "layers": [
+        {"kind": "noise", "center_hz": 1800, "bandwidth_oct": 0.90, "highpass_hz": 500, "attack_ms": 0.5, "decay_tau_ms": 20, "amp": 0.70},
+        {"kind": "noise", "center_hz": 3600, "bandwidth_oct": 1.00, "highpass_hz": 1200, "attack_ms": 0.4, "decay_tau_ms": 12, "amp": 0.45},
+        {"kind": "noise", "center_hz": 2400, "bandwidth_oct": 1.50, "highpass_hz": 800, "attack_ms": 8.0, "decay_tau_ms": 90, "amp": 0.17, "onset_ms": 25},
+        {"kind": "partial", "freq_hz": 910, "attack_ms": 0.5, "decay_tau_ms": 15, "amp": 0.17}
+      ]
+    },
+    "sfx_hit": {
+      "brief": "dull unpleasant body impact, muffled low thud with short compressed tail, heavy and negative, no brightness, no metallic content, 0.5s",
+      "rationale": "sfx_break 와 정반대 방향으로 읽혀야 한다. 같은 thud 계열이지만 스윕을 더 낮게(120→48Hz) 잡고 고역 스냅 레이어를 통째로 제거해 「통쾌」가 아니라 「눌림」이 되게 한다.",
+      "duration_ms": 500,
+      "fade_out_ms": 20,
+      "peak_dbfs": -3.0,
+      "seed": 20260906,
+      "layers": [
+        {"kind": "partial", "freq_hz": 120, "freq_end_hz": 48, "attack_ms": 1.5, "decay_tau_ms": 70, "amp": 0.90},
+        {"kind": "noise", "center_hz": 200, "bandwidth_oct": 1.30, "highpass_hz": 40, "attack_ms": 1.5, "decay_tau_ms": 55, "amp": 0.58},
+        {"kind": "noise", "center_hz": 320, "bandwidth_oct": 1.00, "highpass_hz": 60, "attack_ms": 12.0, "decay_tau_ms": 120, "amp": 0.22, "onset_ms": 15}
+      ]
+    },
+    "sfx_rank": {
+      "brief": "short clear ascending chime, two soft struck-metal tones rising a small interval, warm and bright with brief decay, a small reward not a fanfare, 0.7s",
+      "rationale": "성이 여러 칸 오르면 코드가 연쇄 재생하므로(REQ-873) 꼬리가 짧아야 겹쳐도 뭉치지 않는다. 두 음은 A5(880Hz)→C6(1046.5Hz) 단3도 — 「small interval」이자 「fanfare 아님」의 상한.",
+      "duration_ms": 700,
+      "fade_out_ms": 30,
+      "peak_dbfs": -4.0,
+      "seed": 20260907,
+      "layers": [
+        {"kind": "noise", "center_hz": 5000, "bandwidth_oct": 1.00, "highpass_hz": 2000, "attack_ms": 0.3, "decay_tau_ms": 4, "amp": 0.12},
+        {"kind": "partial", "freq_hz": 880.0, "attack_ms": 1.0, "decay_tau_ms": 110, "amp": 0.55},
+        {"kind": "partial", "freq_hz": 1760.0, "attack_ms": 1.0, "decay_tau_ms": 70, "amp": 0.17},
+        {"kind": "partial", "freq_hz": 2640.0, "attack_ms": 1.0, "decay_tau_ms": 45, "amp": 0.07},
+        {"kind": "noise", "center_hz": 5000, "bandwidth_oct": 1.00, "highpass_hz": 2000, "attack_ms": 0.3, "decay_tau_ms": 4, "amp": 0.12, "onset_ms": 130},
+        {"kind": "partial", "freq_hz": 1046.5, "attack_ms": 1.0, "decay_tau_ms": 130, "amp": 0.55, "onset_ms": 130},
+        {"kind": "partial", "freq_hz": 2093.0, "attack_ms": 1.0, "decay_tau_ms": 80, "amp": 0.17, "onset_ms": 130},
+        {"kind": "partial", "freq_hz": 3139.5, "attack_ms": 1.0, "decay_tau_ms": 50, "amp": 0.07, "onset_ms": 130}
+      ]
+    }
+  }
+}
