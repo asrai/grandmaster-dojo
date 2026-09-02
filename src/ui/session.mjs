@@ -36,6 +36,8 @@ export const balanceDigest = () => ({
 /** 프로토의 비급은 1권뿐이라 무공 축의 모든 조회가 이 id 로 수렴한다. */
 export const ART_ID = ART_SETS[0].id;
 export const ART_NAME = ART_SETS[0].name;
+/** 무공의 한자 — 전수 인장이 한글 우측 세로열로 세운다 (REQ-863). */
+export const ART_HANJA = ART_SETS[0].hanja;
 export const DUEL_STAGES = CHALLENGERS.filter((c) => c.mode === 'duel')
   .slice().sort((a, b) => a.stage - b.stage);
 export const DISPATCH_CHALLENGER = CHALLENGERS.find((c) => c.mode === 'dispatch');
@@ -98,8 +100,52 @@ export function createSession({ now = () => Date.now() } = {}) {
     mission: null,
     cheat: createCheatState(),
     botRunning: false,
+    // 한 판의 원장 — 진입(대련·임무)에서 비워지고 그 판의 판정·성 변화만 담는다 (REQ-872·873).
+    bout: createBout(),
   };
 }
+
+/**
+ * 한 판의 원장 (REQ-872·873) — 결과 화면이 「이 판에서 무엇이 일어났는가」를 말하려면 판의 경계
+ * 안에서만 센 수가 있어야 한다. 통합 로그는 세션 전체라 그 슬라이스를 되찾을 수 없으므로,
+ * 판정과 성 변화가 지나는 자리에서 함께 쌓는다.
+ */
+const createBout = (attempt = 0) => ({ attempt, verdicts: {}, gains: {}, finisher: null });
+
+/**
+ * 판의 시작 — **싸움이 실제로 시작되는 자리**에서만 부른다. 임무 확정에서 부르면 예고만 보고
+ * 나온 뒤의 대련분이 그 임무의 원장에 그대로 남는다 (임무는 차수가 같은 동안 재사용된다).
+ * @param {number} [attempt] 그 대면의 회차 — 결과 화면의 표찰이 「몇 차 재대련이었나」를 산술로
+ *   되짚지 않게 실제로 싸운 값을 들고 간다. 임무에는 회차 축이 없어 0 이다.
+ */
+export const beginBout = (session, attempt = 0) => { session.bout = createBout(attempt); };
+
+/**
+ * 그 판에 오른 성 한 건 — 같은 초식이 한 판에 여러 번 오르면 시작은 첫 값, 끝은 마지막 값이라
+ * 결과 화면의 `8성 -> 9성` 이 그 판 전체의 이동을 말한다.
+ * @param {?{style: string, from: number, to: number}} change 성 변화 없음이면 null
+ */
+function noteGain(session, change) {
+  if (!change) return;
+  const seen = session.bout.gains[change.style];
+  session.bout.gains[change.style] = { from: seen ? seen.from : change.from, to: change.to };
+}
+
+/** 그 판의 판정 분포·성 변화 스냅샷 — 결과 화면이 읽는 유일한 형태다 (REQ-871). */
+export const boutLedger = (session) => {
+  const verdicts = { ...session.bout.verdicts };
+  return {
+    attempt: session.bout.attempt,
+    finisher: session.bout.finisher,
+    verdicts,
+    // 한 초에 판정 하나라 분포의 합이 곧 그 판의 초 수다 — 결과 화면이 대련 뷰를 따로 들지 않는다.
+    exchanges: Object.values(verdicts).reduce((sum, n) => sum + n, 0),
+    gains: Object.entries(session.bout.gains).map(([style, move]) => ({ style, ...move })),
+  };
+};
+
+/** 상대를 쓰러뜨린 초인가 — 초 상한의 잔여 HP 비교승은 그 타격이 확정한 승리가 아니다 (REQ-708). */
+const isFinishingBlow = (view) => view.outcome?.win === true && view.outcome.by === 'hp';
 
 /**
  * 화면 전이의 계측 지점 — `cycle{phase}` 의 유일한 출처이자, 걸어 둔 제자 수련이 「사부가 그동안
@@ -221,6 +267,7 @@ export const nextChallengerEntry = (session) => challengerEntry(session, challen
 export function beginDuel(session, challengerId) {
   const foeRank = duelFoeRank(session, challengerId);
   const attemptN = duelAttemptOf(session, challengerId);
+  beginBout(session, attemptN);
   if (attemptN > 1) {
     logEvent(session, 'rematch', { challenger: challengerId, foe_rank: foeRank, attempt_n: attemptN });
   }
@@ -473,6 +520,8 @@ export function logSessionMeta(session, { testerRole = 'self', device = 'keyboar
 
 /** `opening` 이 스키마의 `state` 자리 — grade 만으로는 빈틈 발생률을 역산할 수 없다. */
 export function logVerdict(session, verdict, who) {
+  // 분포는 판정이 나는 자리에서만 는다 — 6단을 뒤늦게 로그에서 세면 판의 경계를 잃는다 (REQ-872).
+  session.bout.verdicts[verdict.grade] = (session.bout.verdicts[verdict.grade] ?? 0) + 1;
   logEvent(session, 'verdict', {
     grade: verdict.grade,
     dmg_out: verdict.dmgOut,
@@ -499,22 +548,27 @@ export function recordDuelVerdict(session, view) {
   logVerdict(session, view.verdict, 'user');
   if (!view.fire) return null;
   const styleId = view.fire.style.id;
-  // 초 상한의 잔여 HP 비교승은 그 타격이 확정한 승리가 아니다 — 결정타는 상대를 쓰러뜨린 초뿐이다.
-  const finish = view.outcome?.win === true && view.outcome.by === 'hp';
-  if (finish) logFinish(session, view, styleId);
+  const finish = isFinishingBlow(view);
+  if (finish) noteFinisher(session, view, styleId);
   const promoted = recordOutcomeRank(session, styleId, {
     finish, crush: view.verdict.grade === 'crush',
   });
   const accrued = isEffectiveSuccess(view.verdict.grade)
     ? recordEffectiveSuccess(session, styleId, 'duel') : null;
+  // 원장은 공방 판정을 지나는 성 변화만 담는다 — 적립 자리(`emitMasterChanges`)에서 세면
+  // 판 밖의 수련분까지 들어와 결과 화면이 이 판에서 벌지 않은 칸을 발광시킨다 (REQ-873).
+  noteGain(session, promoted.rank);
+  noteGain(session, accrued?.rank);
   return promoted.rank ? promoted : accrued;
 }
 
 /**
- * 결정타 기록 (REQ-708) — 어느 초식이 끝냈는지의 인과를 남긴다. `intended` 는 그 초가 11성
- * 계단을 노리던 초식에 떨어졌는가다: 결정타의 통제 불가는 의도된 난이도이고 재는 것은 배분이다.
+ * 결정타 기록 (REQ-708) — 어느 초식이 끝냈는지의 인과를 로그와 판 원장에 함께 남긴다.
+ * `intended` 는 그 초가 11성 계단을 노리던 초식에 떨어졌는가다: 결정타의 통제 불가는 의도된
+ * 난이도이고 재는 것은 배분이다.
  */
-function logFinish(session, view, styleId) {
+function noteFinisher(session, view, styleId) {
+  session.bout.finisher = styleId;
   logEvent(session, 'finish', {
     style: styleId,
     challenger: view.challenger.id,
@@ -525,8 +579,15 @@ function logFinish(session, view, styleId) {
 /** 파견 쪽 짝 — 제자는 같은 사다리를 상한 10성으로 탄다 (REQ-705). */
 export function recordDispatchVerdict(session, view) {
   logVerdict(session, view.verdict, 'disciple');
-  if (!view.fire || !isEffectiveSuccess(view.verdict.grade)) return null;
-  return accrueDiscipleRank(session, view.fire.style.id);
+  if (!view.fire) return null;
+  const styleId = view.fire.style.id;
+  // 끝낸 초는 등급과 무관하다 — 유효 성공은 **적립**의 조건이지 결정타의 조건이 아니라서, 그 필터
+  // 뒤에 두면 열세로 끝낸 판이 결과 화면에서 「끝내지 못했다」로 뜬다 (REQ-708).
+  if (isFinishingBlow(view)) noteFinisher(session, view, styleId);
+  if (!isEffectiveSuccess(view.verdict.grade)) return null;
+  const accrued = accrueDiscipleRank(session, styleId);
+  noteGain(session, accrued && { style: styleId, ...accrued });
+  return accrued;
 }
 
 // ---------------------------------------------------------- 개발자 치트 (REQ-781~783)
@@ -609,6 +670,34 @@ export function settleDispatch(session, { win }) {
 }
 
 /**
+ * 결과 화면 진입 정산 (#70) — 상태를 움직이는 것은 한 판에 한 번이고, 같은 판을 다시 렌더하면
+ * 같은 값이 그대로 돌아온다. 메모를 진입 파라미터에 두되 **그 판에 묶는 것**이 그 「한 번」의
+ * 정의다: 파라미터를 화면 사이로 물려 쓰는 관용이 이 코드베이스에 이미 있어, 객체 신원만으로는
+ * 다음 판의 정산이 앞 판의 메모에 조용히 삼켜진다. 정산을 부르는 주체가 렌더 자신이라
+ * 진입 경로가 늘어도 정산이 통째로 빠지는 갈래는 생기지 않는다.
+ * 원장 스냅샷을 정산보다 **먼저** 뜨는 것은 `settleDispatch` 가 임무를 비우기 때문이다.
+ * @param {{kind: string, win: boolean, stage?: number, settled?: object, settledBout?: object}} params
+ *   `go('result', …)` 가 만든 그 객체 — 뒤 두 필드는 이 함수가 그 객체에 써 넣는 메모다.
+ */
+export function settleResult(session, params) {
+  if (params.settled && params.settledBout === session.bout) return params.settled;
+  const ledger = boutLedger(session);
+  const moved = params.kind === 'duel'
+    ? settleDuel(session, params) : settleDispatch(session, params);
+  params.settledBout = session.bout;
+  params.settled = {
+    kind: params.kind,
+    win: Boolean(params.win),
+    rematch: Boolean(moved.rematch),
+    reward: moved.reward,
+    unlocked: moved.unlocked ?? null,
+    cleared: Boolean(moved.cleared),
+    ...ledger,
+  };
+  return params.settled;
+}
+
+/**
  * 내보내기 페이로드 (REQ-602). 스키마 위반을 함께 실어, 결손 로그가 kill 산식의
  * 입력으로 조용히 쓰이지 않게 한다 — 판독기는 이 배열이 비어야 통과시킨다.
  */
@@ -629,6 +718,19 @@ export function exportPayload(session, { exportedAt = new Date().toISOString() }
 }
 
 export const canTransmitNow = (session) => canTransmit(session.progress, ART_ID, session.disciple);
+
+/**
+ * 전수 화면 진입 실행 (#70 과 같은 축) — 무공은 한 번만 건너간다. 그 「한 번」을 지는 것은
+ * `settleResult` 처럼 진입 메모가 아니라 **세션 상태**다: 이미 받은 제자에게는 전수 조건 자체가
+ * 서지 않으므로(`canTransmit`) 재렌더가 조건에서 걸러진다 — 메모가 없어도 멱등이고, 메모를
+ * 잃어 정산이 통째로 빠지는 반대 실패도 없다.
+ * @returns {boolean} 이 호출이 실제로 전수했는지
+ */
+export function enterTransmit(session) {
+  if (!canTransmitNow(session)) return false;
+  runTransmit(session);
+  return true;
+}
 
 export function runTransmit(session) {
   session.disciple = transmit(session.progress, session.disciple, ART_ID);

@@ -60,10 +60,6 @@ export function startDuel(ctx) {
     padded: false,
   });
 
-  // 결과 화면이 「어느 초식이 끝냈는가」를 말하려면 그 초의 발동을 여기서 붙잡아 두어야 한다 (REQ-708).
-  let lastFire = null;
-  const finisher = () => lastFire?.style.id ?? null;
-
   const toast = (text, cls = '') => {
     banner.className = `toast show ${cls}`.trim();
     banner.textContent = text;
@@ -111,7 +107,6 @@ export function startDuel(ctx) {
       },
       onVerdict(view, changes) {
         const { verdict: resolved } = view;
-        lastFire = view.fire ?? null;
         renderHp(view);
         // 소리는 흔들림·글자와 한 덩어리로 읽혀야 해서 판정이 실제로 뜨는 순간에 맡긴다 —
         // 확정 연출을 기다리는 초에는 그만큼 함께 늦는다 (REQ-826).
@@ -136,9 +131,7 @@ export function startDuel(ctx) {
         }
       },
       onEnd(view) {
-        ctx.go('result', {
-          kind: 'duel', win: view.outcome.win, stage: params.stage, view, finisher: finisher(),
-        });
+        ctx.go('result', { kind: 'duel', win: view.outcome.win, stage: params.stage });
       },
     }),
   });

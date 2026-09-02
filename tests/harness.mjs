@@ -20,9 +20,9 @@ import {
   designateDiscipleTraining, discipleTrainProgress, duelAttemptOf, duelFoeRank, enterPhase, equip,
   equippedStyles, exportPayload, isCheatFlagged, isFirstEncounterOf, isRematch, learnStyle, logEvent,
   challengerEntry, challengerRoster, missionLockRankOf, missionShortfallOf, nextChallengerEntry,
-  pickTooltip, recordDuelVerdict, recordEffectiveSuccess,
+  pickTooltip, recordDispatchVerdict, recordDuelVerdict, recordEffectiveSuccess,
   runTransmit, setBotRunning, setCheatEnabled, settleDiscipleTraining, settleDispatch, settleDuel,
-  simulateTraining, cheatSetStyleRank,
+  simulateTraining, cheatSetStyleRank, boutLedger, enterTransmit, settleResult,
 } from '../src/ui/session.mjs';
 import {
   composeHooks, dispatchWiring, duelWiring, trainWiring,
@@ -2266,6 +2266,260 @@ suite('계측 배선 공유 (#11)', () => {
     deepEq(INSTRUMENTS.filter((name) => imports.includes(name)), [],
       `${path} 는 계측 함수를 직접 쥐지 않는다 — 배선은 한 벌이어야 한다`);
   }
+});
+
+// ------------------------- 12-b. 결과 진입 1회 정산 · 판 원장 (#70 · REQ-871~873)
+
+suite('판 원장 — 그 판의 판정 분포·성 변화·결정타 (REQ-872·873·708)', () => {
+  const session = createSession();
+  const challenger = challengerOfStage(1);
+  // 첫 초식은 `createProgress` 가 이미 해금해 둔다 — 다시 배우면 그 자리에서 throw 다.
+  const style = artStyles(ART)[0];
+
+  /** 한 초의 판정 하나 — 화면·헤드리스가 지나는 `recordDuelVerdict` 와 같은 형태를 만든다. */
+  const view = (grade, outcome = { over: false, win: null, by: null }) => ({
+    verdict: { grade, dmgOut: 10, dmgIn: 0, opening: null },
+    fire: { style },
+    outcome,
+    challenger,
+  });
+
+  beginDuel(session, challenger.id);
+  deepEq(boutLedger(session).verdicts, {}, '진입이 원장을 비운다');
+  eq(boutLedger(session).attempt, 1, '초회 대면의 회차가 실린다');
+
+  recordDuelVerdict(session, view('advantage'));
+  recordDuelVerdict(session, view('advantage'));
+  recordDuelVerdict(session, view('clash'));
+  // 판정 분포는 그 판의 초 수와 맞아야 한다 — 세션 전체 로그에서 세면 이전 판이 섞인다.
+  deepEq(boutLedger(session).verdicts, { advantage: 2, clash: 1 }, '판정이 등급별로 쌓인다');
+  eq(boutLedger(session).finisher, null, '아직 끝내지 않았으므로 결정타가 없다');
+
+  const gains = boutLedger(session).gains;
+  eq(gains.length, 1, '적립이 일어난 초식만 원장에 오른다');
+  eq(gains[0].style, style.id, '오른 초식의 id');
+  eq(gains[0].from, 1, '시작은 그 판의 첫 값이다');
+  eq(gains[0].to, styleRank(session.progress, style.id), '끝은 지금 값이다');
+
+  // 초 상한의 잔여 HP 비교승은 그 타격이 확정한 승리가 아니라 결정타가 아니다 (REQ-708).
+  recordDuelVerdict(session, view('advantage', { over: true, win: true, by: 'exchanges' }));
+  eq(boutLedger(session).finisher, null, '초 상한 비교승은 결정타로 세지 않는다');
+  recordDuelVerdict(session, view('crush', { over: true, win: true, by: 'hp' }));
+  eq(boutLedger(session).finisher, style.id, '상대를 쓰러뜨린 초가 결정타다');
+  // 결과 표찰의 초 수는 이 도출에 기댄다 — 한 초에 판정 하나가 아니면 그 수가 조용히 어긋난다.
+  eq(boutLedger(session).exchanges, 5, '초 수는 판정 분포의 합이다');
+
+  // 회차는 승수에서 파생하므로 다음 대면을 재대련으로 만들려면 이 판의 승리를 먼저 정산한다.
+  settleDuel(session, { win: true, stage: 1 });
+  // 다음 판은 앞 판의 수를 물려받지 않는다 — 그것이 「이 판에서 번 것」의 정의다.
+  beginDuel(session, challenger.id);
+  deepEq(boutLedger(session).verdicts, {}, '다음 진입이 분포를 비운다');
+  deepEq(boutLedger(session).gains, [], '다음 진입이 성 변화를 비운다');
+  eq(boutLedger(session).finisher, null, '다음 진입이 결정타를 비운다');
+  eq(boutLedger(session).attempt, 2, '재대련 회차가 실린다');
+
+  // 수련의 적립은 판 밖의 일이라 결과 화면의 발광 칸이 되어서는 안 된다 (REQ-873).
+  recordEffectiveSuccess(session, style.id, 'train');
+  deepEq(boutLedger(session).gains, [], '판 밖의 수련 적립은 원장에 오르지 않는다');
+
+  // 파견도 같은 원장을 쓴다 — 결과 화면이 대련·파견을 가르지 않는 근거다.
+  const trained = createSession();
+  trained.progress = masteredProgress;
+  runTransmit(trained);
+  beginMission(trained, { random: createSeededRandom(3) });
+  const dstyle = artStyles(ART)[0];
+  recordDispatchVerdict(trained, {
+    verdict: { grade: 'crush', dmgOut: 10, dmgIn: 0, opening: null },
+    fire: { style: dstyle },
+    outcome: { over: true, win: true, by: 'hp' },
+    challenger: DISPATCH_CHALLENGER,
+  });
+  const missionLedger = boutLedger(trained);
+  deepEq(missionLedger.verdicts, { crush: 1 }, '파견 판정도 같은 원장에 쌓인다');
+  eq(missionLedger.finisher, dstyle.id, '제자의 결정타도 같은 자리에 실린다');
+  eq(missionLedger.attempt, 0, '임무에는 회차 축이 없다');
+
+  // 유효 성공은 적립의 조건이지 결정타의 조건이 아니다 — 열세로 끝낸 판도 끝낸 초가 있다 (REQ-708).
+  ok(!isEffectiveSuccess('disadvantage'), '열세는 유효 성공이 아니다');
+  const lowGrade = createSession();
+  lowGrade.progress = masteredProgress;
+  runTransmit(lowGrade);
+  dispatchWiring(lowGrade, { disciple: { arm() {}, tick: () => null } });
+  recordDispatchVerdict(lowGrade, {
+    verdict: { grade: 'disadvantage', dmgOut: 4, dmgIn: 12, opening: null },
+    fire: { style: dstyle },
+    outcome: { over: true, win: true, by: 'hp' },
+    challenger: DISPATCH_CHALLENGER,
+  });
+  eq(boutLedger(lowGrade).finisher, dstyle.id, '적립되지 않는 등급으로 끝내도 결정타는 남는다');
+  deepEq(boutLedger(lowGrade).gains, [], '그 초는 적립되지 않으므로 성 변화는 없다');
+});
+
+suite('결과 정산은 진입 1회 — 재렌더 멱등 (#70)', () => {
+  /** 대련 한 판을 그 진입까지 세운다 — 정산이 실제로 무엇을 움직이는지 재는 기준선이다. */
+  const duelSession = (stage) => {
+    const session = createSession();
+    session.progress = masteredProgress;
+    beginDuel(session, challengerOfStage(stage).id);
+    return session;
+  };
+
+  /**
+   * 「두 번 렌더해도 한 번」과 「그 상태에서 실제로 돈다」를 한 자리에서 잰다 — 후자가 없으면
+   * 정산이 통째로 빠진 반대 실패가 멱등 단정만으로는 green 으로 통과한다.
+   */
+  const settleTwice = (session, params) => {
+    const before = { coins: session.coins, stage: session.stage, dispatchStage: session.dispatchStage };
+    const first = settleResult(session, params);
+    const moved = { coins: session.coins, stage: session.stage, dispatchStage: session.dispatchStage };
+    const second = settleResult(session, params);
+    return { before, first, moved, second, after: {
+      coins: session.coins, stage: session.stage, dispatchStage: session.dispatchStage,
+    } };
+  };
+
+  // ① 대련 승리 — 재화·차수가 오르고, 다시 그려도 두 번 오르지 않는다.
+  {
+    const session = duelSession(1);
+    const params = { kind: 'duel', win: true, stage: 1 };
+    const r = settleTwice(session, params);
+    eq(r.moved.coins - r.before.coins, BALANCE.reward.duelWin, '대련 승리가 실제로 재화를 준다');
+    eq(r.moved.stage, r.before.stage + 1, '대련 승리가 실제로 차수를 전진시킨다');
+    deepEq(r.after, r.moved, '두 번째 렌더는 세션을 움직이지 않는다');
+    ok(r.second === r.first, '같은 진입은 같은 정산 결과를 되돌린다');
+    eq(session.duelWins[challengerOfStage(1).id], 1, '도전자 승수가 한 번만 오른다');
+    eq(r.first.rematch, false, '초회 대면은 재대련이 아니다');
+  }
+
+  // ② 대련 패배 — 무손실이지만 정산은 돈다 (성·판정 분포는 그대로 보여야 한다).
+  {
+    const session = duelSession(1);
+    const params = { kind: 'duel', win: false, stage: 1 };
+    const r = settleTwice(session, params);
+    eq(r.first.reward, 0, '패배는 무보상이다 (REQ-209)');
+    deepEq(r.moved, r.before, '패배는 세션을 움직이지 않는다');
+    deepEq(r.after, r.before, '패배의 재렌더도 마찬가지다');
+    ok(r.second === r.first, '패배도 같은 정산 결과를 되돌린다');
+  }
+
+  // ③ 재대련 승리 — 승수는 오르되 재화는 주지 않는다 (REQ-734·877).
+  {
+    const session = duelSession(1);
+    settleResult(session, { kind: 'duel', win: true, stage: 1 });
+    beginDuel(session, challengerOfStage(1).id);
+    const coinsBefore = session.coins;
+    const params = { kind: 'duel', win: true, stage: 1 };
+    const r = settleTwice(session, params);
+    eq(r.first.rematch, true, '두 번째 대면은 재대련이다');
+    eq(r.first.reward, 0, '재대련 승리는 재화를 주지 않는다');
+    eq(session.coins, coinsBefore, '재화가 그대로다');
+    eq(session.duelWins[challengerOfStage(1).id], 2, '재대련 승수가 한 번만 오른다');
+    ok(r.second === r.first, '재대련도 같은 정산 결과를 되돌린다');
+  }
+
+  // ④ 파견 완수 — 재화·다음 임무가 열리고, 재렌더가 그것을 두 번 하지 않는다.
+  {
+    const session = createSession();
+    session.progress = masteredProgress;
+    runTransmit(session);
+    beginMission(session, { random: createSeededRandom(5) });
+    const params = { kind: 'dispatch', win: true };
+    const r = settleTwice(session, params);
+    eq(r.moved.coins - r.before.coins, BALANCE.reward.dispatchWin, '파견 완수가 실제로 재화를 준다');
+    eq(r.moved.dispatchStage, r.before.dispatchStage + 1, '파견 완수가 실제로 다음 차수를 연다');
+    deepEq(r.after, r.moved, '파견의 재렌더도 세션을 움직이지 않는다');
+    ok(r.second === r.first, '파견도 같은 정산 결과를 되돌린다');
+    // `cycle_done` 은 kill (d) 의 종점이라 재렌더가 그것을 두 번 찍으면 판독 구간이 갈라진다.
+    const done = session.log.entries.filter((e) => e.event === 'cycle' && e.phase === 'cycle_done');
+    eq(done.length, 1, '파견 종점 로그가 한 번만 찍힌다');
+  }
+
+  // ⑤ 진입 파라미터가 다르면 다른 판이다 — 메모가 판을 가로질러 정산을 삼키면 그것이 반대 실패다.
+  {
+    const session = duelSession(1);
+    settleResult(session, { kind: 'duel', win: true, stage: 1 });
+    const coinsAfterFirst = session.coins;
+    beginDuel(session, challengerOfStage(2).id);
+    settleResult(session, { kind: 'duel', win: true, stage: 2 });
+    eq(session.coins, coinsAfterFirst + BALANCE.reward.duelWin, '새 진입은 새로 정산한다');
+    eq(session.stage, 3, '새 진입의 차수 전진도 실제로 일어난다');
+  }
+
+  // ⑥ 메모는 진입 파라미터가 아니라 **그 판**에 묶인다 — 파라미터를 물려 쓰는 관용이 이미 있어
+  //    객체 신원만 보면 다음 판의 정산이 앞 판의 메모에 조용히 삼켜진다.
+  {
+    const session = duelSession(1);
+    const params = { kind: 'duel', win: true, stage: 1 };
+    settleResult(session, params);
+    const coinsAfterFirst = session.coins;
+    beginDuel(session, challengerOfStage(1).id);
+    settleResult(session, params);
+    eq(session.coins, coinsAfterFirst, '재대련이라 재화는 그대로지만');
+    eq(session.duelWins[challengerOfStage(1).id], 2, '같은 파라미터를 물려 써도 새 판은 새로 정산된다');
+  }
+
+  // 정산 스냅샷은 그 판의 원장을 함께 싣는다 — 결과 화면이 로그를 다시 세지 않는 근거다.
+  {
+    const session = duelSession(1);
+    const snapshot = settleResult(session, { kind: 'duel', win: true, stage: 1 });
+    deepEq(Object.keys(snapshot).sort(),
+      ['attempt', 'cleared', 'exchanges', 'finisher', 'gains', 'kind', 'rematch', 'reward', 'unlocked', 'verdicts', 'win'],
+      '정산 스냅샷이 내는 필드 집합');
+  }
+});
+
+suite('파견의 판 경계는 임무 확정이 아니라 그 판의 시작이다 (REQ-872·873)', () => {
+  const session = createSession();
+  session.progress = masteredProgress;
+  runTransmit(session);
+  const style = artStyles(ART)[0];
+
+  // ① 예고 진입 — 임무가 확정된다. 이 시점은 아직 싸움이 아니다.
+  const mission = currentMission(session, { random: createSeededRandom(7) });
+  ok(mission, '예고에서 임무가 확정된다');
+
+  // ② 물러나기 → 대련 한 판. 그 판정·성 변화가 원장에 쌓인다.
+  beginDuel(session, challengerOfStage(1).id);
+  recordDuelVerdict(session, {
+    verdict: { grade: 'crush', dmgOut: 10, dmgIn: 0, opening: 'foe' },
+    fire: { style },
+    outcome: { over: false, win: null, by: null },
+    challenger: challengerOfStage(1),
+  });
+  ok(boutLedger(session).verdicts.crush > 0, '대련분이 원장에 쌓였다');
+
+  // ③ 파견 재진입 — 임무는 차수가 같아 재사용되므로 `beginMission` 이 돌지 않는다.
+  eq(currentMission(session, { random: createSeededRandom(7) }), mission, '같은 차수의 임무가 재사용된다');
+  // 판을 여는 것은 배선이다 — 여기서 비워지지 않으면 대련분이 파견 결과 화면에 그대로 실린다.
+  dispatchWiring(session, { disciple: { arm() {}, tick: () => null } });
+  deepEq(boutLedger(session).verdicts, {}, '파견의 판이 앞선 대련분을 물려받지 않는다');
+  deepEq(boutLedger(session).gains, [], '앞선 대련의 성 변화도 물려받지 않는다');
+  eq(boutLedger(session).finisher, null, '앞선 대련의 결정타도 물려받지 않는다');
+});
+
+suite('전수도 진입 1회 (#70 과 같은 축 · REQ-761)', () => {
+  const session = createSession();
+  session.progress = masteredProgress;
+  ok(canTransmitNow(session), '전수 조건이 섰다');
+  const ranksOf = () => artStyles(ART).map((s) => discipleStyleRank(session.disciple, ART, s.id));
+
+  const transmits = () => session.log.entries.filter((e) => e.event === 'transmit').length;
+  eq(enterTransmit(session), true, '조건이 선 진입은 전수를 실행한다');
+  eq(transmits(), 1, '전수 로그가 한 번 남는다');
+  // 제자가 성을 올린 뒤 재렌더가 전수를 다시 돌리면 그 성이 1성으로 되감긴다.
+  accrueDiscipleRank(session, artStyles(ART)[0].id);
+  const ranks = ranksOf();
+
+  eq(enterTransmit(session), false, '재렌더는 다시 전수하지 않는다');
+  eq(transmits(), 1, '전수 로그도 늘지 않는다');
+  deepEq(ranksOf(), ranks, '제자의 성이 두 번 초기화되지 않는다');
+
+  // 멱등을 지는 것은 진입 메모가 아니라 세션 상태다 — 다른 세션은 자기 조건으로 판정한다.
+  const other = createSession();
+  other.progress = masteredProgress;
+  eq(enterTransmit(other), true, '다른 세션은 그 세션의 조건으로 전수한다');
+  // 조건이 서지 않은 세션에서는 아무것도 하지 않는다 — 던지지 않는 것이 화면 진입의 계약이다.
+  eq(enterTransmit(createSession()), false, '전수 조건이 서지 않으면 실행하지 않는다');
 });
 
 // -------------------------------------------- 12. BALANCE 파라미터 census (REQ-606)

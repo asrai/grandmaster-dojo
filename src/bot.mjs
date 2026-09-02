@@ -14,8 +14,8 @@ import { createSequenceInput } from './ui/sequence-input.mjs';
 import {
   ART_ID, DUEL_STAGES, advanceDiscipleTraining, beginMission, canDiscipleTrain, canDispatch,
   canTransmitNow, challengerOfStage, createSession, currentMission, designateDiscipleTraining,
-  enterPhase, equip, equippedStyles, learnStyle, logEvent, logSessionMeta, rankOfStyle, runTransmit,
-  setBotRunning, settleDispatch, settleDuel, simulateTraining, trainVisitDone,
+  enterPhase, equip, equippedStyles, learnStyle, logEvent, logSessionMeta, rankOfStyle,
+  enterTransmit, setBotRunning, settleResult, simulateTraining, trainVisitDone,
 } from './ui/session.mjs';
 import {
   composeHooks, dispatchWiring, duelWiring, logDispatchResult, logDuelStart, trainWiring,
@@ -529,7 +529,7 @@ export function runHeadlessMissions({
     enterPhase(session, 'dispatch');
     const view = headlessDispatch({ session, timer });
     enterPhase(session, 'result');
-    settleDispatch(session, { win: view.outcome.win });
+    settleResult(session, { kind: 'dispatch', win: view.outcome.win });
     results.push({
       stage: mission.label, foeSet: mission.foeSet, foeRank: mission.foeRank, win: view.outcome.win,
     });
@@ -598,7 +598,7 @@ export function runHeadlessCycle({
       continue;
     }
     if (phase === 'transmit') {
-      runTransmit(session);
+      enterTransmit(session);
       go('dojo');
       continue;
     }
@@ -617,12 +617,12 @@ export function runHeadlessCycle({
       continue;
     }
     if (phase === 'result') {
+      // 화면과 같은 문을 지난다 — 정산의 입구가 둘이면 그중 하나만 고쳐도 결과가 갈린다 (#70).
+      settleResult(session, params);
       if (params.kind === 'duel') {
-        settleDuel(session, { win: params.win, stage: params.stage });
         go('dojo');
         continue;
       }
-      settleDispatch(session, { win: params.win });
       // 시계를 함께 돌려준다 — B-2 이후 임무·제자 수련의 셀프 관측이 같은 가상 시계 위에서 이어진다.
       return { session, elapsedMs: timer.now(), screens, timer };
     }

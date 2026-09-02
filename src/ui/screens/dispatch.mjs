@@ -259,7 +259,7 @@ export function startDispatch(ctx) {
       },
       onEnd(view) {
         logDispatchResult(session, { mission, win: view.outcome.win });
-        ctx.go('result', { kind: 'dispatch', win: view.outcome.win, view });
+        ctx.go('result', { kind: 'dispatch', win: view.outcome.win });
       },
     }),
   });

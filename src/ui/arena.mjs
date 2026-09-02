@@ -12,6 +12,12 @@ import { hanja } from './components/hanja.mjs';
 export const SPOT = { FAR: 'far', NEAR: 'near' };
 
 /**
+ * 역광이 닿지 않는 자세 (REQ-875) — 쓰러진 사람은 빛의 앞이 아니라 바닥에 있어, 형태를 지는
+ * 것이 뒤에서 오는 빛이 아니라 윤곽선이다. 자세가 그 사실을 정하므로 화면이 끌 인자가 아니다.
+ */
+const UNLIT_POSES = new Set(['prone']);
+
+/**
  * 정경은 상태에 따라 변하지 않는 코드 렌더라 마크업이 상수다 — 실루엣만 PNG 로 간다(REQ-932).
  * 외부 입력이 닿지 않는 정적 리터럴이므로 파싱 한 번으로 세운다.
  */
@@ -78,9 +84,15 @@ function vital(spot, label) {
   };
 }
 
+/** 실루엣과 그 역광은 한 쌍이라, 자세를 갈아 끼우는 자리가 빛의 유무도 함께 정한다 (REQ-875). */
+function wear({ glow }, pose) {
+  glow.classList.toggle('off', UNLIT_POSES.has(pose));
+}
+
 /**
  * @param {object} [p]
- * @param {?number} [p.height] 무대 높이(px) — 생략하면 원장의 기본값이고, 접어 쓰는 화면만 준다.
+ * @param {?string} [p.height] 무대 높이 **토큰 이름** — 생략하면 원장의 기본값이고, 접어 쓰는
+ *   화면만 준다. 값이 아니라 이름을 받으므로 높이 수치는 여전히 원장 한 곳에만 있다 (REQ-870).
  * @param {{spot: string, id: string, pose: string}[]} [p.figures] 아레나에 서는 사람 —
  *   `id`·`pose` 는 파일 경로가 아니라 에셋 id·자세이고, 둘을 이은 이름이 곧 클래스다 —
  *   그 클래스에서 파일로 가는 표는 `index.html` 한 곳에만 있다 (REQ-931·932).
@@ -96,17 +108,23 @@ export function createArena({ height = null, figures = [], watcher = null, bout 
   const scenery = el('div', { class: 'scenery', 'aria-hidden': 'true' });
   scenery.innerHTML = SCENERY;
 
+  // 수를 넘기면 `var(360)` 이 되어 CSS 파서가 조용히 버리고 무대가 기본 높이로 선다 — 그 자리에서 문다.
+  if (height !== null && !String(height).startsWith('--')) {
+    throw new Error(`무대 높이는 원장 토큰 이름이어야 한다: ${height}`);
+  }
   const node = el('div', {
     class: 'scene',
-    style: height === null ? null : `--scene-h:${height}px`,
+    style: height === null ? null : `--scene-h:var(${height})`,
   }, [el('div', { class: 'layer sky' }), scenery, el('div', { class: 'layer mist' })]);
 
   // 역광이 없으면 먹 실루엣이 어두운 배경에서 사라진다 — 사람과 한 쌍으로만 존재한다 (REQ-821).
   const placed = new Map(figures.map(({ spot, id, pose }) => {
-    node.appendChild(el('div', { class: `backlight ${spot}`, 'aria-hidden': 'true' }));
+    const glow = el('div', { class: `backlight ${spot}`, 'aria-hidden': 'true' });
     const fig = el('div', { class: `fig ${spot} ${id}_${pose}`, 'aria-hidden': 'true' });
-    node.appendChild(fig);
-    return [spot, fig];
+    node.append(glow, fig);
+    const pair = { fig, glow };
+    wear(pair, pose);
+    return [spot, pair];
   }));
 
   node.appendChild(el('div', { class: 'layer vignette' }));
@@ -118,10 +136,11 @@ export function createArena({ height = null, figures = [], watcher = null, bout 
     node,
     /** 자세·인물 교체 — 결과 화면이 승패를 자세로 먼저 말하는 자리다 (REQ-875). */
     setFigure(spot, { id, pose }) {
-      const fig = placed.get(spot);
+      const pair = placed.get(spot);
       // 세우지 않은 자리에 자세를 주면 조용히 아무것도 바뀌지 않으므로 그 자리에서 터뜨린다.
-      if (!fig) throw new Error(`아레나에 없는 자리: ${spot}`);
-      fig.className = `fig ${spot} ${id}_${pose}`;
+      if (!pair) throw new Error(`아레나에 없는 자리: ${spot}`);
+      pair.fig.className = `fig ${spot} ${id}_${pose}`;
+      wear(pair, pose);
     },
   };
   if (!bout) return api;

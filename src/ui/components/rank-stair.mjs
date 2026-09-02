@@ -15,13 +15,22 @@ const STEP_SHAPE = {
 };
 
 /**
+ * 계단의 색 축 (REQ-864) — 가르는 것은 「누구의 성인가」가 아니라 **전수 이관 행에서 건너간 값과
+ * 새로 시작하는 값**이다. 그래서 결과 화면의 오른 성은 대련·파견 모두 금이고(그 화면의 금은
+ * 「이 판에서 번 것」의 색이다), 청은 이관 행의 제자 칸에만 선다.
+ * 값은 원장이 지고 여기서는 토큰 **이름**만 고른다.
+ */
+export const STAIR_TONE = { GAINED: 'gained', TRANSFERRED: 'transferred' };
+
+/**
  * @param {object} p
  * @param {number} p.rank 현재 성
  * @param {number} [p.progress] 다음 칸의 부분 채움 비율 (0~1)
  * @param {number} [p.gained] 이번 판에 오른 칸 수 — 그만큼의 최근 칸이 발광한다 (REQ-818)
+ * @param {string} [p.tone] `STAIR_TONE` 중 하나 — 생략하면 「번 값」의 금이다
  * @returns {HTMLElement} `.steps` 노드
  */
-export function rankStair({ rank, progress = 0, gained = 0 }) {
+export function rankStair({ rank, progress = 0, gained = 0, tone = STAIR_TONE.GAINED }) {
   const wall = wallStep();
   const glowFrom = rank - gained + 1;
   const steps = Array.from({ length: BALANCE.rankMax }, (_, i) => {
@@ -36,7 +45,7 @@ export function rankStair({ rank, progress = 0, gained = 0 }) {
       shape ? el('i', { class: `mk ${shape}`, 'aria-hidden': 'true' }) : null,
     ]);
   });
-  return el('div', { class: 'steps' }, steps);
+  return el('div', { class: `steps tone-${tone}` }, steps);
 }
 
 /**
