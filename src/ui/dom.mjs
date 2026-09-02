@@ -31,7 +31,9 @@ export function clear(node) {
  * JS 가 이름으로 부르는 원장 ms 토큰 전량 — 부팅이 이 목록을 전건 읽어 형식 위반을 첫 페인트
  * 전에 터뜨리므로, 새 토큰을 읽는 코드는 여기에 이름을 더해야 한다 (#132).
  */
-export const LEDGER_MS = ['--juice-hitstop', '--only-hold', '--slip-exit', '--tm-follow-delay'];
+export const LEDGER_MS = Object.freeze(
+  ['--juice-hitstop', '--only-hold', '--slip-exit', '--tm-follow-delay'],
+);
 
 /** 원장의 연출 시간 하나 — 못 읽은 값이 0 으로 접히면 연출이 에러 없이 사라지므로 형식부터 문다. */
 export function ledgerMs(name) {

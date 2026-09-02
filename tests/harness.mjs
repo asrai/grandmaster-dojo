@@ -2386,7 +2386,7 @@ suite('원장 ms 판독은 한 벌 (#132)', () => {
   ok(/throw new Error\(/.test(ledgerBody ?? ''), '형식 위반이 그 자리에서 죽는다');
 
   // (I1′) 부팅 전건 검사의 모집단은 이 목록이라, 목록 밖 토큰은 검사받지 않은 채 연출에서 읽힌다.
-  const listedBlock = domSource.match(/export const LEDGER_MS = \[([^\]]*)\]/);
+  const listedBlock = domSource.match(/export const LEDGER_MS =[^[]*\[([^\]]*)\]/);
   ok(listedBlock, 'dom.mjs 가 LEDGER_MS 목록을 리터럴 배열로 export 한다');
   const listed = [...(listedBlock?.[1] ?? '').matchAll(/'(--[\w-]+)'/g)].map((m) => m[1]);
   // 중복 이름은 부팅의 `Object.fromEntries` 에서 조용히 접힌다 — 목록이 곧 검사 모집단이라 문다.
@@ -2409,8 +2409,16 @@ suite('원장 ms 판독은 한 벌 (#132)', () => {
     '리터럴 밖 호출은 부팅 전건 읽기 하나뿐이다 — 그 하나가 목록 자체를 인자로 돈다');
 
   // 목록은 부팅 단정이 실제로 소비해야 뜻이 있다 — 미소비 목록은 위 ⊆ 를 장식으로 만든다.
-  ok(/LEDGER_MS\.map\([\s\S]{0,80}?ledgerMs\(/.test(read('src/ui/app.mjs')),
+  ok(/\bLEDGER_MS\b[\s\S]{0,80}?\bledgerMs\(/.test(read('src/ui/app.mjs')),
     '부팅이 LEDGER_MS 전건을 ledgerMs 로 읽는다');
+
+  // 목록에만 오르고 원장에 없는 토큰은 이제 「연출 하나 소실」이 아니라 부팅 사망이다 —
+  // 그 실패를 브라우저가 아니라 이 자리에서 낸다. 원장 핀의 선례는 12-c 의 `.verdict-pop` 규칙.
+  const ledgerHtml = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  for (const name of listed) {
+    ok(new RegExp(`\\n\\s*${name}:\\s*\\d+(\\.\\d+)?ms\\s*;`).test(ledgerHtml),
+      `${name} 이 :root 에 ms 값으로 선언돼 있다`);
+  }
 });
 
 // ------------------------- 12-b. 결과 진입 1회 정산 · 판 원장 (#70 · REQ-871~873)

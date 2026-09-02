@@ -167,12 +167,12 @@ document.documentElement.style.setProperty('--hit', `${BALANCE.buttonHitPx}px`);
 
 // 형식 위반을 여기서 전건 터뜨려, 판정 오버레이·죽간 exit·전수 팔 각도가 각자 연출 도중에
 // 죽는 경로를 없앤다 — 실패 시점이 첫 페인트 앞으로 고정된다 (#132).
-const ledger = Object.fromEntries(LEDGER_MS.map((name) => [name, ledgerMs(name)]));
+for (const name of LEDGER_MS) ledgerMs(name);
 
 // 두 원장이 만나는 유일한 결합 — 판정 재생 앞에서 히트스톱과 확정 연출 대기가 함께 예산을 먹고,
 // 남는 것이 없으면 완파·역파가 에러 없이 화면에서 사라진다. 밸런스 쪽에서 재생 길이만 줄여도
 // 깨지므로 부팅 때 문다 (REQ-815·826).
-const preroll = ledger['--juice-hitstop'] + ledger['--only-hold'];
+const preroll = ledgerMs('--juice-hitstop') + ledgerMs('--only-hold');
 if (preroll >= BALANCE.resolveMs) {
   throw new Error(`판정 앞 대기 ${preroll}ms 가 판정 재생 ${BALANCE.resolveMs}ms 를 남기지 않는다`);
 }
