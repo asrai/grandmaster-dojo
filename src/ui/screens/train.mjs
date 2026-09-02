@@ -1,12 +1,12 @@
-// 수련 모드 (REQ-308) — 상대도 판정도 없고, 실전과 같은 창 `T` 안에 완주하면 성공이다.
+// 수련 모드 (REQ-715) — 상대도 판정도 없고, 실전과 같은 창 `T` 안에 완주하면 성공이다.
 
 import { BALANCE } from '../../balance.mjs';
-import { masteryPct, styleById } from '../../core.mjs';
+import { styleById } from '../../core.mjs';
 import { arrowRow, attrMark, clear, el } from '../dom.mjs';
 import { ATTR_VIEW, GRADE_VIEW } from '../theme.mjs';
 import { SFX } from '../audio.mjs';
 import { createSequenceInput } from '../sequence-input.mjs';
-import { logEvent, masteryOf } from '../session.mjs';
+import { logEvent, rankOfStyle, trainHitsLeft } from '../session.mjs';
 import { hideVerdict, showVerdict } from '../verdict-overlay.mjs';
 import { trainWiring } from '../wiring.mjs';
 
@@ -40,7 +40,7 @@ export function startTrain(ctx) {
 
   const input = createSequenceInput({
     pool: [style],
-    masteryOf: (s) => masteryOf(session, s.id),
+    rankOf: (s) => rankOfStyle(session, s.id),
     // 수련은 힌트가 즉시라, 창은 실전과 같아도 완주가 손의 속도만으로 결정된다.
     hintDelayMs: BALANCE.hintDelayMs.train,
     now: () => performance.now(),
@@ -56,10 +56,11 @@ export function startTrain(ctx) {
   let rearm = 0;
 
   const showProgress = () => {
-    const hits = Math.min(session.progress.styles[style.id].trainHits, BALANCE.trainGraduateHits);
-    progressEl.textContent = `수련 성공 ${hits}/${BALANCE.trainGraduateHits}`
-      + ` · 숙련 ${masteryPct(session.progress, style.id)}%`
-      + (hits >= BALANCE.trainGraduateHits ? ' — 졸업, 실전 슬롯에 장착됐다' : '');
+    const left = trainHitsLeft(session, style.id);
+    progressEl.textContent = `수련 성공 ${session.trainVisit.hits}`
+      + ` · ${rankOfStyle(session, style.id)}성`
+      // 8성 벽은 「덜 했다」가 아니라 「여기서부터는 실전」이라, 남은 횟수 자리에 그 사유가 선다 (REQ-706).
+      + (left === null ? ' — 수련으로는 여기까지, 실전으로 민다' : ` · 다음 성까지 ${left}회`);
   };
 
   function arm() {
@@ -68,7 +69,7 @@ export function startTrain(ctx) {
     startedAt = performance.now();
     ctx.pad.attach({
       input,
-      masteryOf: (s) => masteryOf(session, s.id),
+      rankOf: (s) => rankOfStyle(session, s.id),
       accepting: () => !settled,
       onFire: (fired) => {
         if (settled) return;

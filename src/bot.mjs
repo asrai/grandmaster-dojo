@@ -6,17 +6,19 @@
 
 import { BALANCE, STYLES } from './balance.mjs';
 import {
-  canLearn, discipleRankOf, discipleStyles, selectDiscipleStyle, styleById,
+  canEquipRank, canLearn, discipleStyleRank, discipleStyles, discipleTrainMsPerRank,
+  selectDiscipleStyle, styleById,
 } from './core.mjs';
 import { createMatch, createVirtualTimer, pumpToEnd } from './ui/match.mjs';
 import { createSequenceInput } from './ui/sequence-input.mjs';
 import {
-  ART_ID, DISPATCH_CHALLENGER, artRank, canTransmitNow, challengerOfStage, createSession,
-  equippedStyles, learnStyle, logEvent, logSessionMeta, masteryOf, runTransmit,
-  settleDispatch, settleDuel, simulateTraining,
+  ART_ID, DUEL_STAGES, advanceDiscipleTraining, beginMission, canDiscipleTrain, canDispatch,
+  canTransmitNow, challengerOfStage, createSession, currentMission, designateDiscipleTraining,
+  enterPhase, equip, equippedStyles, learnStyle, logEvent, logSessionMeta, rankOfStyle, runTransmit,
+  setBotRunning, settleDispatch, settleDuel, simulateTraining, trainVisitDone,
 } from './ui/session.mjs';
 import {
-  composeHooks, dispatchWiring, duelWiring, logDispatchStart, trainWiring,
+  composeHooks, dispatchWiring, duelWiring, logDispatchResult, logDuelStart, trainWiring,
 } from './ui/wiring.mjs';
 
 const DIRS = ['U', 'D', 'L', 'R'];
@@ -43,8 +45,37 @@ export function createPace(random = Math.random, seed = BALANCE.bot) {
 }
 
 /** 이 창에 낼 초식 — 화면이 상시 병기하는 「이기는 색」을 그대로 따르는 선택이다 (REQ-206). */
-const chooseStyle = (input, foeStyle) =>
-  selectDiscipleStyle({ styles: input.candidates, foeStyle, rankOf: () => 0 });
+const chooseStyle = (input, foeStyle, rankOf) =>
+  selectDiscipleStyle({ styles: input.candidates, foeStyle, rankOf });
+
+/**
+ * 키우는 손의 우선순위 — 「이기는 색」이 같은 후보가 둘이면 **덜 여문** 초식을 낸다. 적립은 실제로
+ * 낸 초식에만 오므로, 동률을 슬롯 순으로 깨면 같은 속성의 앞 슬롯 하나가 창을 독점하고 뒤 초식은
+ * 영영 굶는다 (실측: 유운보·파운현월이 둘 다 쾌라 A-4 에서 유운보가 8성에 고착, 시드 99 등 6건 미완주).
+ * `selectDiscipleStyle` 은 큰 값을 먼저 고르므로 성을 뒤집어 넘기는 것이 그 표현이다.
+ */
+const growthOrder = (session) => (style) => -rankOfStyle(session, style.id);
+
+/** 계단 하나를 앞둔 성인가 — 결정타(11) 와 완파(12) 는 적립이 아니라 사건으로만 열린다 (REQ-704). */
+const atLadderStep = (rank) =>
+  rank === BALANCE.rankLadder.finishRank - 1 || rank === BALANCE.rankLadder.crushRank - 1;
+
+/**
+ * 계단을 미는 손 (REQ-704) — 11·12성은 적립이 아니라 결정타·완파로만 열리므로, 사람은 그
+ * 계단에 선 초식을 골라 낸다. 봇이 이 선택을 하지 않으면 사이클이 그 계단에서 영영 멈춘다.
+ * 미는 조건이 「그 수에 완파가 성립한다」인 것은 두 계단 모두에 맞다 — 완파는 12성의 정의이고,
+ * 결정타는 상대를 쓰러뜨린 수라 그 창의 최대 피해가 곧 최선이다. 조건 없이 밀면 계단에 선
+ * 초식 하나가 매 창을 독점해 나머지 초식의 적립이 굶는다.
+ */
+export function preferLadderPush(session) {
+  return (input, foeStyle) => {
+    const pushable = input.candidates
+      .map((style) => ({ style, rank: rankOfStyle(session, style.id) }))
+      .filter(({ style, rank }) => atLadderStep(rank) && (!foeStyle || style.counters === foeStyle.id))
+      .sort((a, b) => a.rank - b.rank);
+    return pushable[0]?.style ?? null;
+  };
+}
 
 /** 어떤 후보의 다음 키도 아닌 방향 — 눌러도 후보가 0이라 `ignore` 로만 남는다. */
 function strayDir(input, random) {
@@ -60,11 +91,16 @@ function strayDir(input, random) {
  * @param {() => number} p.now
  * @param {(dir: string) => void} p.press 사람 입력과 같은 경로
  * @param {() => void} p.reset
+ * @param {(input: object, foeStyle: ?object) => ?object} [p.prefer] 그 창에서 강제할 초식
+ *   (없으면 「이기는 색」 선택) — 제자 손처럼 계단을 밀 이유가 없는 호출부는 주지 않는다
+ * @param {(style: object) => number} [p.rankOf] 동률 후보 사이의 우선순위 (큰 값이 먼저)
  *
- * 숙련 100% 라도 원터치를 쓰지 않는다 — 원터치 창은 kill (b) 분모에서 빠지므로,
- * 탭하는 봇은 자기가 재려던 완주율 표본을 스스로 지운다 (REQ-302·603).
+ * 원터치 성이라도 탭하지 않는다 — 원터치 창은 kill (b) 분모에서 빠지므로,
+ * 탭하는 봇은 자기가 재려던 완주율 표본을 스스로 지운다 (REQ-703·793).
  */
-export function createHand({ pace, now, press, reset, random = Math.random }) {
+export function createHand({
+  pace, now, press, reset, random = Math.random, prefer = () => null, rankOf = () => 0,
+}) {
   let keys = [];
   let at = 0;
   let readyAt = 0;
@@ -73,7 +109,7 @@ export function createHand({ pace, now, press, reset, random = Math.random }) {
   return {
     /** 창이 열릴 때 한 번 — 낼 초식과 이번에 놓칠 키를 그 자리에서 정한다. */
     arm(input, foeStyle) {
-      const style = chooseStyle(input, foeStyle);
+      const style = prefer(input, foeStyle) ?? chooseStyle(input, foeStyle, rankOf);
       keys = [];
       at = 0;
       strayed = false;
@@ -127,7 +163,7 @@ export function createDiscipleHand({ session, styles, fire }) {
       const style = instructed ?? selectDiscipleStyle({
         styles,
         foeStyle: view.telegraphed,
-        rankOf: () => discipleRankOf(session.disciple, ART_ID),
+        rankOf: (s) => discipleStyleRank(session.disciple, ART_ID, s.id),
       });
       if (!style) throw new Error('제자가 낼 초식이 없다 — 전수된 무공이 비었다');
       logEvent(session, 'select', { styleId: style.id, byUser: Boolean(instructed) });
@@ -137,16 +173,69 @@ export function createDiscipleHand({ session, styles, fire }) {
   };
 }
 
+/**
+ * 슬롯 교체 한 수 (REQ-714) — 자동 자리 양보가 폐지돼 슬롯 3·초식 4 는 진짜 선택이 됐고,
+ * 사람 대신 두드리는 손도 그 선택을 해야 한다. 가장 덜 여문 초식에 자리를 주는 것이 그 규칙이다.
+ */
+function nextSwap(session) {
+  const rank = (styleId) => rankOfStyle(session, styleId);
+  const benched = STYLES.filter((s) => session.progress.styles[s.id].learned
+    && !session.slots.includes(s.id) && canEquipRank(rank(s.id)));
+  if (!benched.length) return null;
+  const target = benched.reduce((a, b) => (rank(a.id) <= rank(b.id) ? a : b));
+  const slotIdx = session.slots
+    .map((id, i) => ({ id, i }))
+    .filter(({ id }) => id)
+    .reduce((a, b) => (rank(a.id) >= rank(b.id) ? a : b));
+  if (rank(target.id) >= rank(slotIdx.id)) return null;
+  return { kind: 'swap', styleId: target.id, slotIdx: slotIdx.i, params: {} };
+}
+
+/**
+ * 계단이 요구하는 무대 (REQ-731·734) — 파해 완파는 그 대상을 예고하는 도전자에게서만 나므로
+ * (파운현월은 A-4 뿐), 최고 차수만 반복하는 손은 나머지 초식의 계단을 영영 열지 못한다.
+ * 결정타도 같은 자리를 쓴다 — 그 초식이 최대 피해를 내는 무대가 쓰러뜨리기도 가장 쉽다.
+ * 해금한 차수 중 가장 낮은 무대를 고르는 것이 재대련 강화를 가장 적게 물고 가는 경로다.
+ */
+export function nextDuelStage(session) {
+  const reachable = DUEL_STAGES.filter((c) => c.stage <= session.stage);
+  const stageFor = (style) => reachable.find((c) => c.styles.includes(style.counters)) ?? null;
+  const pushing = session.slots.filter(Boolean).map(styleById)
+    .map((style) => ({ style, rank: rankOfStyle(session, style.id) }))
+    .filter(({ style, rank }) => atLadderStep(rank) && stageFor(style))
+    .sort((a, b) => a.rank - b.rank);
+  return pushing.length ? stageFor(pushing[0].style).stage : session.stage;
+}
+
+/** 지금 걸 만한 제자 초식 — 잠금을 쥐는 것이 최소 성이라 뒤처진 것부터 건다 (REQ-743·751). */
+export function nextDiscipleTrainee(session) {
+  return discipleStyles(session.disciple, ART_ID)
+    .filter((s) => canDiscipleTrain(session, s.id))
+    .map((s) => ({ id: s.id, rank: discipleStyleRank(session.disciple, ART_ID, s.id) }))
+    .sort((a, b) => a.rank - b.rank)[0] ?? null;
+}
+
 /** 도장에서의 다음 한 수 — 브라우저 봇과 헤드리스 사이클이 같은 판단을 쓴다. */
 export function nextDojoAction(session) {
   if (canTransmitNow(session)) return { kind: 'transmit', params: {} };
-  if (session.transmitted) return { kind: 'preview', params: {} };
-  const untrained = STYLES.find((s) => session.progress.styles[s.id].learned
-    && session.progress.styles[s.id].trainHits < BALANCE.trainGraduateHits);
-  if (untrained) return { kind: 'train', params: { styleId: untrained.id } };
+  if (session.transmitted) {
+    if (canDispatch(session)) return { kind: 'preview', params: {} };
+    // 잠긴 차수에서 사람이 두는 한 수는 「뒤처진 초식을 걸어 둔다」다 — 자격 없이 예고로 가면
+    // 그 화면에서 되돌아 나오는 것 말고 할 수 있는 일이 없다.
+    const trainee = nextDiscipleTrainee(session);
+    if (trainee) return { kind: 'trainDisciple', styleId: trainee.id, params: {} };
+    return { kind: 'preview', params: {} };
+  }
+  // 장착 성에 못 미치는 초식은 실전에 나갈 수 없으므로 수련이 유일한 경로다 (REQ-713).
+  const unequippable = STYLES.find((s) => session.progress.styles[s.id].learned
+    && !canEquipRank(rankOfStyle(session, s.id)));
+  if (unequippable) return { kind: 'train', params: { styleId: unequippable.id } };
   const learnable = STYLES.find((s) => canLearn(session.progress, s.id));
   if (learnable) return { kind: 'learn', styleId: learnable.id, params: {} };
-  return { kind: 'duel', params: { stage: session.stage } };
+  const swap = nextSwap(session);
+  if (swap) return swap;
+  // 예고를 건너뛰면 봇이 도는 경로가 사람의 경로와 갈려, 재대련 계측이 화면에서만 나온다 (REQ-736).
+  return { kind: 'duelPreview', params: { stage: nextDuelStage(session) } };
 }
 
 /** kill (d) 종점 감시 — 커서로 훑어 매 폴링마다 버퍼 전량을 다시 읽지 않는다. */
@@ -183,7 +272,10 @@ export function createBot({
   device = 'keyboard', random = Math.random, onDone = () => {},
 }) {
   const pace = createPace(random);
-  const hand = createHand({ pace, now: clock.now, press, reset, random });
+  const hand = createHand({
+    pace, now: clock.now, press, reset, random,
+    prefer: preferLadderPush(session), rankOf: growthOrder(session),
+  });
   let cycleDone = () => false;
   let timer = 0;
   let running = false;
@@ -194,10 +286,10 @@ export function createBot({
   function navigate() {
     const phase = screen.phase();
     if (phase === 'train') {
-      const style = session.progress.styles[screen.params().styleId];
-      if (style.trainHits >= BALANCE.trainGraduateHits) screen.go('dojo');
+      if (trainVisitDone(session)) screen.go('dojo');
       return;
     }
+    if (phase === 'duelPreview') { screen.go('duel', screen.params()); return; }
     if (phase === 'preview') { screen.go('dispatch'); return; }
     if (phase === 'transmit' || phase === 'result') { screen.go('dojo'); return; }
     if (phase !== 'dojo') return;
@@ -211,6 +303,18 @@ export function createBot({
     const next = nextDojoAction(session);
     if (next.kind === 'learn') {
       learnStyle(session, next.styleId);
+      screen.go('dojo');
+      return;
+    }
+    if (next.kind === 'swap') {
+      equip(session, next.styleId, next.slotIdx);
+      screen.go('dojo');
+      return;
+    }
+    if (next.kind === 'trainDisciple') {
+      designateDiscipleTraining(session, next.styleId);
+      // 방치 압축 버튼이 걸어 둔 시계를 앞당기는 그 자리다 — 봇도 사람과 같은 손잡이를 쓴다.
+      simulateTraining(session);
       screen.go('dojo');
       return;
     }
@@ -247,6 +351,7 @@ export function createBot({
   function stop() {
     if (!running) return;
     running = false;
+    setBotRunning(session, false);
     clock.cancel(timer);
     // 손이 돌아온 것도 모집단 변화다 — 자발 종료든 사람이 멈추든 이 한 자리에서 되돌린다.
     logSessionMeta(session, { testerRole: 'self', device });
@@ -256,6 +361,8 @@ export function createBot({
     start() {
       if (running) return;
       running = true;
+      // 봇 페이스 표본에 주입이 섞이면 그 회차가 무엇을 잰 것인지 로그로 가를 수 없다 (REQ-783).
+      setBotRunning(session, true);
       // 커서를 지금 버퍼 끝에 두지 않으면 지난 사이클의 `cycle_done` 을 이번 실행의 종점으로 읽는다.
       cycleDone = createCycleDoneProbe(session, session.log.entries.length);
       simulated = false;
@@ -284,7 +391,7 @@ function headlessTrain({ session, styleId, pace, timer, random, maxWindows = 200
 
   const input = createSequenceInput({
     pool: [style],
-    masteryOf: (s) => masteryOf(session, s.id),
+    rankOf: (s) => rankOfStyle(session, s.id),
     hintDelayMs: BALANCE.hintDelayMs.train,
     now,
     remainingRatio: () => Math.max(0, 1 - (now() - startedAt) / windowMs),
@@ -300,7 +407,7 @@ function headlessTrain({ session, styleId, pace, timer, random, maxWindows = 200
   const wiring = trainWiring(session, { styleId, input });
 
   for (let i = 0; i < maxWindows; i += 1) {
-    if (session.progress.styles[styleId].trainHits >= BALANCE.trainGraduateHits) return;
+    if (trainVisitDone(session)) return;
     windowMs = wiring.onArm();
     startedAt = now();
     fired = null;
@@ -317,13 +424,14 @@ function headlessTrain({ session, styleId, pace, timer, random, maxWindows = 200
 
 function headlessDuel({ session, stage, pace, timer, random }) {
   const challenger = challengerOfStage(stage);
+  const { foeRank } = logDuelStart(session, challenger);
   const now = () => timer.now();
   let ended = null;
   let match = null;
 
   const input = createSequenceInput({
     pool: equippedStyles(session),
-    masteryOf: (s) => masteryOf(session, s.id),
+    rankOf: (s) => rankOfStyle(session, s.id),
     hintDelayMs: BALANCE.hintDelayMs.duel,
     now,
     remainingRatio: () => match.windowRatio,
@@ -333,14 +441,17 @@ function headlessDuel({ session, stage, pace, timer, random }) {
     pace,
     now,
     random,
+    prefer: preferLadderPush(session),
+    rankOf: growthOrder(session),
     press: (dir) => { const result = input.press(dir, 'keyboard'); if (result.fired) match.fire(result.fired); },
     reset: () => input.reset(),
   });
 
   match = createMatch({
     challenger,
+    foeRank,
     selfHpMax: BALANCE.hp.user,
-    rankOf: () => artRank(session),
+    rankOf: (style) => rankOfStyle(session, style.id),
     openLen: () => Math.max(...equippedStyles(session).map((s) => s.seq.length)),
     accessibility: () => session.accessibility,
     timer,
@@ -356,37 +467,78 @@ function headlessDuel({ session, stage, pace, timer, random }) {
 }
 
 function headlessDispatch({ session, timer }) {
-  const challenger = DISPATCH_CHALLENGER;
+  const mission = currentMission(session);
   const styles = discipleStyles(session.disciple, ART_ID);
   let ended = null;
   let match = null;
 
   const disciple = createDiscipleHand({ session, styles, fire: (fired) => match.fire(fired) });
   match = createMatch({
-    challenger,
+    challenger: mission.challenger,
+    foeRank: mission.foeRank,
     selfHpMax: BALANCE.hp.disciple,
-    rankOf: () => discipleRankOf(session.disciple, ART_ID),
+    rankOf: (style) => discipleStyleRank(session.disciple, ART_ID, style.id),
     openLen: () => Math.max(...styles.map((s) => s.seq.length)),
     accessibility: () => session.accessibility,
     timer,
     // 파견 무지시 — 배선에 지시 콜백을 주지 않는 것이 REQ-605 의 관전 조건이다.
     hooks: composeHooks(dispatchWiring(session, { disciple }), {
-      onEnd(view) { ended = view; },
+      onEnd(view) {
+        ended = view;
+        logDispatchResult(session, { mission, win: view.outcome.win });
+      },
     }),
   });
 
-  logDispatchStart(session, challenger);
   pumpToEnd(match, timer);
   return ended;
 }
 
 /**
+ * B-2 이후 임무 + 제자 수련 (REQ-742·751~753) — 판정 범위 밖이라 셀프 관측용이다 (REQ-792).
+ * 1사이클과 분리된 별개 구동인 것이 그 경계다: `cycle_done` 은 B-1 에서 이미 닫혔고 여기서
+ * 나오는 항목은 판독기의 첫 사이클 밖이다. 실시간 방치를 기다리지 않고 주입 시계를 앞당겨 돈다.
+ * @param {object} p.timer `runHeadlessCycle` 이 돌려준 가상 시계
+ * @param {number} [p.stages] 이어서 돌 임무 수
+ * @returns {{stage: string, foeSet: string[], foeRank: number, win: boolean}[]}
+ */
+export function runHeadlessMissions({
+  session, timer, stages = 1, random = Math.random, maxTrainSteps = 80,
+}) {
+  const results = [];
+  for (let i = 0; i < stages; i += 1) {
+    enterPhase(session, 'dojo');
+    // 뒤처진 초식부터 건다 — 잠금을 쥐는 것이 최소 성이라 그 초식이 곧 다음 임무의 열쇠다 (REQ-743).
+    for (let step = 0; step < maxTrainSteps && !canDispatch(session); step += 1) {
+      const behind = nextDiscipleTrainee(session);
+      if (!behind) break;
+      designateDiscipleTraining(session, behind.id);
+      advanceDiscipleTraining(session, discipleTrainMsPerRank());
+    }
+    if (!canDispatch(session)) break;
+    enterPhase(session, 'preview');
+    const mission = beginMission(session, { random });
+    enterPhase(session, 'dispatch');
+    const view = headlessDispatch({ session, timer });
+    enterPhase(session, 'result');
+    settleDispatch(session, { win: view.outcome.win });
+    results.push({
+      stage: mission.label, foeSet: mission.foeSet, foeRank: mission.foeRank, win: view.outcome.win,
+    });
+  }
+  return results;
+}
+
+/**
  * 헤드리스 1사이클 (REQ-601·605) — 브라우저 없이 같은 봇·같은 입력기·같은 대련 루프로
  * 통합 로그 전 종류를 실제로 방출한다. 가상 시계라 실브라우저 실측을 대체하지 않는다.
- * @returns {{session: object, elapsedMs: number, screens: number}}
+ * @returns {{session: object, elapsedMs: number, screens: number, timer: object}}
  */
 export function runHeadlessCycle({
-  session: given = null, random = Math.random, stepMs = 16, maxScreens = 600, device = 'keyboard',
+  // 11·12성이 결정타·완파라는 사건으로만 열려 화면 수의 꼬리가 길고, 그 사건이 떨어질 초식은
+  // 확률적이라 시드마다 흔들린다 — 손 정확도 50% 시나리오 12시드 실측 상계 150화면의 8배를
+  // 상한으로 둬, 밸런스 값 한 칸이 그 꼬리를 늘려도 상한이 먼저 울지 않게 한다 (REQ-704).
+  session: given = null, random = Math.random, stepMs = 16, maxScreens = 1200, device = 'keyboard',
   paceSeed = BALANCE.bot,
 } = {}) {
   const timer = createVirtualTimer({ stepMs });
@@ -399,19 +551,32 @@ export function runHeadlessCycle({
   let simulated = false;
   let screens = 0;
 
+  setBotRunning(session, true);
   logSessionMeta(session, { testerRole: 'bot', device });
   const go = (next, nextParams = {}) => { phase = next; params = nextParams; };
 
+  // 상한 초과·내부 throw 로 나가도 구동 표식을 되돌린다 — 남으면 그 세션은 치트가 영구 잠긴다.
+  try {
+    return runScreens();
+  } finally {
+    setBotRunning(session, false);
+  }
+
+  function runScreens() {
   while (screens < maxScreens) {
     screens += 1;
-    logEvent(session, 'cycle', { phase });
+    enterPhase(session, phase);
     advance(timer, pace.navMs());
 
     if (phase === 'dojo') {
       if (!simulated) { simulated = true; simulateTraining(session); }
       const next = nextDojoAction(session);
       if (next.kind === 'learn') learnStyle(session, next.styleId);
-      else go(next.kind, next.params);
+      else if (next.kind === 'swap') equip(session, next.styleId, next.slotIdx);
+      else if (next.kind === 'trainDisciple') {
+        designateDiscipleTraining(session, next.styleId);
+        simulateTraining(session);
+      } else go(next.kind, next.params);
       continue;
     }
     if (phase === 'train') {
@@ -429,7 +594,12 @@ export function runHeadlessCycle({
       go('dojo');
       continue;
     }
+    if (phase === 'duelPreview') {
+      go('duel', params);
+      continue;
+    }
     if (phase === 'preview') {
+      beginMission(session, { random });
       go('dispatch');
       continue;
     }
@@ -445,9 +615,11 @@ export function runHeadlessCycle({
         continue;
       }
       settleDispatch(session, { win: params.win });
-      return { session, elapsedMs: timer.now(), screens };
+      // 시계를 함께 돌려준다 — B-2 이후 임무·제자 수련의 셀프 관측이 같은 가상 시계 위에서 이어진다.
+      return { session, elapsedMs: timer.now(), screens, timer };
     }
     throw new Error(`알 수 없는 화면: ${phase}`);
   }
   throw new Error(`1사이클이 ${maxScreens} 화면 안에 끝나지 않았다`);
+  }
 }

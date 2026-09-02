@@ -1,17 +1,17 @@
-// 상태기계 1개 — 도장 / 수련 / 사부 대련 / 전수 / 도전자 예고 / 파견 / 결과.
+// 상태기계 1개 — 도장 / 수련 / 대련 예고 · 사부 대련 / 전수 / 파견 예고 · 파견 / 결과.
 // 화면 전환마다 `cycle{phase}` 를 남겨, 로그만으로 구간 예산과 실전 창을 분리 판독할 수 있다.
 
 import { BALANCE } from '../balance.mjs';
-import { isInitiated } from '../core.mjs';
 import { createBot } from '../bot.mjs';
 import { $, clear } from './dom.mjs';
+import { mountCheatPanel } from './cheat.mjs';
 import { createPad } from './pad.mjs';
 import {
-  ART_ID, ART_NAME, artRank, createSession, exportPayload, logEvent, logSessionMeta,
+  ART_NAME, createSession, enterPhase, exportPayload, logSessionMeta, setBotRunning,
 } from './session.mjs';
 import { renderDojo } from './screens/dojo.mjs';
 import { renderPreview, startDispatch } from './screens/dispatch.mjs';
-import { startDuel } from './screens/duel.mjs';
+import { renderDuelPreview, startDuel } from './screens/duel.mjs';
 import { renderResult } from './screens/result.mjs';
 import { renderTransmit } from './screens/transmit.mjs';
 import { startTrain } from './screens/train.mjs';
@@ -19,6 +19,7 @@ import { startTrain } from './screens/train.mjs';
 const ROUTES = {
   dojo: renderDojo,
   train: startTrain,
+  duelPreview: renderDuelPreview,
   duel: startDuel,
   preview: renderPreview,
   dispatch: startDispatch,
@@ -45,9 +46,8 @@ let phase = null;
 
 function refreshTop() {
   $('label').textContent = session.label;
-  // 도장과 헤더가 같은 수를 다른 진실성으로 말하면 헤더가 낡은 것으로 읽힌다 (REQ-310).
-  $('rank').textContent = isInitiated(session.progress, ART_ID)
-    ? `${ART_NAME} ${artRank(session)}성` : `${ART_NAME} 입문 전`;
+  // 성이 초식 단위로 내려가 무공에는 표시할 수 하나가 없다 — 성은 도장의 초식 게이지가 진다 (REQ-701·707).
+  $('rank').textContent = ART_NAME;
   $('coins').textContent = `元 ${session.coins}`;
 }
 
@@ -61,7 +61,7 @@ function go(nextPhase, params = {}) {
   if (!route) throw new Error(`알 수 없는 화면: ${nextPhase}`);
   ctx.params = params;
   phase = nextPhase;
-  logEvent(session, 'cycle', { phase });
+  enterPhase(session, phase);
   teardown = route(ctx) ?? null;
   refreshTop();
 }
@@ -107,7 +107,7 @@ const bot = createBot({
     cancel: (id) => window.clearTimeout(id),
   },
   device: DEVICE,
-  onDone: () => paintBotButton(),
+  onDone: () => { setBotRunning(session, false); refreshCheat(); paintBotButton(); },
 });
 
 function paintBotButton() {
@@ -118,10 +118,20 @@ function paintBotButton() {
   $('botBtn').classList.toggle('urge', bot.running);
 }
 
+// 치트 패널은 게임 화면 밖의 도구 영역에 산다 — 기본 숨김이고 명시 토글만이 그것을 연다 (REQ-781).
+// 재렌더를 도장으로 좁힌다 — 결과·전수 화면의 렌더는 정산·전수를 함께 실행해 비멱등이다.
+const refreshCheat = mountCheatPanel({
+  session,
+  refresh: () => { refreshTop(); if (phase === 'dojo') go('dojo'); },
+});
+
 $('exportBtn').addEventListener('click', exportLog);
 $('botBtn').addEventListener('click', () => {
   if (bot.running) bot.stop();
   else bot.start();
+  // 봇 페이스 표본에 주입이 섞이지 않게 구동 상태를 세션에 알린다 (REQ-783).
+  setBotRunning(session, bot.running);
+  refreshCheat();
   paintBotButton();
 });
 paintBotButton();

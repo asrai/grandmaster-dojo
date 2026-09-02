@@ -1,29 +1,38 @@
-// 통합 로그 스키마 + 세션 버퍼 (spec REQ-601~603).
+// 통합 로그 스키마 + 세션 버퍼 (spec REQ-601~603·791).
 // 필드 이름은 kill-criterion 산식의 인터페이스라, 스키마 밖 이벤트·필드는 throw 로 막는다.
 
 /** 전 이벤트 공통 시각 필드. */
 export const TIME_FIELD = 't_ms';
 
-/** 이벤트 → 필수 필드(+ 열거값). spec § 통합 로그 스키마 표와 글자 단위로 일치한다. */
+/** 좌표 모델이 바뀐 이벤트의 스키마 판별 토큰 (REQ-791) — 구·신 로그 혼재 시 판독기가 필드 뜻을 오독한다. */
+export const SCHEMA_VERSION_FIELD = 'sv';
+
+/**
+ * 이벤트 → 필수 필드(+ 열거값 · 스키마 판별). spec § 통합 로그 스키마 표와 글자 단위로 일치한다.
+ * `sv` 는 적재 시점에 버퍼가 붙이므로 호출부가 넘기지 않는다 — 넘기는 자리를 두면 잊는 자리가 생긴다.
+ */
 export const LOG_SCHEMA = {
-  key:      { fields: ['dir', 'accepted', 'candidates_n', 'top_attr', 'device'], enums: { device: ['keyboard', 'button'] } },
-  ignore:   { fields: ['dir'] },
-  reset:    { fields: [] },
-  narrow:   { fields: ['styleId'] },
-  fire:     { fields: ['styleId', 'len', 'oneTap', 'r'] },
-  timeout:  { fields: ['styleTop', 'buffer_len'] },
-  verdict:  { fields: ['grade', 'dmg_out', 'dmg_in', 'state', 'who'] },
-  mastery:  { fields: ['styleId', 'from', 'to'] },
-  rank:     { fields: ['style_set', 'from', 'to', 'pts'] },
-  unlock:   { fields: ['styleId'] },
-  initiate: { fields: ['style_set'] },
-  slot:     { fields: ['action', 'styleId'] },
-  transmit: { fields: ['style_set'] },
-  dispatch: { fields: ['challenger'] },
-  select:   { fields: ['styleId', 'byUser'] },
-  coins:    { fields: ['delta', 'reason'] },
-  cycle:    { fields: ['phase'] },
-  session:  { fields: ['tester_role', 'device'], enums: { tester_role: ['self', 'friend', 'bot'] } },
+  key:       { fields: ['dir', 'accepted', 'candidates_n', 'top_attr', 'device'], enums: { device: ['keyboard', 'button'] } },
+  ignore:    { fields: ['dir'] },
+  reset:     { fields: [] },
+  narrow:    { fields: ['styleId'] },
+  fire:      { fields: ['styleId', 'len', 'oneTap', 'r'] },
+  timeout:   { fields: ['styleTop', 'buffer_len'] },
+  verdict:   { fields: ['grade', 'dmg_out', 'dmg_in', 'state', 'who'] },
+  rank:      { fields: ['actor', 'style', 'from', 'to', 'via'], sv: 2, enums: { actor: ['master', 'disciple'], via: ['train', 'duel', 'mission', 'finish', 'crush'] } },
+  rank_wall: { fields: ['actor', 'style', 'at_rank', 'attempted'], enums: { actor: ['master', 'disciple'], attempted: ['train'] } },
+  unlock:    { fields: ['style', 'prev_style_rank'], sv: 2 },
+  finish:    { fields: ['style', 'challenger', 'intended'] },
+  rematch:   { fields: ['challenger', 'foe_rank', 'attempt_n'] },
+  slot:      { fields: ['action', 'styleId', 'challenger'], sv: 2 },
+  transmit:  { fields: ['art', 'styles'], sv: 2 },
+  dispatch:  { fields: ['stage', 'foe_set', 'disciple_ranks', 'locked_until', 'result'], sv: 2, enums: { result: ['win', 'loss'] } },
+  disciple_train: { fields: ['style', 'from', 'to', 'elapsed_ms', 'master_activity'] },
+  select:    { fields: ['styleId', 'byUser'] },
+  coins:     { fields: ['delta', 'reason'] },
+  cycle:     { fields: ['phase'] },
+  cheat:     { fields: ['action', 'session_flagged'] },
+  session:   { fields: ['tester_role', 'device'], enums: { tester_role: ['self', 'friend', 'bot'] } },
 };
 
 /** 스키마 대조 — 위반은 throw 다. 비엄격 버퍼를 쓰는 호출부가 직접 부를 수 있게 열어 둔다. */
@@ -54,7 +63,9 @@ export function createLogBuffer({ now = () => Date.now(), strict = true } = {}) 
 
   function log(event, fields = {}) {
     if (strict) validate(event, fields);
+    const sv = LOG_SCHEMA[event]?.sv;
     const entry = { event, [TIME_FIELD]: now() - t0, ...fields };
+    if (sv !== undefined) entry[SCHEMA_VERSION_FIELD] = sv;
     entries.push(entry);
     return entry;
   }

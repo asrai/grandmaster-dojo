@@ -2,6 +2,7 @@
 // 어떤 화면이 붙어 있든 방향은 `input.press()` 한 경로로만 흐른다 (REQ-101).
 
 import { ARROW, BALANCE } from '../balance.mjs';
+import { isOneTapRank } from '../core.mjs';
 import { $, arrowRow, attrMark, clear, el, shake } from './dom.mjs';
 import { ATTR_VIEW, attrLabel } from './theme.mjs';
 import { SFX } from './audio.mjs';
@@ -93,9 +94,9 @@ export function createPad() {
 
     clear(candidatesEl).className = solo ? 'candidates solo' : 'candidates';
     for (const style of input.candidates) {
-      const full = active.masteryOf(style) >= BALANCE.masteryFullPct;
+      const oneTap = isOneTapRank(active.rankOf(style));
       candidatesEl.appendChild(el('button', {
-        class: `cand${style === top ? ' top' : ''}${full ? ' onetap' : ''}`,
+        class: `cand${style === top ? ' top' : ''}${oneTap ? ' onetap' : ''}`,
         style: `--attr:${ATTR_VIEW[style.attr].color}`,
         title: style.gugyeol,
         onclick: () => {
@@ -108,7 +109,7 @@ export function createPad() {
       }, [
         attrMark(style.attr),
         el('span', { class: 'cand-name', text: style.name }),
-        full ? el('span', { class: 'tag', text: '원터치' }) : null,
+        oneTap ? el('span', { class: 'tag', text: '원터치' }) : null,
       ]));
     }
     resetBtn.classList.toggle('urge', input.ignores >= BALANCE.ignoreHighlightAt);
@@ -166,7 +167,7 @@ export function createPad() {
       reset() { fromBot = true; try { reset(); } finally { fromBot = false; } },
     },
 
-    /** @param {{input: object, masteryOf: Function, onFire: Function, onIgnore?: Function}} consumer */
+    /** @param {{input: object, rankOf: Function, onFire: Function, onIgnore?: Function}} consumer */
     attach(consumer) {
       active = consumer;
       structureSig = null;

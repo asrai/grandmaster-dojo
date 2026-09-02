@@ -5,8 +5,8 @@
 
 import { responseWindowMs, styleById } from '../core.mjs';
 import {
-  equippedStyles, logEvent, logTimeout, recordDispatchVerdict, recordDuelVerdict,
-  recordEffectiveSuccess,
+  beginDuel, beginTrainVisit, equippedStyles, logEvent, logTimeout, missionLockRankOf,
+  recordDispatchVerdict, recordDuelVerdict, recordEffectiveSuccess,
 } from './session.mjs';
 
 /**
@@ -28,11 +28,13 @@ export function composeHooks(wiring, overlay = {}) {
 }
 
 /**
- * 수련 배선 (REQ-302·308) — 창을 여는 지점과 완주 지점 둘뿐이라 `createMatch` hook 이 아니다.
+ * 수련 배선 (REQ-703·715) — 창을 여는 지점과 완주 지점 둘뿐이라 `createMatch` hook 이 아니다.
+ * 방문 계수는 배선을 만드는 그 자리에서 초기화한다 — 화면과 헤드리스가 같은 리듬을 쓴다.
  * @param {object} p.input 후보 필터 입력기
  */
 export function trainWiring(session, { styleId, input }) {
   const style = styleById(styleId);
+  beginTrainVisit(session, styleId);
   return {
     /** 창 길이는 열 때마다 다시 잰다 — 상시 노출된 접근성 토글이 그 시도부터 반영된다. */
     onArm() {
@@ -43,9 +45,26 @@ export function trainWiring(session, { styleId, input }) {
   };
 }
 
-/** 파견 진입 기록 (REQ-403) — 사이클 로그의 파견 구간 시작점이라 두 호출부가 같은 자리를 쓴다. */
-export const logDispatchStart = (session, challenger) =>
-  logEvent(session, 'dispatch', { challenger: challenger.id });
+/**
+ * 파견 결과 기록 (REQ-744) — 진입이 아니라 종료에서 찍는 것은 스키마가 승패를 함께 지기 때문이고,
+ * 구간의 시작점은 `cycle{phase}` 가 이미 진다. B-1 무패 보장·B-2 잠금·조합별 승패가 한 항목에서 갈린다.
+ * @param {object} p.mission 실제로 싸운 그 임무 — 여기서 다시 도출하면 싸운 적 없는 조합이 기록될 수 있다.
+ */
+export function logDispatchResult(session, { mission, win }) {
+  return logEvent(session, 'dispatch', {
+    stage: mission.label,
+    foe_set: mission.foeSet.slice(),
+    disciple_ranks: mission.ranks,
+    locked_until: missionLockRankOf(session),
+    result: win ? 'win' : 'loss',
+  });
+}
+
+/**
+ * 대련 진입 기록 (REQ-734) — 그 대면의 도전자 성과 재대련 회차가 여기서 확정된다.
+ * 파견 쪽 짝과 같은 자리라, 화면과 헤드리스가 재대련을 서로 다르게 세는 경로가 없다.
+ */
+export const logDuelStart = (session, challenger) => beginDuel(session, challenger.id);
 
 /** 대련 배선 (REQ-201·206~211) — 유저의 손이 치는 창의 계측. */
 export function duelWiring(session, { input }) {

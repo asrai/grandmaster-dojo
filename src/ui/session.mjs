@@ -1,21 +1,29 @@
 // 세션 상태 — 상태기계가 화면 사이로 들고 다니는 유일한 가변 덩어리. 영속화는 없다:
 // 프로토 판정은 단일 세션이고, 잔존 세이브는 kill (a)·(d) 측정을 진행 중 상태로 오염시킨다.
 
-import { ART_SETS, BALANCE, CHALLENGERS, STYLES } from '../balance.mjs';
+import { ART_SETS, BALANCE, BALANCE_REV, CHALLENGERS, STYLES } from '../balance.mjs';
 import { createLogBuffer, validate } from '../log.mjs';
 import {
-  applyEffectiveSuccess, canTransmit, createDisciple, createProgress, discipleRankOf,
-  isEffectiveSuccess, learn, masteryPct, rankForPts, rankOf, styleById, transmit,
+  accrueDiscipleStyle, applyDiscipleTraining, applyEffectiveSuccess, applyOutcome, artStyles,
+  canEquipRank, canTransmit, createDisciple, createProgress, discipleStyleRank, discipleStyles,
+  discipleTrainMsPerRank, foeRankOf, isEffectiveSuccess, isMissionUnlocked, ladderBandAt, learn,
+  missionFoeRank, missionFoeSet, missionLockRank, missionShortfall, rematchFoeRank, setStyleRank,
+  styleById, styleRank, trainHitsToNext, transmit,
 } from '../core.mjs';
 
-/** 내보낸 로그의 판독 계약 이름 — `tests/kill-readout.mjs` 가 이 값으로 파일을 받아들인다. */
-export const EXPORT_SCHEMA = 'grandmaster-dojo/log-export@1';
+/**
+ * 내보낸 로그의 판독 계약 이름 — `tests/kill-readout.mjs` 가 이 값으로 파일을 받아들인다.
+ * 항목 스키마가 비호환으로 바뀌면 함께 오른다: 구 판본을 봉투에서 거절하는 것이, 다섯 이벤트의
+ * `sv` 를 일일이 대조해야 드러나는 결손보다 먼저 그리고 분명하게 말한다 (REQ-791).
+ */
+export const EXPORT_SCHEMA = 'grandmaster-dojo/log-export@2';
 
 /**
  * 판독기가 로그 밖에서 끌어다 쓰는 밸런스 값 — 창 길이·유효 성공 절단선.
  * 내보낸 뒤 이 값들이 튜닝되면 옛 로그가 조용히 다른 수로 읽히므로 지문을 함께 싣는다.
  */
 export const balanceDigest = () => ({
+  rev: BALANCE_REV,
   windowBaseMs: BALANCE.windowBaseMs,
   windowStepMs: BALANCE.windowStepMs,
   windowBaseLen: BALANCE.windowBaseLen,
@@ -53,8 +61,12 @@ function createPlayLog(violations, now) {
   };
 }
 
-/** @param {object} [opts] `now` 는 `t_ms` 의 출처 — 헤드리스 봇은 가상 시계를 준다 (REQ-605). */
-export function createSession({ now } = {}) {
+/**
+ * @param {object} [opts] `now` 는 `t_ms` 와 제자 수련 경과의 공통 출처이므로 **단조**여야 한다 —
+ *   뒤로 뛰는 시계는 걸어 둔 수련을 0 으로 자른다. 화면은 `performance.now`, 헤드리스는 가상 시계를
+ *   주고, 후자가 방치 루프를 실시간 대기 없이 회귀시키는 유일한 축이다 (REQ-605·751).
+ */
+export function createSession({ now = () => Date.now() } = {}) {
   // 위반은 게임을 멈추지 않되 여기 쌓여, 로그 내보내기가 결손을 그대로 실어 나르지 않는다.
   const logViolations = [];
   return {
@@ -65,13 +77,36 @@ export function createSession({ now } = {}) {
     slots: Array.from({ length: BALANCE.slots }, () => null),
     coins: 0,
     stage: 1,
+    // 도전자별 승수 — 재대련 강화·무보상·`attempt_n` 이 전부 이 한 수에서 파생된다 (REQ-734).
+    duelWins: {},
     accessibility: BALANCE.accessibilityWindow,
     accessibilityToggles: 0,
     accessibilityAtDone: null,
     label: '문하생',
     transmitted: false,
     tooltip: createTooltipState(),
+    // 한 방문에 채우는 수련 창 수 — 누적이 아니라 방문 단위라야 도장↔수련 왕복이 리듬이 된다.
+    trainVisit: { styleId: null, hits: 0 },
+    now,
+    // 제자 수련은 상태기계를 점유하지 않는다 (REQ-752) — 시계만 들고 있어 사부의 화면 전이를 막지 않는다.
+    discipleTrain: { styleId: null, sinceMs: now(), carryMs: {} },
+    masterActivity: 'dojo',
+    // 파견 차수 — 1 = B-1 고정 상대, 2 부터 랜덤 임무 + 하드 잠금 (REQ-741·742).
+    dispatchStage: 1,
+    mission: null,
+    cheat: createCheatState(),
+    botRunning: false,
   };
+}
+
+/**
+ * 화면 전이의 계측 지점 — `cycle{phase}` 의 유일한 출처이자, 걸어 둔 제자 수련이 「사부가 그동안
+ * 무엇을 했는가」로 귀속되는 경계다 (REQ-754). 정산이 활동 갱신보다 먼저인 것이 그 귀속이다.
+ */
+export function enterPhase(session, phase) {
+  settleDiscipleTraining(session);
+  session.masterActivity = phase;
+  logEvent(session, 'cycle', { phase });
 }
 
 export const logEvent = (session, event, fields) => session.log.log(event, fields);
@@ -107,10 +142,9 @@ export function consumeTooltip(state, id) {
   if (state.target?.id === id) state.target = null;
 }
 
-export const masteryOf = (session, styleId) => masteryPct(session.progress, styleId);
-export const artRank = (session) => rankOf(session.progress, ART_ID);
+export const rankOfStyle = (session, styleId) => styleRank(session.progress, styleId);
 export const equippedStyles = (session) => session.slots.filter(Boolean).map(styleById);
-export const canEquip = (session, styleId) => masteryOf(session, styleId) >= BALANCE.equipMasteryPct;
+export const canEquip = (session, styleId) => canEquipRank(rankOfStyle(session, styleId));
 export const challengerOfStage = (stage) => DUEL_STAGES[stage - 1];
 export const isLastStage = (stage) => stage >= DUEL_STAGES.length;
 
@@ -124,41 +158,79 @@ export function advanceStage(session, clearedStage) {
   return challengerOfStage(session.stage);
 }
 
-export function equip(session, styleId, slotIdx) {
+// ------------------------------------------------------- 재대련 (REQ-734)
+
+/** 그 도전자를 이미 이긴 횟수 — 초회 대면은 0 이라 강화도 무보상도 걸리지 않는다. */
+export const duelWinsOf = (session, challengerId) => session.duelWins[challengerId] ?? 0;
+
+/**
+ * 몇 번째 대면인가 — 초회 1, 재대련부터 2·3·4… (`rematch.attempt_n` 의 정의). 승수에서 파생하므로
+ * 중단·패배 후 재진입은 **같은 서수를 다시 낸다**: 항목 수가 진입 수이고 서수의 최댓값이 중단 지점이다.
+ */
+export const duelAttemptOf = (session, challengerId) => duelWinsOf(session, challengerId) + 1;
+
+export const isRematch = (session, challengerId) => duelWinsOf(session, challengerId) > 0;
+
+/** 그 대면의 도전자 성 — 재대련 강화가 실린 값이고 대련 루프·예고 화면이 같은 자리를 읽는다. */
+export const duelFoeRank = (session, challengerId) =>
+  rematchFoeRank(foeRankOf(challengerId), duelWinsOf(session, challengerId));
+
+/** 그 대면에 실린 강화량 — 예고 화면과 도장 재대련 카드가 같은 수를 말하게 하는 한 자리. */
+export const rematchBonusOf = (session, challengerId) =>
+  duelFoeRank(session, challengerId) - foeRankOf(challengerId);
+
+/** 이미 이긴 도전자 목록 — 도장 재대련 항목의 원본 (REQ-734). */
+export const beatenChallengers = (session) => DUEL_STAGES.filter((c) => isRematch(session, c.id));
+
+/**
+ * 대련 진입 (REQ-734) — 그 대면의 성을 확정하고 재대련이면 그것을 로그에 남긴다.
+ * 진입에서 찍는 것은 `attempt_n` 이 「몇 번째에 그만두는가」의 지표라, 승패로 걸러지면
+ * 마지막 회차(대개 포기한 그 판)가 통째로 빠지기 때문이다.
+ */
+export function beginDuel(session, challengerId) {
+  const foeRank = duelFoeRank(session, challengerId);
+  const attemptN = duelAttemptOf(session, challengerId);
+  if (attemptN > 1) {
+    logEvent(session, 'rematch', { challenger: challengerId, foe_rank: foeRank, attempt_n: attemptN });
+  }
+  return { foeRank, attemptN };
+}
+
+/**
+ * @param {?string} [challenger] 그 교체가 일어난 도전자 예고 화면의 도전자 — 「A-4 를 앞두고
+ *   진짜 슬롯 판단을 했는가」가 REQ-736 의 지표라 장소가 곧 그 판별자다. null 은 예고 화면 **밖**
+ *   전부다 (도장 교체 · 적립이 부르는 `autoEquip`), 그 둘을 다시 가르는 것은 이 필드의 몫이 아니다.
+ */
+export function equip(session, styleId, slotIdx, { challenger = null } = {}) {
   if (!canEquip(session, styleId)) return false;
   const at = slotIdx ?? session.slots.indexOf(null);
   if (at < 0 || at >= session.slots.length) return false;
   const replaced = session.slots[at];
-  if (replaced) logEvent(session, 'slot', { action: 'unequip', styleId: replaced });
+  if (replaced) logEvent(session, 'slot', { action: 'unequip', styleId: replaced, challenger });
   session.slots[at] = styleId;
-  logEvent(session, 'slot', { action: 'equip', styleId });
+  logEvent(session, 'slot', { action: 'equip', styleId, challenger });
   return true;
 }
 
-export function unequip(session, slotIdx) {
+export function unequip(session, slotIdx, { challenger = null } = {}) {
   const styleId = session.slots[slotIdx];
   if (!styleId) return false;
   session.slots[slotIdx] = null;
-  logEvent(session, 'slot', { action: 'unequip', styleId });
+  logEvent(session, 'slot', { action: 'unequip', styleId, challenger });
   return true;
 }
 
 /**
- * 빈 슬롯 채우기 + 입문 전 자리 양보 (REQ-305·310). 입문 전 구간에서는 장착이 선택이 아니다 —
- * 전 초식 숙련 100% 가 성 게이지를 여는 필수 경로라, 아직 덜 찬 초식이 이미 100% 인 초식의
- * 자리를 받는다 (#38). 전부 100% 가 되면 교체가 멈추고 그때부터 슬롯 구성이 진짜 선택이 된다.
+ * 빈 슬롯 자동 채움 (REQ-714) — 자리 양보는 폐지다. 입문 소멸로 「덜 찬 초식에 자리를 준다」는
+ * 근거가 사라졌고, 자동 교체는 슬롯 3·초식 4 가 만드는 선택을 대신 해 버린다.
  */
 export function autoEquip(session) {
   for (const style of STYLES) {
     if (session.slots.includes(style.id)) continue;
     if (!session.progress.styles[style.id].learned) continue;
     if (!canEquip(session, style.id)) continue;
-    if (session.slots.includes(null)) { equip(session, style.id); continue; }
-    if (masteryOf(session, style.id) >= BALANCE.masteryFullPct) continue;
-    // 자리를 내주는 것은 이미 100% 인 초식뿐 — 미완성끼리는 서로의 진행을 뺏지 않는다.
-    const full = session.slots.findIndex((id) => id && masteryOf(session, id) >= BALANCE.masteryFullPct);
-    if (full < 0) continue;
-    equip(session, style.id, full);
+    if (!session.slots.includes(null)) continue;
+    equip(session, style.id);
   }
 }
 
@@ -167,29 +239,186 @@ export function learnStyle(session, styleId) {
   autoEquip(session);
 }
 
-/** 유효 성공 1회 적립 + 그 변화분을 통합 로그로 흘린다 (REQ-301~304). */
-export function recordEffectiveSuccess(session, styleId, mode) {
-  const { progress, changes } = applyEffectiveSuccess(session.progress, styleId, { mode });
-  session.progress = progress;
-  if (changes.mastery) logEvent(session, 'mastery', changes.mastery);
-  if (changes.initiate) logEvent(session, 'initiate', changes.initiate);
-  if (changes.rank) logEvent(session, 'rank', changes.rank);
+/** 사부의 성 변화분을 통합 로그로 흘린다 — 적립과 계단이 같은 자리를 쓴다 (REQ-702·704·706·711). */
+function emitMasterChanges(session, changes) {
+  if (changes.wall) logEvent(session, 'rank_wall', { actor: 'master', ...changes.wall });
+  if (changes.rank) logEvent(session, 'rank', { actor: 'master', ...changes.rank });
   if (changes.unlock) logEvent(session, 'unlock', changes.unlock);
   autoEquip(session);
   return changes;
 }
 
-/** 제자도 같은 성 포인트 룰로 오르되 상한이 10 이다 (REQ-401) — 12성은 유저만의 증표다. */
-export function accrueDiscipleRank(session, styleId) {
-  const art = session.disciple.arts[ART_ID];
-  if (!art) return null;
-  const from = discipleRankOf(session.disciple, ART_ID);
-  art.rankPts += BALANCE.rankPtsPerStyle[styleId];
-  const to = rankForPts(art.rankPts, { max: BALANCE.discipleRankMax });
-  if (to === from) return null;
-  logEvent(session, 'rank', { style_set: ART_ID, from, to, pts: art.rankPts });
-  return { from, to };
+/** 유효 성공 1회 적립 (REQ-702·703) — 수련 방문 계수도 이 한 자리를 지난다. */
+export function recordEffectiveSuccess(session, styleId, mode) {
+  const { progress, changes } = applyEffectiveSuccess(session.progress, styleId, { mode });
+  session.progress = progress;
+  if (mode === 'train' && session.trainVisit.styleId === styleId) session.trainVisit.hits += 1;
+  return emitMasterChanges(session, changes);
 }
+
+/** 결정타·완파가 여는 계단 (REQ-704) — 적립이 멈춘 10성 위는 이 경로로만 오른다. */
+export function recordOutcomeRank(session, styleId, outcome) {
+  const { progress, changes } = applyOutcome(session.progress, styleId, outcome);
+  session.progress = progress;
+  return emitMasterChanges(session, changes);
+}
+
+/** 제자도 같은 사다리를 타되 상한이 10 이다 (REQ-705) — 11·12성은 자동 전투가 하지 않는 판단이다. */
+export function accrueDiscipleRank(session, styleId, { via = 'mission' } = {}) {
+  const result = accrueDiscipleStyle(session.disciple, ART_ID, styleId, { mode: 'duel' });
+  session.disciple = result.disciple;
+  if (result.to === null || result.to === result.from) return null;
+  logEvent(session, 'rank', { actor: 'disciple', style: styleId, from: result.from, to: result.to, via });
+  return { from: result.from, to: result.to };
+}
+
+// ------------------------------------------------- 제자 수련 (REQ-751~754·706)
+
+/** 지정 초식에 그 시각까지 걸린 시간 — 지정을 옮겨도 이전 초식의 미완분이 남는다. */
+function trainElapsedMs(session, at) {
+  const { styleId, sinceMs, carryMs } = session.discipleTrain;
+  if (!styleId) return 0;
+  return (carryMs[styleId] ?? 0) + Math.max(0, at - sinceMs);
+}
+
+/** 수련이 성을 올릴 수 있는 초식인가 (REQ-706) — 8성 벽 위는 파견 전용이라 지정 자체가 열리지 않는다. */
+export function canDiscipleTrain(session, styleId) {
+  const rank = discipleStyleRank(session.disciple, ART_ID, styleId);
+  if (rank === null || rank >= BALANCE.discipleRankMax) return false;
+  const band = ladderBandAt(rank);
+  return Boolean(band && band.train);
+}
+
+/**
+ * 걸어 둔 시간을 성으로 정산한다 (REQ-751·754). 상태기계를 점유하지 않으므로 이 함수는 화면
+ * 전이·렌더 어디서 불려도 같은 값을 내야 한다 — 그래서 소비한 시간만 지우고 나머지를 이월한다.
+ */
+export function settleDiscipleTraining(session) {
+  const timer = session.discipleTrain;
+  const styleId = timer.styleId;
+  if (!styleId) return null;
+  // 시각은 한 번만 읽는다 — 경과 계산과 기준시각 갱신이 다른 순간을 보면 그 사이가 정산마다 증발한다.
+  const at = session.now();
+  const result = applyDiscipleTraining(session.disciple, ART_ID, styleId, trainElapsedMs(session, at));
+  session.disciple = result.disciple;
+  timer.carryMs[styleId] = result.restMs;
+  timer.sinceMs = at;
+  if (result.to > result.from) {
+    logEvent(session, 'disciple_train', {
+      style: styleId,
+      from: result.from,
+      to: result.to,
+      elapsed_ms: result.consumedMs,
+      master_activity: session.masterActivity,
+    });
+    logEvent(session, 'rank', {
+      actor: 'disciple', style: styleId, from: result.from, to: result.to, via: 'train',
+    });
+  }
+  if (result.wall) {
+    logEvent(session, 'rank_wall', {
+      actor: 'disciple', style: styleId, at_rank: result.to, attempted: 'train',
+    });
+  }
+  // 더 오를 수 없게 된 초식은 지정을 놓는다 — 벽이면 무효인 시간을 계속 태우게 되고(8성 벽이 유저를
+  // 파견으로 밀지 못한다), 상한이면 막대가 규칙에 없는 다음 성을 영구히 가리킨다.
+  if (!canDiscipleTrain(session, styleId)) {
+    timer.styleId = null;
+    timer.carryMs[styleId] = 0;
+  }
+  return result;
+}
+
+/**
+ * 수련시킬 초식 지정 (REQ-751) — 파견(자동 전투)이 주지 못하는 초식별 성장 통제권이 이 한 자리다.
+ * 지정을 옮겨도 이전 초식의 미완 시간은 남는다: 옮기는 것이 손해가 되면 통제권은 이름만 남는다.
+ */
+export function designateDiscipleTraining(session, styleId) {
+  if (!canDiscipleTrain(session, styleId)) return false;
+  settleDiscipleTraining(session);
+  session.discipleTrain.styleId = styleId;
+  session.discipleTrain.sinceMs = session.now();
+  return true;
+}
+
+/** 진척 막대 1개의 입력 (REQ-752) — 지정 초식의 다음 계단까지 채워진 비율. */
+export function discipleTrainProgress(session) {
+  const styleId = session.discipleTrain.styleId;
+  if (!styleId) return null;
+  const per = discipleTrainMsPerRank();
+  const elapsed = trainElapsedMs(session, session.now());
+  return {
+    styleId,
+    rank: discipleStyleRank(session.disciple, ART_ID, styleId),
+    ratio: Math.min(1, elapsed / per),
+    leftMs: Math.max(0, per - elapsed),
+  };
+}
+
+/**
+ * 시간 주입 (REQ-753) — 걸어 둔 시각을 그만큼 앞당긴다. 방치 축을 압축해 **보여 주는** 자리이자
+ * 하네스가 시계를 가속하는 자리이며, 1성당 시간(게임 수치) 자체는 건드리지 않는다.
+ */
+export function advanceDiscipleTraining(session, ms) {
+  session.discipleTrain.sinceMs -= Math.max(0, ms);
+  return settleDiscipleTraining(session);
+}
+
+// ------------------------------------------------------- 임무 (REQ-741~744)
+
+/** 그 파견 시점의 제자 초식별 성 — 랜덤 조합별 승패는 성과 함께 봐야 분리 식별이 된다 (REQ-744). */
+export const discipleRanks = (session) => Object.fromEntries(discipleStyles(session.disciple, ART_ID)
+  .map((s) => [s.id, discipleStyleRank(session.disciple, ART_ID, s.id)]));
+
+/** 그 차수가 요구하는 최소 성 (B-1 은 null) — 화면의 잠금 표시와 로그가 같은 자리를 읽는다. */
+export const missionLockRankOf = (session) => missionLockRank(session.dispatchStage);
+
+/** 권장 성에 못 미치는 제자 초식 — 하드 잠금이 이유를 대는 자리다 (REQ-743). */
+export const missionShortfallOf = (session) =>
+  missionShortfall(session.disciple, ART_ID, session.dispatchStage);
+
+/** 파견 진입 자격 — 전수 전에는 제자가 없고, B-2 부터는 전 초식 최소 성이 잠금을 쥔다. */
+export const canDispatch = (session) => session.transmitted
+  && isMissionUnlocked(session.disciple, ART_ID, session.dispatchStage);
+
+/**
+ * 그 차수의 임무를 확정한다 (REQ-741·742) — B-1 만 고정 상대이고, B-2 부터는 아키타입 풀에서
+ * 매 임무 새로 뽑아 눌러앉기를 구조로 막는다. 난이도는 성으로만 오른다 (파견 무대는 하나다).
+ */
+export function beginMission(session, { random = Math.random } = {}) {
+  const stage = session.dispatchStage;
+  const foeSet = stage <= 1 ? DISPATCH_CHALLENGER.styles.slice() : missionFoeSet(random);
+  session.mission = {
+    stage,
+    label: `B-${stage}`,
+    foeSet,
+    foeRank: missionFoeRank(stage, foeRankOf(DISPATCH_CHALLENGER.id)),
+    // 그 임무에 **투입된** 성 — 파견 중에도 성이 오르므로, 종료 시점에 읽으면 승패가 실제보다
+    // 여문 성에 귀속돼 「어느 조합을 어느 성으로 이겼는가」(REQ-744)가 조용히 틀린다.
+    ranks: discipleRanks(session),
+    challenger: { ...DISPATCH_CHALLENGER, styles: foeSet },
+  };
+  return session.mission;
+}
+
+/**
+ * 진행 중인 임무 — 조합은 **한 판에 한 번** 확정된다. 화면 진입마다 다시 굴리면 예고↔도장 왕복이
+ * 공짜 리롤이 되어, 눌러앉기를 막으려던 랜덤이 가장 쉬운 조합에 눌러앉는 경로가 된다.
+ */
+export function currentMission(session, options = {}) {
+  const mission = session.mission;
+  return mission && mission.stage === session.dispatchStage ? mission : beginMission(session, options);
+}
+
+/** 수련 방문 시작 (REQ-715) — 방문 계수의 유일한 초기화 지점. */
+export function beginTrainVisit(session, styleId) {
+  session.trainVisit = { styleId, hits: 0 };
+}
+
+export const trainVisitDone = (session) => session.trainVisit.hits >= BALANCE.trainGraduateHits;
+
+/** 이 초식의 다음 계단까지 남은 수련 완주 수 — 수련 화면의 진척 표시가 읽는다. */
+export const trainHitsLeft = (session, styleId) => trainHitsToNext(session.progress.styles[styleId]);
 
 export function addCoins(session, delta, reason) {
   session.coins += delta;
@@ -200,6 +429,9 @@ export function addCoins(session, delta, reason) {
 export function simulateTraining(session, seconds = BALANCE.simTrainSeconds) {
   const delta = Math.round(BALANCE.simEfficiency * seconds);
   addCoins(session, delta, 'train_sim');
+  // 같은 압축이 걸어 둔 제자 수련에도 걸린다 (REQ-753) — 평가자는 실제로 방치할 수 없으므로
+  // 방치 축의 결과를 이 버튼으로 본다. 1성당 시간을 줄이는 것과는 반대 방향의 해소다.
+  advanceDiscipleTraining(session, seconds * 1000);
   return delta;
 }
 
@@ -224,28 +456,111 @@ export function logTimeout(session, input) {
   logEvent(session, 'timeout', { styleTop: input.top()?.id ?? null, buffer_len: input.buffer.length });
 }
 
-/** 한 수의 판정을 로그와 성장에 함께 반영한다 — 대련 화면과 헤드리스 봇이 이 한 자리를 공유한다. */
+/**
+ * 한 수의 판정을 로그와 성장에 함께 반영한다 — 대련 화면과 헤드리스 봇이 이 한 자리를 공유한다.
+ *
+ * **계단을 적립보다 먼저 판정하는 것이 REQ-704 의 「한 수 최대 1계단」이다.** 두 판정은 그 수의
+ * *같은* 성을 봐야 하고, 계단은 적립이 멈춘 성(10·11)에서만 열리므로 순서를 그렇게 두면 둘 중
+ * 하나만 발화하는 것이 구조로 보장된다. 반대로 두면 적립이 9→10 을 만든 뒤 결정타가 그 10 을
+ * 보고 11 을 열어 한 수에 두 계단이 오른다.
+ */
 export function recordDuelVerdict(session, view) {
   logVerdict(session, view.verdict, 'user');
-  if (!view.fire || !isEffectiveSuccess(view.verdict.grade)) return null;
-  return recordEffectiveSuccess(session, view.fire.style.id, 'duel');
+  if (!view.fire) return null;
+  const styleId = view.fire.style.id;
+  // 수 상한의 잔여 HP 비교승은 그 타격이 확정한 승리가 아니다 — 결정타는 상대를 쓰러뜨린 수뿐이다.
+  const finish = view.outcome?.win === true && view.outcome.by === 'hp';
+  if (finish) logFinish(session, view, styleId);
+  const promoted = recordOutcomeRank(session, styleId, {
+    finish, crush: view.verdict.grade === 'crush',
+  });
+  const accrued = isEffectiveSuccess(view.verdict.grade)
+    ? recordEffectiveSuccess(session, styleId, 'duel') : null;
+  return promoted.rank ? promoted : accrued;
 }
 
-/** 파견 쪽 짝 — 제자는 숙련이 없고 성 포인트만 오른다 (REQ-401). */
+/**
+ * 결정타 기록 (REQ-708) — 어느 초식이 끝냈는지의 인과를 남긴다. `intended` 는 그 수가 11성
+ * 계단을 노리던 초식에 떨어졌는가다: 결정타의 통제 불가는 의도된 난이도이고 재는 것은 배분이다.
+ */
+function logFinish(session, view, styleId) {
+  logEvent(session, 'finish', {
+    style: styleId,
+    challenger: view.challenger.id,
+    intended: rankOfStyle(session, styleId) === BALANCE.rankLadder.finishRank - 1,
+  });
+}
+
+/** 파견 쪽 짝 — 제자는 같은 사다리를 상한 10성으로 탄다 (REQ-705). */
 export function recordDispatchVerdict(session, view) {
   logVerdict(session, view.verdict, 'disciple');
   if (!view.fire || !isEffectiveSuccess(view.verdict.grade)) return null;
   return accrueDiscipleRank(session, view.fire.style.id);
 }
 
-/** 대련 결과 정산 (REQ-209·604) — 문구는 화면이 만들고 여기서는 상태만 움직인다. */
+// ---------------------------------------------------------- 개발자 치트 (REQ-781~783)
+
+export const createCheatState = () => ({ enabled: false, used: false });
+
+/**
+ * 치트 패널 노출 토글 (REQ-781·783). 봇이 도는 동안은 켜지지 않는다 — 페이스 표본에 주입이
+ * 섞이면 그 회차가 무엇을 잰 것인지 로그로 가를 수 없다.
+ */
+export function setCheatEnabled(session, enabled) {
+  session.cheat.enabled = Boolean(enabled) && !session.botRunning;
+  return session.cheat.enabled;
+}
+
+/** 봇 구동 상태 — 치트 강제 off 의 근거이자 유일한 전환 지점이다 (REQ-783). */
+export function setBotRunning(session, running) {
+  session.botRunning = Boolean(running);
+  if (session.botRunning) session.cheat.enabled = false;
+}
+
+/**
+ * 치트 주입 (REQ-781·782) — 세션에 지워지지 않는 플래그를 남긴다. 주입은 축적을 건너뛰므로
+ * 그 세션은 balance-log 회차와 kill (b)(c)(d) 표본에서 통째로 빠진다.
+ * @param {() => void} mutate 세션 상태를 실제로 바꾸는 일 — 플래그를 먼저 세우는 것은 「바꿨는데
+ *   표식이 없다」가 REQ-782 의 구멍이기 때문이다 (반대 방향의 헛플래그는 표본 하나를 더 뺄 뿐이다)
+ */
+export function applyCheat(session, action, mutate) {
+  if (!session.cheat.enabled) return false;
+  session.cheat.used = true;
+  logEvent(session, 'cheat', { action, session_flagged: true });
+  mutate();
+  return true;
+}
+
+/** 주입 가능한 성인지 — 화면이 던지는 값을 먼저 거른다 (핸들러 밖으로 새는 throw 는 무음 실패다). */
+export const isInjectableRank = (rank) => Number.isInteger(rank) && rank >= 1 && rank <= BALANCE.rankMax;
+
+/** 초식 성 직접 주입 — 전수 직전 등 임의 시점에서 플레이를 시작하기 위한 개발·QA 경로다. */
+export function cheatSetStyleRank(session, styleId, rank) {
+  if (!isInjectableRank(rank)) return false;
+  return applyCheat(session, `rank:${styleId}=${rank}`, () => {
+    session.progress = setStyleRank(session.progress, styleId, rank);
+    autoEquip(session);
+  });
+}
+
+export const isCheatFlagged = (session) => session.cheat.used;
+
+/**
+ * 대련 결과 정산 (REQ-209·604·734) — 문구는 화면이 만들고 여기서는 상태만 움직인다.
+ * 재대련 승리에 재화를 주지 않는 것이 파밍 루프를 끊는 자리다 — 성 +1 은 난이도로 막고
+ * 무보상은 동기로 막아, 둘 중 하나만으로는 「더 캘까」가 계속 이득으로 남는다.
+ */
 export function settleDuel(session, { win, stage }) {
-  if (!win) return { reward: 0, unlocked: null, cleared: false };
-  addCoins(session, BALANCE.reward.duelWin, 'duel_win');
+  if (!win) return { reward: 0, unlocked: null, cleared: false, rematch: false };
+  const challengerId = challengerOfStage(stage).id;
+  const rematch = isRematch(session, challengerId);
+  session.duelWins[challengerId] = duelWinsOf(session, challengerId) + 1;
+  if (!rematch) addCoins(session, BALANCE.reward.duelWin, 'duel_win');
   return {
-    reward: BALANCE.reward.duelWin,
+    reward: rematch ? 0 : BALANCE.reward.duelWin,
     unlocked: advanceStage(session, stage),
     cleared: isLastStage(stage),
+    rematch,
   };
 }
 
@@ -255,6 +570,10 @@ export function settleDispatch(session, { win }) {
   logEvent(session, 'cycle', { phase: 'cycle_done' });
   // 판독기는 첫 사이클만 세므로 그 종점의 상태를 통째로 붙잡는다 — 이후 화면의 전환은 그 사이클을 오염시키지 않는다.
   session.accessibilityAtDone ??= { on: session.accessibility, toggles: session.accessibilityToggles };
+  // 이긴 차수만 다음 임무를 연다 — 패배가 차수를 밀면 하드 잠금이 실패를 통과 경로로 만든다.
+  if (win && session.mission?.stage === session.dispatchStage) session.dispatchStage += 1;
+  // 임무는 한 판에 소비된다 — 남겨 두면 다음 진입이 지난 차수의 조합으로 싸운다.
+  session.mission = null;
   return { reward: win ? BALANCE.reward.dispatchWin : 0 };
 }
 
@@ -271,6 +590,8 @@ export function exportPayload(session, { exportedAt = new Date().toISOString() }
     accessibility: session.accessibilityAtDone?.on ?? session.accessibility,
     accessibility_toggles: session.accessibilityAtDone?.toggles ?? session.accessibilityToggles,
     balance: balanceDigest(),
+    // 주입 세션은 축적을 건너뛴 표본이라 판독기가 회차에서 통째로 빼야 한다 (REQ-782).
+    cheat_flagged: isCheatFlagged(session),
     log_violations: session.logViolations.map((v) => ({ ...v })),
     entries: session.log.entries.map((e) => ({ ...e })),
   };
@@ -282,5 +603,9 @@ export function runTransmit(session) {
   session.disciple = transmit(session.progress, session.disciple, ART_ID);
   session.transmitted = true;
   session.label = '고수';
-  logEvent(session, 'transmit', { style_set: ART_ID });
+  // 초식별 성을 함께 남긴다 — 전수 단위가 무공이어도 제자가 받는 것은 초식마다의 좌표다 (REQ-761·791).
+  logEvent(session, 'transmit', {
+    art: ART_ID,
+    styles: artStyles(ART_ID).map((s) => ({ id: s.id, rank: discipleStyleRank(session.disciple, ART_ID, s.id) })),
+  });
 }
