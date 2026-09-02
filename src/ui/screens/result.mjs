@@ -1,7 +1,7 @@
 // 결과 화면 (REQ-209·406·708·734) — 패배는 무손실이고, 재도전은 같은 차수를 예고 화면부터 다시 연다.
 
 import { styleById } from '../../core.mjs';
-import { clear, el } from '../dom.mjs';
+import { composeScreen, el } from '../dom.mjs';
 import { settleDispatch, settleDuel } from '../session.mjs';
 
 function duelLines(session, params) {
@@ -23,28 +23,36 @@ function dispatchLines(session, params) {
   return lines;
 }
 
+/**
+ * 결과 화면 — 7화면 중 유일하게 상단 띠가 없다. 띠도 전역 여백도 없어야 무대가 스테이지
+ * y=0 에서 곧장 시작한다 (REQ-802·870).
+ */
 export function renderResult(ctx) {
   const { session, root, params } = ctx;
   const duel = params.kind === 'duel';
   const lines = duel ? duelLines(session, params) : dispatchLines(session, params);
-  ctx.refreshTop();
-  ctx.pad.detach();
-  clear(root);
 
   const { view } = params;
-  root.append(el('section', { class: 'card result' }, [
-    el('h2', { class: params.win ? 'win' : 'lose', text: params.win ? '승리' : '패배' }),
-    el('p', { class: 'dim', text: `${view.exchange}수 · 남은 HP ${view.selfHp} 대 ${view.foeHp}`
-      + `${view.outcome.by === 'exchanges' ? ' (수 상한 · 잔여 HP 비교)' : ''}` }),
-    el('ul', {}, lines.map((t) => el('li', { text: t }))),
-    el('div', { class: 'actions' }, [
-      duel && !params.win ? el('button', {
-        class: 'primary', text: '재도전',
-        // 진 자리에서 바로 같은 슬롯으로 되돌아가면 절초 공개·슬롯 교체(REQ-732·736)가 가장 필요한
-        // 순간에만 빠진다 — 예고를 거치는 것이 그 학습 계단의 자리다.
-        onclick: () => ctx.go('duelPreview', { stage: params.stage }),
-      }) : null,
-      el('button', { class: 'primary', text: '도장으로', onclick: () => ctx.go('dojo') }),
-    ]),
-  ]));
+  composeScreen(ctx, {
+    padded: false,
+    body: [
+      el('div', { class: 'result-stage' }, [
+        el('h2', { class: params.win ? 'win' : 'lose', text: params.win ? '승리' : '패배' }),
+        el('p', { class: 'dim', text: `${view.exchange}수 · 남은 HP ${view.selfHp} 대 ${view.foeHp}`
+          + `${view.outcome.by === 'exchanges' ? ' (수 상한 · 잔여 HP 비교)' : ''}` }),
+      ]),
+      el('section', { class: 'result-ledger' }, [
+        el('ul', {}, lines.map((t) => el('li', { text: t }))),
+        el('div', { class: 'actions' }, [
+          duel && !params.win ? el('button', {
+            class: 'primary', text: '재도전',
+            // 진 자리에서 바로 같은 슬롯으로 되돌아가면 절초 공개·슬롯 교체(REQ-732·736)가 가장 필요한
+            // 순간에만 빠진다 — 예고를 거치는 것이 그 학습 계단의 자리다.
+            onclick: () => ctx.go('duelPreview', { stage: params.stage }),
+          }) : null,
+          el('button', { class: 'primary', text: '도장으로', onclick: () => ctx.go('dojo') }),
+        ]),
+      ]),
+    ],
+  });
 }

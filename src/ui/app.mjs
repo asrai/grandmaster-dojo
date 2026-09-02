@@ -3,11 +3,11 @@
 
 import { BALANCE } from '../balance.mjs';
 import { createBot } from '../bot.mjs';
-import { $, clear } from './dom.mjs';
+import { $ } from './dom.mjs';
 import { mountCheatPanel } from './cheat.mjs';
 import { createPad } from './pad.mjs';
 import {
-  ART_NAME, createSession, enterPhase, exportPayload, logSessionMeta, setBotRunning,
+  createSession, enterPhase, exportPayload, logSessionMeta, setBotRunning,
 } from './session.mjs';
 import { renderDojo } from './screens/dojo.mjs';
 import { renderPreview, startDispatch } from './screens/dispatch.mjs';
@@ -34,48 +34,47 @@ const DEVICE = window.matchMedia?.('(pointer: coarse)')?.matches ? 'button' : 'k
 const session = createSession({ now: () => performance.now() });
 const ctx = {
   session,
-  root: $('screen'),
-  band: $('band'),
+  root: $('app'),
   pad: createPad(),
   params: {},
   go,
+  ownTop,
   refreshTop,
 };
 let teardown = null;
 let phase = null;
+// 상단 띠의 주인이 화면이라 갱신 주체도 그 화면이다 — 띠가 없는 화면에서는 갱신할 것도 없다 (REQ-801).
+let paintTop = () => {};
 
-function refreshTop() {
-  $('label').textContent = session.label;
-  // 성이 초식 단위로 내려가 무공에는 표시할 수 하나가 없다 — 성은 도장의 초식 게이지가 진다 (REQ-701·707).
-  $('rank').textContent = ART_NAME;
-  $('coins').textContent = `元 ${session.coins}`;
+/** 상단 띠를 그린 화면이 그 다시 그리는 함수를 등록하는 자리. */
+function ownTop(paint) {
+  paintTop = paint;
 }
 
-/** 화면 전환의 유일한 경로 — 이전 화면의 루프·리스너 회수가 여기 한 곳에 묶인다. */
+function refreshTop() {
+  paintTop();
+}
+
+/** 화면 전환의 유일한 경로 — 이전 화면의 루프·리스너·입력 회수가 여기 한 곳에 묶인다. */
 function go(nextPhase, params = {}) {
   if (teardown) teardown();
   teardown = null;
-  // 바닥 밴드의 주인은 화면이다 — 다음 화면이 채우지 않으면 그 자리는 남지 않는다.
-  clear(ctx.band);
+  paintTop = () => {};
+  // 패드 소비자를 라우트가 각자 끊으면 한 화면이 빠뜨리는 순간 키보드가 죽은 화면으로 흘러든다.
+  ctx.pad.detach();
   const route = ROUTES[nextPhase];
   if (!route) throw new Error(`알 수 없는 화면: ${nextPhase}`);
   ctx.params = params;
   phase = nextPhase;
   enterPhase(session, phase);
   teardown = route(ctx) ?? null;
-  refreshTop();
 }
+
+// 낭독 리전이 사라지면 판정이 에러 없이 침묵한다 — 그 마크업 계약을 부팅 때 터뜨린다 (REQ-807).
+if (!$('live')) throw new Error('낭독 리전 #live 가 스테이지에 없다');
 
 // 히트 영역 최소치도 BALANCE 값이라, CSS 가 그 값을 변수로 받아 간다 (REQ-101).
 document.documentElement.style.setProperty('--hit', `${BALANCE.buttonHitPx}px`);
-
-$('a11y').checked = session.accessibility;
-$('a11y').addEventListener('change', (event) => {
-  // 데이터 테이블은 시드로 두고 런타임 값은 세션이 갖는다 — 다음 창부터 반영된다.
-  session.accessibility = event.target.checked;
-  // 사이클 도중에 창 배율이 바뀐 세션은 모집단이 섞인 것이라, 판독기가 그 사실을 알아야 한다.
-  session.accessibilityToggles += 1;
-});
 
 /** 로그 내보내기 (REQ-602) — 위반 목록을 함께 실어, 결손 로그가 조용히 판독에 쓰이지 않게 한다. */
 function exportLog() {
@@ -124,6 +123,9 @@ const refreshCheat = mountCheatPanel({
   session,
   refresh: () => { refreshTop(); if (phase === 'dojo') go('dojo'); },
 });
+
+// 도구 띠가 세로를 먹어 무대 배율이 1 밑으로 내려가므로, 목업 대조 스크린샷은 이 스위치로 1:1 을 되찾는다.
+if (new URLSearchParams(window.location.search).get('tools') === '0') $('tools').hidden = true;
 
 $('exportBtn').addEventListener('click', exportLog);
 $('botBtn').addEventListener('click', () => {

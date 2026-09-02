@@ -1,9 +1,11 @@
-// 입력 패드 — 4방향 버튼·키보드·후보 아이콘·버퍼 줄을 한 곳에서 소유한다.
+// 입력 패드 — 4방향 버튼·키보드·버퍼 줄을 한 곳에서 소유하고, 죽간은 `tablets.mjs` 에 맡긴다.
 // 어떤 화면이 붙어 있든 방향은 `input.press()` 한 경로로만 흐른다 (REQ-101).
+// 마크업을 스스로 만들어 `node` 로 내놓으므로, 하단부에 이것을 둘지는 화면이 정한다 (REQ-801).
 
 import { ARROW, BALANCE } from '../balance.mjs';
 import { isOneTapRank } from '../core.mjs';
-import { $, arrowRow, attrMark, clear, el, shake } from './dom.mjs';
+import { arrowRow, attrMark, clear, el, shake } from './dom.mjs';
+import { createTablets } from './tablets.mjs';
 import { ATTR_VIEW, attrLabel } from './theme.mjs';
 import { SFX } from './audio.mjs';
 
@@ -12,16 +14,24 @@ const KEYMAP = {
   w: 'U', s: 'D', a: 'L', d: 'R', W: 'U', S: 'D', A: 'L', D: 'R',
 };
 const RESET_KEYS = new Set([' ', 'Spacebar', 'Escape']);
+const DIRS = [['U', '위', '↑'], ['L', '왼쪽', '←'], ['D', '아래', '↓'], ['R', '오른쪽', '→']];
 
 export function createPad() {
-  const root = $('pad');
-  const colorEl = $('padColor');
-  const candidatesEl = $('candidates');
-  const seqEl = $('seq');
-  const resetBtn = $('resetBtn');
-  const dirButtons = new Map(
-    [...root.querySelectorAll('[data-dir]')].map((b) => [b.dataset.dir, b]),
-  );
+  const colorEl = el('div', { class: 'pad-color none' });
+  const tablets = createTablets({ soloEmphasis: true });
+  const seqEl = el('div', { class: 'pad-seq' });
+  const resetBtn = el('button', { class: 'pad-reset' }, [
+    el('span', { text: '리셋' }), el('br'), el('span', { class: 'dim', text: 'Space' }),
+  ]);
+  const dirButtons = new Map(DIRS.map(([dir, label, glyph]) => [
+    dir, el('button', { 'data-dir': dir, 'aria-label': label, text: glyph }),
+  ]));
+  const root = el('footer', { class: 'pad' }, [
+    colorEl,
+    tablets.node,
+    seqEl,
+    el('div', { class: 'dpad' }, [...dirButtons.values(), resetBtn]),
+  ]);
   let active = null;
   let structureSig = null;
   let arrowsFor = null;
@@ -92,26 +102,22 @@ export function createPad() {
       );
     }
 
-    clear(candidatesEl).className = solo ? 'candidates solo' : 'candidates';
-    for (const style of input.candidates) {
+    tablets.render(input.candidates.map((style) => {
       const oneTap = isOneTapRank(active.rankOf(style));
-      candidatesEl.appendChild(el('button', {
-        class: `cand${style === top ? ' top' : ''}${oneTap ? ' onetap' : ''}`,
-        style: `--attr:${ATTR_VIEW[style.attr].color}`,
+      return {
+        style,
+        mods: [style === top ? 'top' : '', oneTap ? 'onetap' : ''].filter(Boolean).join(' '),
+        tags: oneTap ? ['원터치'] : [],
         title: style.gugyeol,
-        onclick: () => {
+        onTap: () => {
           if (!accepting() || locked()) return;
           const fired = input.tap(style);
           if (!fired) return;
           render();
           active.onFire(fired);
         },
-      }, [
-        attrMark(style.attr),
-        el('span', { class: 'cand-name', text: style.name }),
-        oneTap ? el('span', { class: 'tag', text: '원터치' }) : null,
-      ]));
-    }
+      };
+    }));
     resetBtn.classList.toggle('urge', input.ignores >= BALANCE.ignoreHighlightAt);
   }
 
@@ -156,6 +162,9 @@ export function createPad() {
   }
 
   return {
+    /** 화면이 자기 하단부에 꽂는 노드 — 꽂지 않은 화면에는 패드가 존재하지 않는다. */
+    node: root,
+
     /**
      * 봇 v2 의 손 (REQ-605) — 사람 입력과 완전히 같은 경로를 지난다.
      * 창이 닫혀 있으면 `peek()` 가 null 이라 봇은 그 사이 아무것도 두드리지 않는다.
@@ -172,16 +181,15 @@ export function createPad() {
       active = consumer;
       structureSig = null;
       arrowsFor = null;
-      root.classList.remove('detached');
       render();
     },
+    /** 소비자 파생 표시만 되돌린다 — 봇 점유는 화면을 넘어 이어지므로 여기서 끄지 않는다. */
     detach() {
       active = null;
       structureSig = null;
       arrowsFor = null;
-      root.classList.add('detached');
       root.classList.remove('idle');
-      clear(candidatesEl);
+      tablets.clear();
       clear(seqEl);
       clear(colorEl);
       resetBtn.classList.remove('urge');

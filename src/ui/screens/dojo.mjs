@@ -4,7 +4,7 @@ import { BALANCE, STYLES } from '../../balance.mjs';
 import {
   artById, canLearn, discipleStyleRank, discipleStyles, ladderBandAt, styleById, trainAccrualCap,
 } from '../../core.mjs';
-import { arrowRow, attrMark, clear, el, tipAnchor } from '../dom.mjs';
+import { arrowRow, attrMark, clear, composeScreen, el, tipAnchor, topBand } from '../dom.mjs';
 import { ATTR_VIEW } from '../theme.mjs';
 import {
   ART_ID, ART_NAME, DISPATCH_CHALLENGER, beatenChallengers, canDiscipleTrain, canDispatch,
@@ -308,8 +308,8 @@ function paintTrainBar(bar, progress) {
 }
 
 /** 스크롤 흐름 밖의 바닥 밴드 — 주요 액션이 진입 첫 화면에서 엄지 도달 범위 안에 상시 노출된다. */
-function renderBand(ctx, actions, target) {
-  clear(ctx.band).append(
+function bandNode(ctx, actions, target) {
+  return el('nav', { class: 'bottom-band', 'aria-label': '주요 행동' }, [
     el('div', { class: 'band-actions' }, actions.map((a) => {
       const sub = a.disabled ? a.lockedSub : a.sub;
       // 칸 폭이 무대의 1/3 이라 부제가 잘릴 수 있고, 잘린 문자열에 닿을 다른 경로가 없다.
@@ -325,13 +325,11 @@ function renderBand(ctx, actions, target) {
       // 압축이 걸어 둔 제자 성까지 올리므로 상단 표시만으로는 카드의 배지·잠금이 낡은 채 남는다.
       onclick: () => { simulateTraining(ctx.session); ctx.go('dojo'); },
     }),
-  );
+  ]);
 }
 
 export function renderDojo(ctx) {
   const { session, root } = ctx;
-  ctx.pad.detach();
-  clear(root);
 
   const rowActions = STYLES.map((s) => styleActions(ctx, s));
   const band = bandActions(ctx);
@@ -342,20 +340,23 @@ export function renderDojo(ctx) {
   const guidedRow = rowStyleId(target?.id);
   const openId = openRowOf(session, guidedRow);
 
-  // 재대련 카드는 이긴 도전자가 생기기 전까지 없다 — `append(null)` 은 "null" 텍스트 노드가 된다.
   const bar = el('div', { class: 'train-bar' });
-  root.append(...[
-    el('section', { class: 'card' }, [
-      el('h2', { text: `${ART_NAME} ${artById(ART_ID).hanja}` }),
-      el('div', { class: 'rows' }, STYLES.map((s, i) => styleRow(ctx, s, rowActions[i], target, guidedRow, s.id === openId))),
-      session.slots.some(Boolean) ? null : el('p', {
-        class: 'dim', text: `초식을 수련해 ${BALANCE.rankGate.equip}성에 닿으면 실전 슬롯에 자동으로 장착된다.`,
-      }),
-    ]),
-    rematchCard(ctx),
-    discipleCard(ctx, bar),
-  ].filter(Boolean));
-  renderBand(ctx, band, target);
+  composeScreen(ctx, {
+    top: topBand(session, ART_NAME),
+    // 재대련 카드는 이긴 도전자가 생기기 전까지 없다 — `append(null)` 은 "null" 텍스트 노드가 된다.
+    body: [
+      el('section', { class: 'card' }, [
+        el('h2', { text: `${ART_NAME} ${artById(ART_ID).hanja}` }),
+        el('div', { class: 'rows' }, STYLES.map((s, i) => styleRow(ctx, s, rowActions[i], target, guidedRow, s.id === openId))),
+        session.slots.some(Boolean) ? null : el('p', {
+          class: 'dim', text: `초식을 수련해 ${BALANCE.rankGate.equip}성에 닿으면 실전 슬롯에 자동으로 장착된다.`,
+        }),
+      ]),
+      rematchCard(ctx),
+      discipleCard(ctx, bar),
+    ],
+    bottom: bandNode(ctx, band, target),
+  });
 
   const progress = discipleTrainProgress(session);
   if (!progress) return undefined;

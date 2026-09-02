@@ -15,51 +15,66 @@ body {
   background: var(--bg); color: var(--fg); font: 15px/1.5 -apple-system, "Noto Sans KR", sans-serif;
   overscroll-behavior: none;
 }
-/* 스케일 계수는 무단위 비율이어야 하는데 min() 은 길이와 수를 못 섞는다 — tan(atan2()) 가 길이비를 수로 환산한다. */
 #frame {
-  --k: min(tan(atan2(100vw, 393px)), tan(atan2(100dvh, 852px)), 1);
-  position: relative; width: 100vw; height: 100dvh;
-  display: grid; place-content: center; overflow: hidden;
+  position: relative; width: 100vw; height: 100dvh; overflow: hidden;
+  display: flex; flex-direction: column;
   background: var(--letterbox);
 }
-/* 논리 해상도를 393x852 로 못박고 창에는 축소로만 맞춘다 — 내부 좌표가 창·기기와 무관해진다. */
+/* 검증 도구는 무대와 겹치지 않는 자기 띠에 산다 — 겹치면 여백 0 인 창에서 도달 불가이거나 무대 스크린샷에 섞인다. */
+#tools {
+  position: relative; z-index: 2; display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 8px;
+}
+#tools[hidden] { display: none; }
+#tools button { padding: 4px 8px; font-size: 12px; }
+#tools button.urge { border-color: var(--gold); color: var(--gold); }
+/* 치트 패널은 명시 토글로만 열리므로(REQ-781) 띠를 늘리지 않고 무대 위로 펼친다. */
+#tools .cheat { position: absolute; top: 100%; left: 8px; z-index: 3; background: #0b0e13; }
+
+/* 스테이지 배율의 기준은 창이 아니라 이 상자다 — 도구 띠가 먹은 만큼은 무대가 쓸 수 없다. */
+#stagebox { flex: 1; min-height: 0; container-type: size; display: grid; place-content: center; }
+/* 논리 해상도를 393x852 로 못박고 상자에는 축소로만 맞춘다 — 내부 좌표가 창·기기와 무관해진다.
+   무단위 배율이 필요한데 min() 은 길이와 수를 못 섞으므로 tan(atan2()) 로 길이비를 수로 환산한다. */
 #stage {
-  position: relative; z-index: 1; width: 393px; height: 852px;
+  --k: min(tan(atan2(100cqw, 393px)), tan(atan2(100cqh, 852px)), 1);
+  position: relative; width: 393px; height: 852px;
   transform: scale(var(--k)); transform-origin: center;
   background: var(--bg); border-radius: 18px; overflow: hidden;
   box-shadow: 0 0 0 1px var(--line);
 }
-#app { display: flex; flex-direction: column; height: 100%; }
+/* 화면이 통째로 소유하는 자리 — 전역 여백이 없어야 어떤 화면이든 y=0 부터 깔 수 있다 (REQ-802). */
+#app { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 /* 플렉스 자식의 기본 min-width:auto 가 긴 한글 줄을 뷰포트 밖으로 밀어낸다. */
-#app, #screen, .card, .row, .row-head, .row-name, .telegraph, .head, .meter-line > *, .tip-anchor { min-width: 0; }
+#app, .screen-body, .card, .row, .row-head, .row-name, .telegraph, .head, .meter-line > *, .tip-anchor { min-width: 0; }
+/* 낭독 전용 층 — 스테이지 직속이라 화면이 파괴돼도 판정이 침묵하지 않는다 (REQ-807). */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
+}
 
-/* 폭에 따라 줄 수가 바뀌면 헤더 높이가 흔들리므로 2줄 구조를 마크업으로 못박는다. */
-#top {
+/* 폭에 따라 줄 수가 바뀌면 띠 높이가 흔들리므로 2줄 구조를 조립부에서 못박는다. */
+.top-band {
   display: flex; flex-direction: column; justify-content: center; gap: 3px;
   height: 56px; padding: 0 14px; border-bottom: 1px solid var(--line); font-size: 13px;
   overflow: hidden;
 }
 .top-row { display: flex; gap: 10px; align-items: center; min-width: 0; white-space: nowrap; }
-.top-row > span { overflow: hidden; text-overflow: ellipsis; }
-#top #label { font-weight: 700; color: var(--gold); }
-#top #coins { margin-left: auto; }
-#top label { display: flex; gap: 4px; align-items: center; color: var(--dim); }
-/* 검증 도구는 게임 UI 가 아니라 레터박스 여백에 산다 — 스테이지 스크린샷에 잡히면 안 된다. */
-#tools { position: absolute; top: 8px; left: 8px; z-index: 0; display: flex; flex-wrap: wrap; gap: 6px; }
-#tools button { padding: 4px 8px; font-size: 12px; }
-#tools button.urge { border-color: var(--gold); color: var(--gold); }
+.top-row > * { overflow: hidden; text-overflow: ellipsis; }
+.top-band .top-label { font-weight: 700; color: var(--gold); }
+.top-band .top-coins { margin-left: auto; }
+.top-band label { display: flex; gap: 4px; align-items: center; color: var(--dim); }
 
-#screen { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+/* 본문 여백은 화면이 고른다 — 풀블리드 레이어가 y=0 에서 시작하려면 전역 규칙이 없어야 한다 (REQ-802). */
+.screen-body { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+.screen-body.padded { padding: 12px; gap: 12px; }
 
-/* 바닥 밴드의 주인과 높이는 화면이 정한다 — 비워 두는 화면에서는 자리도 남지 않는다. */
-#band {
+/* 바닥 밴드의 주인과 높이는 화면이 정한다 — 쓰지 않는 화면은 만들지 않으므로 자리도 남지 않는다. */
+.bottom-band {
   position: relative; border-top: 1px solid var(--line); background: var(--panel);
   padding: 8px 12px; display: flex; flex-direction: column; gap: 6px;
 }
-#band:not(:has(*)) { display: none; }
 /* 밴드는 화면 맨 아래라 말풍선을 위로 띄우고, 기준 상자를 밴드로 올려 좁은 칸에서 접히지 않게 한다. */
-#band .tip-anchor { position: static; }
-#band .tip { top: auto; bottom: calc(100% + 4px); }
+.bottom-band .tip-anchor { position: static; }
+.bottom-band .tip { top: auto; bottom: calc(100% + 4px); }
 .band-actions { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; }
 .band-cell { display: flex; flex-direction: column; gap: 4px; }
 .band-actions button { width: 100%; min-height: var(--hit); padding: 8px 4px; font-weight: 700; }
@@ -150,8 +165,9 @@ button.ghost { background: transparent; }
 .hpbar { height: 10px; background: #0b0e13; border-radius: 5px; overflow: hidden; margin: 6px 0; }
 .hpbar i { display: block; height: 100%; background: linear-gradient(90deg, #ff5a5a, #ffd166); transition: width .25s; }
 
+/* 판정 오버레이의 기준 상자 — 시각 층은 아레나 좌표계 안에 산다 (REQ-806). */
 /* 판정은 오버레이가 지므로 남는 세로는 빈 칸으로 남긴다 — 아래 절반의 자리를 그대로 유지한다. */
-.arena { display: flex; flex-direction: column; flex: 1; }
+.arena { position: relative; display: flex; flex-direction: column; flex: 1; }
 .arena .tg-slot { min-height: 74px; }
 .arena .arena-gap { flex: 1; }
 .telegraph { border: 1px solid var(--attr, var(--line)); border-radius: 8px; padding: 8px; display: flex; gap: 10px; align-items: center; }
@@ -179,15 +195,31 @@ button.ghost { background: transparent; }
 .transmit .side { flex: 1; border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
 .transmit .side.dark { opacity: .25; transition: opacity .6s; }
 .transmit .side.dark.arrived { opacity: 1; border-color: var(--gold); }
-.result h2.win { color: var(--gold); }
-.result h2.lose { color: #ff5a5a; }
-.result ul { margin: 6px 0; padding-left: 18px; }
+/* 결과는 상단 띠가 없는 유일한 화면이라 무대가 스테이지 y=0 에서 곧장 시작한다 (REQ-802·870). */
+.result-stage {
+  padding: 28px 12px; text-align: center;
+  background: #131922; border-bottom: 1px solid var(--line);
+}
+.result-stage h2 { margin: 0; font-size: 28px; }
+.result-stage h2.win { color: var(--gold); }
+.result-stage h2.lose { color: #ff5a5a; }
+.result-stage p { margin: 6px 0 0; }
+.result-ledger { padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+.result-ledger ul { margin: 0; padding-left: 18px; }
+
+/* 죽간 줄 — 매수가 줄어드는 것 자체가 「좁혀졌다」의 표현이라 1매는 크게 그린다 (REQ-824). */
+.tablets { display: flex; flex-wrap: wrap; gap: 6px; min-height: 46px; }
+/* 죽간은 매수가 줄 때 커지는 것이지 좁아지는 것이 아니다 — 눌리면 이름이 두 줄로 접히고,
+   넘치는 매는 가로로 흘리는 대신 다음 줄로 내린다 (응수 창은 시간 제한이라 스크롤이 조작을 늦춘다). */
+.tablets .cand { flex: 0 0 auto; white-space: nowrap; }
+.tablets.solo .cand { font-size: 17px; padding: 10px 16px; }
+.tablets.solo .cand-name { font-size: 16px; }
 
 .toast { min-height: 20px; text-align: center; color: var(--gold); opacity: 0; transition: opacity .2s; }
 .toast.show { opacity: 1; }
 
 /* 판정은 흐름 밖에서 뜬다 — 자리를 차지하면 문구 등장마다 아래 형제가 밀린다 (#40). */
-#verdictOverlay {
+.verdict-overlay {
   position: absolute; inset: 0; z-index: 2; pointer-events: none;
   display: flex; align-items: center; justify-content: center;
 }
@@ -196,42 +228,38 @@ button.ghost { background: transparent; }
 .verdict-label { display: block; margin-top: 8px; font-size: 22px; font-weight: 800; letter-spacing: 3px; }
 /* 마크 없이 뜨는 판정은 기본 라벨 크기로는 중앙 오버레이로 읽히지 않아, 라벨이 그 자리를 대신 이끈다 (#46). */
 .verdict-label.lead { margin-top: 0; font-size: 56px; letter-spacing: 6px; line-height: 1; }
-/* 위 .5s 는 폴백이고 실제 재생 시간은 showVerdict 가 인라인으로 덮는다 — 주입이 비어도 판정은 보여야 한다. */
+/* 위 .5s 는 폴백이고 실제 재생 시간은 show 가 인라인으로 덮는다 — 주입이 비어도 판정은 보여야 한다. */
 @keyframes verdict-pop {
   0% { opacity: 0; transform: scale(.6) }
   20% { opacity: 1; transform: scale(1.1) }
   36% { transform: scale(1) }
-  /* 투명해진 노드는 접근성 트리에 남아 계속 읽히므로 자리째 감춘다. */
   100% { opacity: 0; transform: scale(1); visibility: hidden }
 }
 
-#pad { border-top: 1px solid var(--line); padding: 8px 12px; background: var(--panel); height: calc(var(--hit) * 2 + 160px); }
-/* 자리째 접는다 — 패드를 쓰는 화면은 진입부터 이탈까지 붙여 두므로 화면 안에서 높이가 튀지 않는다. */
-#pad.detached { display: none; }
-#pad.idle { opacity: .4; }
-#pad.idle #dpad button { pointer-events: none; }
+.pad { border-top: 1px solid var(--line); padding: 8px 12px; background: var(--panel); height: calc(var(--hit) * 2 + 160px); }
+.pad.idle { opacity: .4; }
+.pad.idle .dpad button { pointer-events: none; }
 /* 봇 점유 중 사람 입력은 무시되므로, 눌러도 되는 것처럼 보이지 않게 한다. */
-#pad.bot { box-shadow: inset 0 2px 0 var(--gold); }
-#pad.bot #dpad button, #pad.bot #candidates { pointer-events: none; opacity: .6; }
+.pad.bot { box-shadow: inset 0 2px 0 var(--gold); }
+.pad.bot .dpad button, .pad.bot .tablets { pointer-events: none; opacity: .6; }
+/* 패드는 진입부터 이탈까지 높이가 고정이라 죽간이 한 줄을 넘으면 십자 키패드가 잘린다 — 여기서만 가로로 흘린다. */
+.pad .tablets { flex-wrap: nowrap; overflow-x: auto; }
 .pad-color { display: flex; gap: 6px; align-items: center; min-height: 28px; font-size: 16px; font-weight: 700; }
 .pad-color.none { color: var(--dim); }
 .pad-name { color: var(--dim); font-size: 12px; font-weight: 400; }
-.candidates { display: flex; gap: 6px; overflow-x: auto; min-height: 46px; padding-bottom: 2px; }
-.candidates.solo .cand { font-size: 17px; padding: 10px 16px; }
-.candidates.solo .cand-name { font-size: 16px; }
-#seq { min-height: 30px; }
-#dpad {
+.pad-seq { min-height: 30px; }
+.dpad {
   display: grid; grid-template-columns: repeat(3, var(--hit)) 1fr;
   grid-template-rows: repeat(2, var(--hit)); gap: 6px; align-items: center; margin-top: 6px;
 }
-#dpad button { width: 100%; height: 100%; min-height: var(--hit); font-size: 22px; }
-#dpad [data-dir="U"] { grid-area: 1 / 2; }
-#dpad [data-dir="L"] { grid-area: 2 / 1; }
-#dpad [data-dir="D"] { grid-area: 2 / 2; }
-#dpad [data-dir="R"] { grid-area: 2 / 3; }
-#dpad #resetBtn { grid-area: 1 / 4 / 3 / 5; font-size: 14px; }
-#dpad #resetBtn.urge { --attr: var(--gold); border-color: var(--gold); color: var(--gold); animation: flash .8s ease-in-out infinite; }
-#dpad button.down { background: #2d3a4d; transform: scale(.96); }
+.dpad button { width: 100%; height: 100%; min-height: var(--hit); font-size: 22px; }
+.dpad [data-dir="U"] { grid-area: 1 / 2; }
+.dpad [data-dir="L"] { grid-area: 2 / 1; }
+.dpad [data-dir="D"] { grid-area: 2 / 2; }
+.dpad [data-dir="R"] { grid-area: 2 / 3; }
+.dpad .pad-reset { grid-area: 1 / 4 / 3 / 5; font-size: 14px; }
+.dpad .pad-reset.urge { --attr: var(--gold); border-color: var(--gold); color: var(--gold); animation: flash .8s ease-in-out infinite; }
+.dpad button.down { background: #2d3a4d; transform: scale(.96); }
 .shake { animation: shake .2s linear 1; }
 @keyframes shake {
   0%, 100% { transform: translateX(0) } 25% { transform: translateX(-5px) }
@@ -241,45 +269,18 @@ button.ghost { background: transparent; }
 </head>
 <body>
 <div id="frame">
-  <div id="stage">
-    <div id="app">
-      <header id="top">
-        <div class="top-row">
-          <span id="label">문하생</span>
-          <span id="rank" class="dim">유운검법</span>
-          <span id="coins">元 0</span>
-        </div>
-        <div class="top-row">
-          <label><input type="checkbox" id="a11y">응수 창 ×1.3 (쉬움)</label>
-        </div>
-      </header>
-
-      <main id="screen"></main>
-
-      <nav id="band" aria-label="주요 행동"></nav>
-
-      <footer id="pad" class="detached">
-        <div id="padColor" class="pad-color none"></div>
-        <div id="candidates" class="candidates"></div>
-        <div id="seq"></div>
-        <div id="dpad">
-          <button data-dir="U" aria-label="위">↑</button>
-          <button data-dir="L" aria-label="왼쪽">←</button>
-          <button data-dir="D" aria-label="아래">↓</button>
-          <button data-dir="R" aria-label="오른쪽">→</button>
-          <button id="resetBtn">리셋<br><span class="dim">Space</span></button>
-        </div>
-      </footer>
-    </div>
-    <div id="verdictOverlay" aria-live="polite"></div>
-  </div>
-
-  <!-- 레터박스 여백에 사는 개발 도구 — 창이 논리 해상도와 같아 여백이 0 인 기기에서는 스테이지에 가린다. -->
   <div id="tools">
     <button id="exportBtn" class="ghost">로그 내보내기</button>
     <button id="botBtn" class="ghost">봇 v2 실행</button>
     <button id="cheatBtn" class="ghost" aria-pressed="false" aria-controls="cheat">개발자 치트</button>
     <section id="cheat" class="cheat" hidden aria-label="개발자 치트"></section>
+  </div>
+
+  <div id="stagebox">
+    <div id="stage">
+      <div id="app"></div>
+      <div id="live" class="sr-only" role="status" aria-live="polite"></div>
+    </div>
   </div>
 </div>
 <script>
@@ -287,7 +288,7 @@ button.ghost { background: transparent; }
 (() => {
   function showFatal(text) {
     // 부팅에 성공한 뒤의 런타임 예외까지 덮으면 플레이 중 화면이 통째로 날아간다 — 백지일 때만 쓴다.
-    const el = document.getElementById('screen');
+    const el = document.getElementById('app');
     if (!el || el.childNodes.length > 0) return;
     el.style.whiteSpace = 'pre-wrap';
     el.style.padding = '16px';

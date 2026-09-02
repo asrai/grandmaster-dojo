@@ -6,6 +6,7 @@ import { ATTR_VIEW } from './theme.mjs';
 
 export const $ = (id) => document.getElementById(id);
 
+/** `false`·`null` 속성값은 「속성 없음」이라, `aria-*` 의 거짓 값은 문자열 `'false'` 로 넘겨야 남는다. */
 export function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -24,6 +25,73 @@ export function el(tag, attrs = {}, children = []) {
 export function clear(node) {
   while (node.firstChild) node.removeChild(node.firstChild);
   return node;
+}
+
+/**
+ * 화면 크롬 조립 (REQ-801) — 상단 띠·하단부의 유무와 본문 여백을 화면이 정하므로, 어떤 화면도
+ * 풀블리드 레이어를 y=0 부터 깔 수 있다 (REQ-802).
+ * @param {object} ctx 화면 컨텍스트 — `root` 를 비워 다시 채우고 `ownTop` 으로 띠 갱신을 등록한다
+ * @param {object} p
+ * @param {{node: HTMLElement, paint: Function}} [p.top] `topBand` 번들 — 조립과 등록이 한 호출로
+ *   묶여 있어, 띠를 붙이고 갱신 등록만 빠뜨린 상태가 만들어지지 않는다
+ * @param {HTMLElement|HTMLElement[]} [p.body] 본문 자식 (falsy 항목은 버려진다)
+ * @param {HTMLElement} [p.bottom] 하단부 (밴드·입력 패드)
+ * @param {boolean} [p.padded] 본문 여백 12px/gap 12px 적용 여부
+ * @returns {HTMLElement} 본문 노드
+ */
+export function composeScreen(ctx, {
+  top = null, body = [], bottom = null, padded = true,
+}) {
+  const root = clear(ctx.root);
+  if (top) {
+    root.appendChild(top.node);
+    ctx.ownTop(top.paint);
+  }
+  const main = el('main', { class: `screen-body${padded ? ' padded' : ''}` },
+    [].concat(body).filter(Boolean));
+  root.appendChild(main);
+  if (bottom) root.appendChild(bottom);
+  return main;
+}
+
+/**
+ * 표준 상단 띠 (REQ-801) — 띠를 쓰는 화면이 각자 만들고, 갱신 주체도 그 화면이다.
+ * @param {object} session
+ * @param {string} artName 무공 이름 — 성이 초식 단위로 내려가 무공에는 표시할 성이 없다 (REQ-701·707)
+ * @returns {{node: HTMLElement, paint: () => void}} `paint` 를 `ctx.ownTop` 에 넘기면
+ *   `ctx.refreshTop()` 이 그 화면의 띠만 다시 그린다
+ */
+export function topBand(session, artName) {
+  const labelEl = el('b', { class: 'top-label' });
+  const coinsEl = el('span', { class: 'top-coins' });
+  const a11y = el('input', { id: 'a11y-window', type: 'checkbox' });
+  a11y.checked = session.accessibility;
+  a11y.addEventListener('change', () => {
+    // 데이터 테이블은 시드로 두고 런타임 값은 세션이 갖는다 — 다음 창부터 반영된다.
+    session.accessibility = a11y.checked;
+    // 사이클 도중에 창 배율이 바뀐 세션은 모집단이 섞인 것이라, 판독기가 그 사실을 알아야 한다.
+    session.accessibilityToggles += 1;
+  });
+
+  const node = el('header', { class: 'top-band' }, [
+    el('div', { class: 'top-row' }, [
+      labelEl,
+      el('span', { class: 'dim', text: artName }),
+      coinsEl,
+    ]),
+    el('div', { class: 'top-row' }, [
+      el('label', {}, [a11y, el('span', { text: '응수 창 ×1.3 (쉬움)' })]),
+    ]),
+  ]);
+
+  // 부분 갱신이면 `refreshTop()` 이 「띠가 지금 상태와 같아진다」를 보장하지 못한다 — 셋을 함께 그린다.
+  const paint = () => {
+    labelEl.textContent = session.label;
+    coinsEl.textContent = `元 ${session.coins}`;
+    a11y.checked = session.accessibility;
+  };
+  paint();
+  return { node, paint };
 }
 
 /** 속성 = 색 + 형태 중복 표현 (REQ-112). */

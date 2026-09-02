@@ -2,12 +2,12 @@
 
 import { BALANCE } from '../../balance.mjs';
 import { styleById } from '../../core.mjs';
-import { arrowRow, attrMark, clear, el } from '../dom.mjs';
+import { arrowRow, attrMark, composeScreen, el, topBand } from '../dom.mjs';
 import { ATTR_VIEW, GRADE_VIEW } from '../theme.mjs';
 import { SFX } from '../audio.mjs';
 import { createSequenceInput } from '../sequence-input.mjs';
-import { logEvent, rankOfStyle, trainHitsLeft } from '../session.mjs';
-import { hideVerdict, showVerdict } from '../verdict-overlay.mjs';
+import { ART_NAME, logEvent, rankOfStyle, trainHitsLeft } from '../session.mjs';
+import { createVerdictOverlay } from '../verdict-overlay.mjs';
 import { trainWiring } from '../wiring.mjs';
 
 // 수련에는 등급이 없다 — 등급 마크를 빌리면 성공이 「우세 판정」으로 오학습되므로 색만 빌린다 (#46).
@@ -19,24 +19,30 @@ export function startTrain(ctx) {
   const { session, root, params } = ctx;
   const style = styleById(params.styleId);
   let windowMs = 1;
-  clear(root);
 
+  const verdict = createVerdictOverlay();
   const progressEl = el('p', { class: 'dim' });
   const windowFill = el('i', {});
 
-  root.append(el('section', { class: 'card arena' }, [
-    el('div', { class: 'head' }, [
-      el('b', { text: `수련 — ${style.name}` }),
-      el('span', { class: 'hanja', text: style.hanja }),
-      el('button', { class: 'small ghost', text: '도장으로', onclick: () => ctx.go('dojo') }),
+  composeScreen(ctx, {
+    top: topBand(session, ART_NAME),
+    body: el('section', { class: 'card arena' }, [
+      el('div', { class: 'head' }, [
+        el('b', { text: `수련 — ${style.name}` }),
+        el('span', { class: 'hanja', text: style.hanja }),
+        el('button', { class: 'small ghost', text: '도장으로', onclick: () => ctx.go('dojo') }),
+      ]),
+      el('div', { class: 'telegraph', style: `--attr:${ATTR_VIEW[style.attr].color}` }, [
+        el('div', { class: 'tg-foe' }, [attrMark(style.attr, { size: 'big' }), el('span', { text: style.gugyeol })]),
+      ]),
+      arrowRow(style.seq, 0, style.seq.length),
+      el('div', { class: 'window' }, [windowFill]),
+      progressEl,
+      // 시각 오버레이는 아레나 좌표계 안에 살고 이 화면과 함께 사라진다 (REQ-806).
+      verdict.node,
     ]),
-    el('div', { class: 'telegraph', style: `--attr:${ATTR_VIEW[style.attr].color}` }, [
-      el('div', { class: 'tg-foe' }, [attrMark(style.attr, { size: 'big' }), el('span', { text: style.gugyeol })]),
-    ]),
-    arrowRow(style.seq, 0, style.seq.length),
-    el('div', { class: 'window' }, [windowFill]),
-    progressEl,
-  ]));
+    bottom: ctx.pad.node,
+  });
 
   const input = createSequenceInput({
     pool: [style],
@@ -76,13 +82,13 @@ export function startTrain(ctx) {
         settled = true;
         SFX.fire();
         wiring.onFire();
-        showVerdict(TRAIN_VIEW.done);
+        verdict.show(TRAIN_VIEW.done);
         showProgress();
         ctx.refreshTop();
         rearm = setTimeout(arm, BALANCE.resolveMs);
       },
     });
-    hideVerdict();
+    verdict.hide();
     showProgress();
   }
 
@@ -101,5 +107,5 @@ export function startTrain(ctx) {
   arm();
   raf = requestAnimationFrame(frame);
   // 재무장 타이머가 살아남으면 도장 화면 위에서 패드가 되살아나 수련 적립이 무한해진다.
-  return () => { cancelAnimationFrame(raf); clearTimeout(rearm); hideVerdict(); ctx.pad.detach(); };
+  return () => { cancelAnimationFrame(raf); clearTimeout(rearm); verdict.hide(); };
 }
