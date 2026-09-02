@@ -109,5 +109,5 @@ export function startTrain(ctx) {
   arm();
   raf = requestAnimationFrame(frame);
   // 재무장 타이머가 살아남으면 도장 화면 위에서 패드가 되살아나 수련 적립이 무한해진다.
-  return () => { cancelAnimationFrame(raf); clearTimeout(rearm); verdict.hide(); ctx.pad.detach(); };
+  return () => { cancelAnimationFrame(raf); clearTimeout(rearm); verdict.hide(); };
 }

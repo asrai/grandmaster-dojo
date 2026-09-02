@@ -76,7 +76,6 @@ export function renderDuelPreview(ctx) {
   const finisher = finisherOf(challenger);
   const attempt = duelAttemptOf(session, challenger.id);
   const bonus = rematchBonusOf(session, challenger.id);
-  ctx.pad.detach();
 
   // 슬롯을 먼저 고르고 후보를 고른다 — 두 번의 탭이 곧 「무엇을 빼고 무엇을 넣는가」다.
   let picked = session.slots.findIndex((id) => id === null);
@@ -249,8 +248,7 @@ export function startDuel(ctx) {
         ctx.refreshTop();
       },
       onEnd(view) {
-        ctx.pad.detach();
-        ctx.go('result', {
+              ctx.go('result', {
           kind: 'duel', win: view.outcome.win, stage: params.stage, view, finisher: finisher(),
         });
       },
@@ -266,5 +264,5 @@ export function startDuel(ctx) {
     onFire: (fired) => { SFX.fire(); match.fire(fired); },
   });
   match.start();
-  return () => { match.stop(); verdict.hide(); ctx.pad.detach(); };
+  return () => { match.stop(); verdict.hide(); };
 }

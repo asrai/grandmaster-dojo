@@ -31,7 +31,6 @@ export function renderResult(ctx) {
   const { session, root, params } = ctx;
   const duel = params.kind === 'duel';
   const lines = duel ? duelLines(session, params) : dispatchLines(session, params);
-  ctx.pad.detach();
 
   const { view } = params;
   composeScreen(root, {

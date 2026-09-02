@@ -33,7 +33,6 @@ export function renderTransmit(ctx) {
   const before = discipleView(session.disciple);
   runTransmit(session);
   const after = discipleView(session.disciple);
-  ctx.refreshTop();
   SFX.transmit();
 
   // 사부·제자가 같은 무공 정의를 읽는다 — 전수 단위가 초식이 아니라 무공이라는 뜻이다 (#38).
@@ -42,7 +41,6 @@ export function renderTransmit(ctx) {
   const discipleSide = el('div', { class: 'side dark', 'aria-live': 'polite' });
   paintDisciple(discipleSide, before);
 
-  ctx.pad.detach();
   const top = topBand(session, ART_NAME);
   ctx.ownTop(top.paint);
   composeScreen(root, { top: top.node, body: el('section', { class: 'card transmit' }, [

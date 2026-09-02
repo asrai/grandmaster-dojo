@@ -183,6 +183,7 @@ export function createPad() {
       arrowsFor = null;
       render();
     },
+    /** 소비자 파생 표시만 되돌린다 — 봇 점유는 화면을 넘어 이어지므로 여기서 끄지 않는다. */
     detach() {
       active = null;
       structureSig = null;

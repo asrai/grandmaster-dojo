@@ -330,7 +330,6 @@ function bandNode(ctx, actions, target) {
 
 export function renderDojo(ctx) {
   const { session, root } = ctx;
-  ctx.pad.detach();
 
   const rowActions = STYLES.map((s) => styleActions(ctx, s));
   const band = bandActions(ctx);

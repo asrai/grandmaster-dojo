@@ -3,7 +3,7 @@
 
 import { BALANCE } from '../balance.mjs';
 import { createBot } from '../bot.mjs';
-import { $ } from './dom.mjs';
+import { $, clear } from './dom.mjs';
 import { mountCheatPanel } from './cheat.mjs';
 import { createPad } from './pad.mjs';
 import {
@@ -55,11 +55,14 @@ function refreshTop() {
   paintTop();
 }
 
-/** 화면 전환의 유일한 경로 — 이전 화면의 루프·리스너 회수가 여기 한 곳에 묶인다. */
+/** 화면 전환의 유일한 경로 — 이전 화면의 루프·리스너·입력 회수가 여기 한 곳에 묶인다. */
 function go(nextPhase, params = {}) {
   if (teardown) teardown();
   teardown = null;
   paintTop = () => {};
+  // 패드 소비자를 라우트가 각자 끊으면 한 화면이 빠뜨리는 순간 키보드가 죽은 화면으로 흘러든다.
+  ctx.pad.detach();
+  clear(ctx.root);
   const route = ROUTES[nextPhase];
   if (!route) throw new Error(`알 수 없는 화면: ${nextPhase}`);
   ctx.params = params;
@@ -67,6 +70,9 @@ function go(nextPhase, params = {}) {
   enterPhase(session, phase);
   teardown = route(ctx) ?? null;
 }
+
+// 낭독 리전이 사라지면 판정이 에러 없이 침묵한다 — 그 마크업 계약을 부팅 때 터뜨린다 (REQ-807).
+if (!$('live')) throw new Error('낭독 리전 #live 가 스테이지에 없다');
 
 // 히트 영역 최소치도 BALANCE 값이라, CSS 가 그 값을 변수로 받아 간다 (REQ-101).
 document.documentElement.style.setProperty('--hit', `${BALANCE.buttonHitPx}px`);
@@ -118,6 +124,9 @@ const refreshCheat = mountCheatPanel({
   session,
   refresh: () => { refreshTop(); if (phase === 'dojo') go('dojo'); },
 });
+
+// 도구 띠가 세로를 먹어 무대 배율이 1 밑으로 내려가므로, 목업 대조 스크린샷은 이 스위치로 1:1 을 되찾는다.
+if (new URLSearchParams(window.location.search).get('tools') === '0') $('tools').hidden = true;
 
 $('exportBtn').addEventListener('click', exportLog);
 $('botBtn').addEventListener('click', () => {

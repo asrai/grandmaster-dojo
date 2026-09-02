@@ -68,7 +68,6 @@ export function renderPreview(ctx) {
   const mission = unlocked ? currentMission(session) : null;
   const challenger = mission ? mission.challenger : DISPATCH_CHALLENGER;
   const stageLabel = `B-${session.dispatchStage}`;
-  ctx.pad.detach();
 
   const top = topBand(session, ART_NAME);
   ctx.ownTop(top.paint);
@@ -103,7 +102,6 @@ export function startDispatch(ctx) {
   const mission = currentMission(session);
   const challenger = mission.challenger;
   const styles = discipleStyles(session.disciple, ART_ID);
-  ctx.pad.detach();
 
   const verdict = createVerdictOverlay();
   // 관전 화면에는 십자 키패드가 없다 — 죽간만 따로 장착하는 경로다 (REQ-805·851).

@@ -6,6 +6,7 @@ import { ATTR_VIEW } from './theme.mjs';
 
 export const $ = (id) => document.getElementById(id);
 
+/** `false`·`null` 속성값은 「속성 없음」이라, `aria-*` 의 거짓 값은 문자열 `'false'` 로 넘겨야 남는다. */
 export function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -32,6 +33,7 @@ export function clear(node) {
  * @param {HTMLElement} root 화면 컨테이너 (`#app`) — 이 함수가 비우고 다시 채운다
  * @param {object} p
  * @param {HTMLElement} [p.top] 상단 띠 — 넘기지 않으면 본문이 y=0 에서 시작한다
+ * @param {HTMLElement|HTMLElement[]} [p.body] 본문 자식 (falsy 항목은 버려진다)
  * @param {HTMLElement} [p.bottom] 하단부 (밴드·입력 패드)
  * @param {boolean} [p.padded] 본문 여백 12px/gap 12px 적용 여부
  * @returns {HTMLElement} 본문 노드
@@ -78,9 +80,11 @@ export function topBand(session, artName) {
     ]),
   ]);
 
+  // 부분 갱신이면 `refreshTop()` 이 「띠가 지금 상태와 같아진다」를 보장하지 못한다 — 셋을 함께 그린다.
   const paint = () => {
     labelEl.textContent = session.label;
     coinsEl.textContent = `元 ${session.coins}`;
+    a11y.checked = session.accessibility;
   };
   paint();
   return { node, paint };
