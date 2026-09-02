@@ -6,7 +6,9 @@ import {
   ART_SETS, ATTRS, BALANCE, BALANCE_REV, CHALLENGERS, DISCIPLE, FOE_STYLES, STYLES,
   validateBalance, validateStyleContent, valueDigest,
 } from '../src/balance.mjs';
-import { LOG_SCHEMA, TIME_FIELD, createLogBuffer, validate } from '../src/log.mjs';
+import {
+  FRAME_SCENES, LOG_SCHEMA, SCREEN_IDS, TIME_FIELD, createLogBuffer, validate,
+} from '../src/log.mjs';
 import {
   createDiscipleHand, createSeededRandom, nextDojoAction, nextDuelStage, runHeadlessCycle,
   runHeadlessMissions,
@@ -28,10 +30,10 @@ import {
   composeHooks, dispatchWiring, duelWiring, trainWiring,
 } from '../src/ui/wiring.mjs';
 import {
-  ATTR_VIEW, EXTREME_GRADES, GRADE_VIEW, REASON_VIEW, REVEAL_VIEW, TRAIN_DONE_VIEW, particle,
+  ATTR_VIEW, EXTREME_GRADES, GRADE_VIEW, REASON_VIEW, REVEAL_VIEW, SCREEN, TRAIN_DONE_VIEW, particle,
 } from '../src/ui/theme.mjs';
 import { TABLET, tabletStates } from '../src/ui/tablet-state.mjs';
-import { BOT_UNREACHABLE, KILL, killVerdicts, readout } from './kill-readout.mjs';
+import { BOT_UNREACHABLE, BROWSER_ONLY, KILL, killVerdicts, readout } from './kill-readout.mjs';
 import {
   REVEAL_TIER, SELECT_REASON,
   accrueDiscipleStyle, accrueRank, applyDiscipleTraining, applyEffectiveSuccess, applyOutcome,
@@ -286,8 +288,13 @@ suite('통합 로그 스키마 (REQ-601)', () => {
     cycle: ['phase'],
     cheat: ['action', 'session_flagged'],
     session: ['tester_role', 'device'],
+    screen_view: ['screen', 'ms', 'from'],
+    font_ready: ['ms', 'bytes', 'subset_hit'],
+    frame_budget: ['screen', 'scene', 'p95_ms', 'dropped'],
+    undo_used: ['screen', 'count', 'exchange_no'],
+    audio_state: ['resumed', 'muted', 'ms_to_resume'],
   };
-  eq(Object.keys(LOG_SCHEMA).length, 21, '이벤트 21종');
+  eq(Object.keys(LOG_SCHEMA).length, 26, '이벤트 26종');
   deepEq(Object.keys(LOG_SCHEMA), Object.keys(EXPECTED), '이벤트 이름·순서');
   for (const [event, fields] of Object.entries(EXPECTED)) {
     deepEq(LOG_SCHEMA[event].fields, fields, `${event} 필드`);
@@ -295,6 +302,18 @@ suite('통합 로그 스키마 (REQ-601)', () => {
   deepEq(LOG_SCHEMA.key.enums.device, ['keyboard', 'button'], 'key.device 열거');
   deepEq(LOG_SCHEMA.session.enums.tester_role, ['self', 'friend', 'bot'], 'session.tester_role 열거');
   deepEq(LOG_SCHEMA.dispatch.enums.result, ['win', 'loss'], 'dispatch.result 열거');
+  // 신설 5종은 화면 좌표축에 키잉된다 (spec § 통합 로그 스키마) — 축을 잃으면 「어느 화면이
+  // 아직 구 크롬을 쓰는가」가 판독 불능이 된다.
+  deepEq(SCREEN_IDS, ['s1', 's2', 's3', 's4', 's5', 's6', 's7'], '화면 좌표축 7칸');
+  deepEq(FRAME_SCENES, ['verdict', 'parallax', 'idle'], '프레임 예산 장면 3종');
+  for (const keyed of ['screen_view', 'frame_budget', 'undo_used']) {
+    deepEq(LOG_SCHEMA[keyed].enums.screen, SCREEN_IDS, `${keyed}.screen 은 화면 축에 묶인다`);
+  }
+  deepEq(LOG_SCHEMA.frame_budget.enums.scene, FRAME_SCENES, 'frame_budget.scene 열거');
+  // 라우트 8개가 7좌표를 나눠 쓴다 — 파견은 예고와 관전이 `s4` 한 칸을 공유한다.
+  deepEq(Object.keys(SCREEN), ['duel', 'dojo', 'train', 'preview', 'dispatch', 'transmit', 'result', 'select'],
+    '라우트 → 화면 좌표 표의 키 집합');
+  deepEq([...new Set(Object.values(SCREEN).map((v) => v.id))].sort(), SCREEN_IDS, '7좌표가 전부 도달된다');
   // 뜻이 바뀐 이벤트만 판별 토큰을 단다 — 신설 이벤트는 구 스키마가 없어 `sv` 가 필요 없다 (REQ-791).
   deepEq(Object.entries(LOG_SCHEMA).filter(([, v]) => v.sv).map(([k]) => k),
     ['rank', 'unlock', 'slot', 'transmit', 'dispatch'],
@@ -324,6 +343,10 @@ suite('통합 로그 스키마 (REQ-601)', () => {
   throws(() => buf.log('narrow', {}), '필드 결손은 throw', '필드 결손');
   throws(() => buf.log('narrow', { styleId: 'a', extra: 1 }), '스키마 밖 필드는 throw', '스키마 밖 필드');
   throws(() => buf.log('session', { tester_role: 'ghost', device: 'keyboard' }), '열거 밖 값은 throw', '허용 밖 값');
+  throws(() => buf.log('screen_view', { screen: 's8', ms: 1, from: null }),
+    '축 밖 화면은 throw', '허용 밖 값');
+  throws(() => buf.log('frame_budget', { screen: 's1', scene: 'blur', p95_ms: 1, dropped: 0 }),
+    '정의 밖 장면은 throw', '허용 밖 값');
 });
 
 // ------------------------------------------ 3. 응수 창 · 파생 수식 (REQ-201·203·204·210)
@@ -1714,6 +1737,7 @@ suite('후보 필터 입력기 (REQ-102·103·105·106·108·109)', () => {
       now: () => clock,
       remainingRatio: () => 0.5,
       log: (event, fields) => events.push({ event, ...fields }),
+      screen: SCREEN[mode === 'train' ? 'train' : 'duel'].id,
     });
     input.arm();
     return { input, events, tick: (ms) => { clock += ms; }, ids: () => input.candidates.map((s) => s.id) };
@@ -1833,6 +1857,7 @@ suite('케이스 3·4 — 죽간 상태 전이 (REQ-824·825·826)', () => {
     now: () => 0,
     remainingRatio: () => 1,
     log: () => {},
+    screen: SCREEN.duel.id,
   });
   input.arm();
 
@@ -1936,9 +1961,10 @@ suite('헤드리스 봇 1사이클 (REQ-601·603·605)', () => {
     deepEq(run.session.logViolations, [], `시드 ${SEEDS[i]} — 로그 스키마 위반 0건`);
 
     const emitted = new Set(payload.entries.map((e) => e.event));
-    const missing = Object.keys(LOG_SCHEMA).filter((event) => !emitted.has(event) && !BOT_UNREACHABLE.includes(event));
+    const unreachable = [...BOT_UNREACHABLE, ...BROWSER_ONLY];
+    const missing = Object.keys(LOG_SCHEMA).filter((event) => !emitted.has(event) && !unreachable.includes(event));
     // REQ-601 최종 검증 — 실제 1사이클에서 전 종류가 나오지 않으면 kill 산식에 구멍이 있다.
-    deepEq(missing, [], `시드 ${SEEDS[i]} — 통합 로그 ${Object.keys(LOG_SCHEMA).length - BOT_UNREACHABLE.length}종 전량 emit`);
+    deepEq(missing, [], `시드 ${SEEDS[i]} — 통합 로그 ${Object.keys(LOG_SCHEMA).length - unreachable.length}종 전량 emit`);
 
     const metrics = readout(payload);
     eq(metrics.aux.tester_role, 'bot', `시드 ${SEEDS[i]} — tester_role 이 봇으로 남는다`);
@@ -2182,6 +2208,7 @@ suite('계측 배선 공유 (#11)', () => {
     hintDelayMs: 0,
     now: () => 0,
     log: (event, fields) => logEvent(session, event, fields),
+    screen: SCREEN.train.id,
   });
   const disciple = { arm() {}, tick: () => null };
 

@@ -63,6 +63,14 @@ function loadPayload(raw) {
  */
 export const BOT_UNREACHABLE = ['rank_wall', 'cheat', 'disciple_train'];
 
+/**
+ * 브라우저 런타임에서만 발화하는 이벤트 — 봇의 손이 못 가는 것이 아니라 **잴 것이 없다**.
+ * 서체 로드·프레임 시계·오디오 컨텍스트는 셋 다 문서와 함께 존재하므로 헤드리스에는
+ * 그 사건 자체가 일어나지 않는다. `BOT_UNREACHABLE` 과 갈라 두는 것이 그 차이다 —
+ * 한 목록에 접으면 「손이 안 갔다」와 「잴 것이 없었다」가 판독에서 구별되지 않는다.
+ */
+export const BROWSER_ONLY = ['font_ready', 'frame_budget', 'audio_state'];
+
 /** 필드 결손 0 의 기계적 증명 — 스키마 대조 + 전 종류 방출 확인 (수용 케이스 11). */
 function auditEntries(entries) {
   const problems = [];

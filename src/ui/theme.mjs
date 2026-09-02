@@ -4,6 +4,7 @@
 
 import { ATTRS, BALANCE } from '../balance.mjs';
 import { REVEAL_TIER, SELECT_REASON } from '../core.mjs';
+import { SCREEN_IDS } from '../log.mjs';
 
 /**
  * 색 원장 C1~C9 의 이름 (REQ-810) — 팔레트 색을 JS 에서 부르는 자리다. 역할 토큰(`--line`·`--dim`
@@ -89,6 +90,32 @@ for (const tier of Object.values(REVEAL_TIER)) {
   if (!view || typeof view.title !== 'function' || typeof view.note !== 'function') {
     throw new Error(`절초 공개 층 문구가 없다: ${tier}`);
   }
+}
+
+/**
+ * 라우트 → 화면 좌표축 + 전환 낭독 이름 (spec § 통합 로그 스키마 · REQ-911). 로그의 `screen` 과
+ * 화면을 바꿨다는 낭독이 같은 표를 읽으므로, 한쪽만 아는 화면이 생기지 않는다. 파견은 예고와
+ * 관전이 한 좌표(`s4`)를 나눠 쓴다 — spec 의 시안 커버리지가 임무 표찰을 S4 로 세었다.
+ */
+export const SCREEN = {
+  duel: { id: 's1', label: '사부 대련' },
+  dojo: { id: 's2', label: '도장' },
+  train: { id: 's3', label: '수련' },
+  preview: { id: 's4', label: '파견 예고' },
+  dispatch: { id: 's4', label: '파견 관전' },
+  transmit: { id: 's5', label: '전수' },
+  result: { id: 's6', label: '결과' },
+  select: { id: 's7', label: '도전자 선택' },
+};
+
+// 좌표 없는 라우트는 로그에서 통째로 사라지고 낭독도 침묵한다 — 부팅 때 문다.
+for (const [route, view] of Object.entries(SCREEN)) {
+  if (!SCREEN_IDS.includes(view.id)) throw new Error(`화면 좌표가 축 밖이다: ${route} → ${view.id}`);
+  if (!view.label) throw new Error(`화면 이름이 없다: ${route}`);
+}
+// 반대 방향 — 축의 한 칸을 어떤 라우트도 쓰지 않으면 7화면 이식의 완주가 그 칸에서 판독 불능이다.
+for (const id of SCREEN_IDS) {
+  if (!Object.values(SCREEN).some((v) => v.id === id)) throw new Error(`도달하는 라우트가 없는 화면 좌표: ${id}`);
 }
 
 /**

@@ -107,7 +107,7 @@ const SHAPE = {
   discipleTrain: 'map:int1+', mission: 'map:int+', killReadout: 'map:int1+',
   winColorHintExchanges: 'int1+', simEfficiency: 'pos', simTrainSeconds: 'int1+', buttonHitPx: 'int1+',
   reward: 'map:int+', bot: 'bot', hp: 'map:int1+', challengerRank: 'map:int1+',
-  rematch: 'map:int+', reversalDecay: 'reversalDecay',
+  rematch: 'map:int+', reversalDecay: 'reversalDecay', audio: 'audio',
 };
 
 /**
@@ -136,6 +136,14 @@ const GRADE_IDS = ['crush', 'advantage', 'clash', 'disadvantage', 'reversal', 's
 const GRADE_FIELDS = ['order', 'label', 'formula', 'outPct', 'inPct', 'opening'];
 const GRADE_FORMULAS = ['pct', 'clash'];
 const GRADE_OPENINGS = [null, 'foe', 'self'];
+/**
+ * 사운드 매핑의 단서 (REQ-920·924) — 재생 시점의 이름(cue)은 코드가 분기하는 값이라 튜닝 대상이
+ * 아니고, 판정 계열은 6단 전부를 덮어야 한다. 실파일 경로는 이 표 밖이다: id 가 곧 파일 이름의
+ * 줄기라 `src/ui/audio.mjs` 가 그 하나에서 파생한다.
+ */
+const AUDIO_CUES = ['key', 'confirm', 'rankUp', 'bgm'];
+const AUDIO_ID = /^(sfx|bgm)_[a-z0-9_]+$/;
+
 const BOT_RANGES = ['reactionMs', 'keyMs', 'navMs'];
 const BOT_RATIOS = ['missRate', 'misHitRate'];
 const LADDER_BAND_FIELDS = ['maxRank', 'cost', 'train'];
@@ -166,6 +174,35 @@ function checkNumMap(path, value, rule, bad) {
   if (!isPlain(value)) return bad(path, `${show(value)} 는 map 이 아니다`);
   for (const [k, v] of Object.entries(value)) checkNum(`${path}.${k}`, v, rule, bad);
   for (const k of REQUIRED_MAP_KEYS[path] ?? []) if (!(k in value)) bad(path, `키 ${show(k)} 누락`);
+  return undefined;
+}
+
+/**
+ * 사운드 매핑 (REQ-920) — 「매핑 없는 이벤트가 조용히 무음으로 지나가지 않는다」가 이 검사의 전부다.
+ * 판정 계열은 `GRADE_IDS` 와 **집합이 같아야** 하므로, 등급이 하나 늘면 소리 없는 판정이 생기기 전에
+ * 로드가 죽는다 (REQ-924).
+ */
+function checkAudio(value, bad) {
+  if (!isPlain(value)) return bad('audio', `${show(value)} 는 map 이 아니다`);
+  const id = (path, v) => {
+    if (typeof v !== 'string' || !AUDIO_ID.test(v)) bad(path, `${show(v)} 는 sfx_·bgm_ 로 시작하는 사운드 id 가 아니다`);
+  };
+  for (const cue of AUDIO_CUES) {
+    if (!(cue in value)) bad('audio', `cue ${show(cue)} 누락`);
+    else id(`audio.${cue}`, value[cue]);
+  }
+  const verdict = value.verdict;
+  if (!isPlain(verdict)) bad('audio.verdict', `${show(verdict)} 는 map 이 아니다`);
+  else {
+    const ids = Object.keys(verdict);
+    if (!setEq(ids.slice().sort(), GRADE_IDS.slice().sort())) {
+      bad('audio.verdict', `판정 계열 키 ${show(ids)} 가 6단 ${show(GRADE_IDS)} 와 다르다`);
+    }
+    for (const [grade, v] of Object.entries(verdict)) id(`audio.verdict.${grade}`, v);
+  }
+  for (const k of Object.keys(value)) {
+    if (k !== 'verdict' && !AUDIO_CUES.includes(k)) bad(`audio.${k}`, '사운드 매핑에 없는 cue');
+  }
   return undefined;
 }
 
@@ -415,6 +452,7 @@ export function validateBalance(raw) {
     const v = values[key];
     if (kind === 'bool') { if (typeof v !== 'boolean') bad(key, `${show(v)} 는 불리언이 아니다`); }
     else if (kind === 'grades') checkGrades(v, bad);
+    else if (kind === 'audio') checkAudio(v, bad);
     else if (kind === 'bot') checkBot(v, bad);
     else if (kind === 'rankLadder') checkLadder(v, bad);
     else if (kind === 'reversalDecay') checkReversalDecay(v, bad);

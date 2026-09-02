@@ -7,6 +7,7 @@ import { BALANCE } from '../../balance.mjs';
 import { composeScreen, el } from '../dom.mjs';
 import { SFX } from '../audio.mjs';
 import { styleById } from '../../core.mjs';
+import { SCREEN } from '../theme.mjs';
 import { SPOT, createArena } from '../arena.mjs';
 import { stageBand } from '../band.mjs';
 import { PHASE, createMatch } from '../match.mjs';
@@ -72,6 +73,9 @@ export function startDuel(ctx) {
     now: () => performance.now(),
     remainingRatio: () => match.windowRatio,
     log: (event, fields) => logEvent(session, event, fields),
+    screen: SCREEN.duel.id,
+    // 띠가 세는 「초째」와 같은 수 — 되돌리기가 몇 번째 초에서 났는지가 로그와 화면에서 갈리지 않는다.
+    exchangeNo: () => exchanges + 1,
   });
 
   const renderHp = (view) => {

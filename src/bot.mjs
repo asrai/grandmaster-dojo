@@ -11,6 +11,7 @@ import {
 } from './core.mjs';
 import { createMatch, createVirtualTimer, pumpToEnd } from './ui/match.mjs';
 import { createSequenceInput } from './ui/sequence-input.mjs';
+import { SCREEN } from './ui/theme.mjs';
 import {
   ART_ID, DUEL_STAGES, advanceDiscipleTraining, beginMission, canDiscipleTrain, canDispatch,
   canTransmitNow, challengerOfStage, createSession, currentMission, designateDiscipleTraining,
@@ -404,6 +405,7 @@ function headlessTrain({ session, styleId, pace, timer, random, maxWindows = 200
     now,
     remainingRatio: () => Math.max(0, 1 - (now() - startedAt) / windowMs),
     log: (event, fields) => logEvent(session, event, fields),
+    screen: SCREEN.train.id,
   });
   const hand = createHand({
     pace,
@@ -444,6 +446,8 @@ function headlessDuel({ session, stage, pace, timer, random }) {
     now,
     remainingRatio: () => match.windowRatio,
     log: (event, fields) => logEvent(session, event, fields),
+    screen: SCREEN.duel.id,
+    exchangeNo: () => (match ? match.view().exchange + 1 : 1),
   });
   const hand = createHand({
     pace,

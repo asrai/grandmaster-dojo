@@ -10,7 +10,7 @@ import { stageBand } from '../band.mjs';
 import { attrMark } from '../components/attr-mark.mjs';
 import { hanja } from '../components/hanja.mjs';
 import { visitStair } from '../components/rank-stair.mjs';
-import { TRAIN_DONE_VIEW, attrLabel } from '../theme.mjs';
+import { SCREEN, TRAIN_DONE_VIEW, attrLabel } from '../theme.mjs';
 import { SFX } from '../audio.mjs';
 import { createSequenceInput } from '../sequence-input.mjs';
 import { ART_NAME, logEvent, rankOfStyle, trainHitsLeft } from '../session.mjs';
@@ -116,6 +116,7 @@ export function startTrain(ctx) {
     now: () => performance.now(),
     remainingRatio: () => Math.max(0, 1 - (performance.now() - startedAt) / windowMs),
     log: (event, fields) => logEvent(session, event, fields),
+    screen: SCREEN.train.id,
   });
 
   const wiring = trainWiring(session, { styleId: params.styleId, input });
