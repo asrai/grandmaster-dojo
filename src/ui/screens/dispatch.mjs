@@ -196,8 +196,9 @@ export function startDispatch(ctx) {
       ? styles.find((s) => s.counters === view.telegraphed.id)?.id ?? null
       : null;
     tablets.render(styles.map((style) => {
-      // 유도는 지시 전까지의 예고라, 지시받았거나 이미 낸 초에는 멈춘다 (REQ-855).
-      const beckons = !fired && style !== instructed && style.id === hintId;
+      // 유도는 지시 전까지의 예고다 — 유저가 이미 고른 뒤에도 다른 죽간이 계속 맥동하면
+      // 「그게 아니다」로 읽혀 관전을 재촉한다 (REQ-855 · REQ-407).
+      const beckons = !fired && !instructed && style.id === hintId;
       return {
       style,
       // 도장에서 키운 값이 싸우는 화면에서 읽혀야 수련의 보상이 닫힌다 (REQ-856).
