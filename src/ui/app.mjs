@@ -3,7 +3,7 @@
 
 import { BALANCE } from '../balance.mjs';
 import { createBot } from '../bot.mjs';
-import { $, clear } from './dom.mjs';
+import { $ } from './dom.mjs';
 import { mountCheatPanel } from './cheat.mjs';
 import { createPad } from './pad.mjs';
 import {
@@ -62,7 +62,6 @@ function go(nextPhase, params = {}) {
   paintTop = () => {};
   // 패드 소비자를 라우트가 각자 끊으면 한 화면이 빠뜨리는 순간 키보드가 죽은 화면으로 흘러든다.
   ctx.pad.detach();
-  clear(ctx.root);
   const route = ROUTES[nextPhase];
   if (!route) throw new Error(`알 수 없는 화면: ${nextPhase}`);
   ctx.params = params;

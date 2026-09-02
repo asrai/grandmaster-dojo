@@ -69,9 +69,9 @@ export function renderPreview(ctx) {
   const challenger = mission ? mission.challenger : DISPATCH_CHALLENGER;
   const stageLabel = `B-${session.dispatchStage}`;
 
-  const top = topBand(session, ART_NAME);
-  ctx.ownTop(top.paint);
-  composeScreen(root, { top: top.node, body: el('section', { class: 'card' }, [
+  composeScreen(ctx, {
+    top: topBand(session, ART_NAME),
+    body: el('section', { class: 'card' }, [
     el('h2', { text: `임무 ${stageLabel} — ${challenger.name} ${challenger.hanja}` }),
     el('p', {
       class: 'dim',
@@ -111,10 +111,8 @@ export function startDispatch(ctx) {
   const telegraphEl = el('div', { class: 'tg-slot' });
   const windowFill = el('i', {});
 
-  const top = topBand(session, ART_NAME);
-  ctx.ownTop(top.paint);
-  composeScreen(root, {
-    top: top.node,
+  composeScreen(ctx, {
+    top: topBand(session, ART_NAME),
     body: el('section', { class: 'card arena' }, [
       el('div', { class: 'head' }, [
         el('b', { text: challenger.name }),

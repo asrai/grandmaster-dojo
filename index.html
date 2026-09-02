@@ -207,6 +207,14 @@ button.ghost { background: transparent; }
 .result-ledger { padding: 12px; display: flex; flex-direction: column; gap: 12px; }
 .result-ledger ul { margin: 0; padding-left: 18px; }
 
+/* 죽간 줄 — 매수가 줄어드는 것 자체가 「좁혀졌다」의 표현이라 1매는 크게 그린다 (REQ-824). */
+.tablets { display: flex; flex-wrap: wrap; gap: 6px; min-height: 46px; }
+/* 죽간은 매수가 줄 때 커지는 것이지 좁아지는 것이 아니다 — 눌리면 이름이 두 줄로 접히고,
+   넘치는 매는 가로로 흘리는 대신 다음 줄로 내린다 (응수 창은 시간 제한이라 스크롤이 조작을 늦춘다). */
+.tablets .cand { flex: 0 0 auto; white-space: nowrap; }
+.tablets.solo .cand { font-size: 17px; padding: 10px 16px; }
+.tablets.solo .cand-name { font-size: 16px; }
+
 .toast { min-height: 20px; text-align: center; color: var(--gold); opacity: 0; transition: opacity .2s; }
 .toast.show { opacity: 1; }
 
@@ -234,15 +242,11 @@ button.ghost { background: transparent; }
 /* 봇 점유 중 사람 입력은 무시되므로, 눌러도 되는 것처럼 보이지 않게 한다. */
 .pad.bot { box-shadow: inset 0 2px 0 var(--gold); }
 .pad.bot .dpad button, .pad.bot .tablets { pointer-events: none; opacity: .6; }
+/* 패드는 진입부터 이탈까지 높이가 고정이라 죽간이 한 줄을 넘으면 십자 키패드가 잘린다 — 여기서만 가로로 흘린다. */
+.pad .tablets { flex-wrap: nowrap; overflow-x: auto; }
 .pad-color { display: flex; gap: 6px; align-items: center; min-height: 28px; font-size: 16px; font-weight: 700; }
 .pad-color.none { color: var(--dim); }
 .pad-name { color: var(--dim); font-size: 12px; font-weight: 400; }
-/* 죽간 줄 — 매수가 줄어드는 것 자체가 「좁혀졌다」의 표현이라 1매는 크게 그린다 (REQ-824). */
-.tablets { display: flex; gap: 6px; overflow-x: auto; min-height: 46px; padding-bottom: 2px; }
-/* 죽간은 매수가 줄 때 커지는 것이지 좁아지는 것이 아니다 — 눌리면 이름이 두 줄로 접힌다. */
-.tablets .cand { flex: 0 0 auto; white-space: nowrap; }
-.tablets.solo .cand { font-size: 17px; padding: 10px 16px; }
-.tablets.solo .cand-name { font-size: 16px; }
 .pad-seq { min-height: 30px; }
 .dpad {
   display: grid; grid-template-columns: repeat(3, var(--hit)) 1fr;

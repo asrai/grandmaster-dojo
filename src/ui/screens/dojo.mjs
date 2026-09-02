@@ -341,10 +341,8 @@ export function renderDojo(ctx) {
   const openId = openRowOf(session, guidedRow);
 
   const bar = el('div', { class: 'train-bar' });
-  const top = topBand(session, ART_NAME);
-  ctx.ownTop(top.paint);
-  composeScreen(root, {
-    top: top.node,
+  composeScreen(ctx, {
+    top: topBand(session, ART_NAME),
     // 재대련 카드는 이긴 도전자가 생기기 전까지 없다 — `append(null)` 은 "null" 텍스트 노드가 된다.
     body: [
       el('section', { class: 'card' }, [

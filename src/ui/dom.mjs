@@ -28,21 +28,25 @@ export function clear(node) {
 }
 
 /**
- * 화면 크롬 조립 (REQ-801) — 상단 띠·하단부의 유무와 본문 여백을 화면이 정한다. 전역 규칙이던
- * 시절에는 어떤 화면도 풀블리드 레이어를 y=0 부터 깔 수 없었다 (REQ-802).
- * @param {HTMLElement} root 화면 컨테이너 (`#app`) — 이 함수가 비우고 다시 채운다
+ * 화면 크롬 조립 (REQ-801) — 상단 띠·하단부의 유무와 본문 여백을 화면이 정하므로, 어떤 화면도
+ * 풀블리드 레이어를 y=0 부터 깔 수 있다 (REQ-802).
+ * @param {object} ctx 화면 컨텍스트 — `root` 를 비워 다시 채우고 `ownTop` 으로 띠 갱신을 등록한다
  * @param {object} p
- * @param {HTMLElement} [p.top] 상단 띠 — 넘기지 않으면 본문이 y=0 에서 시작한다
+ * @param {{node: HTMLElement, paint: Function}} [p.top] `topBand` 번들 — 조립과 등록이 한 호출로
+ *   묶여 있어, 띠를 붙이고 갱신 등록만 빠뜨린 상태가 만들어지지 않는다
  * @param {HTMLElement|HTMLElement[]} [p.body] 본문 자식 (falsy 항목은 버려진다)
  * @param {HTMLElement} [p.bottom] 하단부 (밴드·입력 패드)
  * @param {boolean} [p.padded] 본문 여백 12px/gap 12px 적용 여부
  * @returns {HTMLElement} 본문 노드
  */
-export function composeScreen(root, {
+export function composeScreen(ctx, {
   top = null, body = [], bottom = null, padded = true,
 }) {
-  clear(root);
-  if (top) root.appendChild(top);
+  const root = clear(ctx.root);
+  if (top) {
+    root.appendChild(top.node);
+    ctx.ownTop(top.paint);
+  }
   const main = el('main', { class: `screen-body${padded ? ' padded' : ''}` },
     [].concat(body).filter(Boolean));
   root.appendChild(main);
@@ -60,7 +64,7 @@ export function composeScreen(root, {
 export function topBand(session, artName) {
   const labelEl = el('b', { class: 'top-label' });
   const coinsEl = el('span', { class: 'top-coins' });
-  const a11y = el('input', { type: 'checkbox' });
+  const a11y = el('input', { id: 'a11y-window', type: 'checkbox' });
   a11y.checked = session.accessibility;
   a11y.addEventListener('change', () => {
     // 데이터 테이블은 시드로 두고 런타임 값은 세션이 갖는다 — 다음 창부터 반영된다.

@@ -33,7 +33,7 @@ export function renderResult(ctx) {
   const lines = duel ? duelLines(session, params) : dispatchLines(session, params);
 
   const { view } = params;
-  composeScreen(root, {
+  composeScreen(ctx, {
     padded: false,
     body: [
       el('div', { class: 'result-stage' }, [

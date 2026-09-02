@@ -24,10 +24,8 @@ export function startTrain(ctx) {
   const progressEl = el('p', { class: 'dim' });
   const windowFill = el('i', {});
 
-  const top = topBand(session, ART_NAME);
-  ctx.ownTop(top.paint);
-  composeScreen(root, {
-    top: top.node,
+  composeScreen(ctx, {
+    top: topBand(session, ART_NAME),
     body: el('section', { class: 'card arena' }, [
       el('div', { class: 'head' }, [
         el('b', { text: `수련 — ${style.name}` }),

@@ -122,9 +122,9 @@ export function renderDuelPreview(ctx) {
   }
   renderSlots();
 
-  const top = topBand(session, ART_NAME);
-  ctx.ownTop(top.paint);
-  composeScreen(root, { top: top.node, body: el('section', { class: 'card' }, [
+  composeScreen(ctx, {
+    top: topBand(session, ART_NAME),
+    body: el('section', { class: 'card' }, [
     el('h2', { text: `도전자 예고 — ${challenger.name} ${challenger.stage}차` }),
     el('p', { class: 'dim', text: attempt > 1
       ? `${attempt}번째 대면 — 상대가 성 +${bonus} 만큼 여물었고 재대련 승리에 재화는 없다.`
@@ -154,10 +154,8 @@ export function startDuel(ctx) {
   const windowFill = el('i', {});
   const banner = el('div', { class: 'toast' });
 
-  const top = topBand(session, ART_NAME);
-  ctx.ownTop(top.paint);
-  composeScreen(root, {
-    top: top.node,
+  composeScreen(ctx, {
+    top: topBand(session, ART_NAME),
     body: el('section', { class: 'card arena' }, [
       el('div', { class: 'head' }, [
         el('b', { text: `${challenger.name} ${challenger.stage}차` }),
@@ -248,7 +246,7 @@ export function startDuel(ctx) {
         ctx.refreshTop();
       },
       onEnd(view) {
-              ctx.go('result', {
+        ctx.go('result', {
           kind: 'duel', win: view.outcome.win, stage: params.stage, view, finisher: finisher(),
         });
       },

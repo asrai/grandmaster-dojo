@@ -41,9 +41,9 @@ export function renderTransmit(ctx) {
   const discipleSide = el('div', { class: 'side dark', 'aria-live': 'polite' });
   paintDisciple(discipleSide, before);
 
-  const top = topBand(session, ART_NAME);
-  ctx.ownTop(top.paint);
-  composeScreen(root, { top: top.node, body: el('section', { class: 'card transmit' }, [
+  composeScreen(ctx, {
+    top: topBand(session, ART_NAME),
+    body: el('section', { class: 'card transmit' }, [
     el('p', {}, [el('span', {
       class: 'badge max',
       text: masterRank >= BALANCE.rankMax ? `${ART_NAME} — 완벽히 깨달음` : `${ART_NAME} 전 초식 ${masterRank}성`,

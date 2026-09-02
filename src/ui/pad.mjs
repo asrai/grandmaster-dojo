@@ -18,7 +18,7 @@ const DIRS = [['U', '위', '↑'], ['L', '왼쪽', '←'], ['D', '아래', '↓'
 
 export function createPad() {
   const colorEl = el('div', { class: 'pad-color none' });
-  const tablets = createTablets();
+  const tablets = createTablets({ soloEmphasis: true });
   const seqEl = el('div', { class: 'pad-seq' });
   const resetBtn = el('button', { class: 'pad-reset' }, [
     el('span', { text: '리셋' }), el('br'), el('span', { class: 'dim', text: 'Space' }),
