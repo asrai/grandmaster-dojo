@@ -19,24 +19,28 @@ import {
   canTransmitNow, challengerOfStage, consumeTooltip, createSession, createTooltipState, currentMission,
   designateDiscipleTraining, discipleTrainProgress, duelAttemptOf, duelFoeRank, enterPhase, equip,
   equippedStyles, exportPayload, isCheatFlagged, isFirstEncounterOf, isRematch, learnStyle, logEvent,
-  missionLockRankOf, missionShortfallOf, pickTooltip, recordDuelVerdict, recordEffectiveSuccess,
+  challengerEntry, challengerRoster, missionLockRankOf, missionShortfallOf, nextChallengerEntry,
+  pickTooltip, recordDuelVerdict, recordEffectiveSuccess,
   runTransmit, setBotRunning, setCheatEnabled, settleDiscipleTraining, settleDispatch, settleDuel,
   simulateTraining, cheatSetStyleRank,
 } from '../src/ui/session.mjs';
 import {
   composeHooks, dispatchWiring, duelWiring, trainWiring,
 } from '../src/ui/wiring.mjs';
-import { ATTR_VIEW, EXTREME_GRADES, GRADE_VIEW, REASON_VIEW, TRAIN_DONE_VIEW } from '../src/ui/theme.mjs';
+import {
+  ATTR_VIEW, EXTREME_GRADES, GRADE_VIEW, REASON_VIEW, REVEAL_VIEW, TRAIN_DONE_VIEW, particle,
+} from '../src/ui/theme.mjs';
 import { TABLET, tabletStates } from '../src/ui/tablet-state.mjs';
 import { BOT_UNREACHABLE, KILL, killVerdicts, readout } from './kill-readout.mjs';
 import {
-  SELECT_REASON,
+  REVEAL_TIER, SELECT_REASON,
   accrueDiscipleStyle, accrueRank, applyDiscipleTraining, applyEffectiveSuccess, applyOutcome,
   artById, artStyles, assertAttrCoverage, assertCounterIntegrity, assertGugyeol, assertPrefixFree,
   canEquipRank, canLearn, canTransmit,
   challengerById, createDisciple, createProgress, createRankState, discipleMinRank,
   discipleStyleRank, discipleStyles, discipleTrainMsPerRank, discipleTrainSteps, finisherOf,
-  foePowerOf, foeRankOf, foeStyleById, initiativeOf, isEffectiveSuccess, isFirstEncounter,
+  finisherRevealTier, foePowerOf, foeRankOf, foeStyleById, initiativeOf, isEffectiveSuccess,
+  isFirstEncounter,
   isMissionUnlocked,
   isOneTapRank, judge, ladderBandAt, learn, missionFoeRank, missionFoeSet, missionLockRank,
   missionShortfall, powerOf, promoteByOutcome, rematchFoeRank, resolveMatch, responseWindowMs,
@@ -848,6 +852,71 @@ suite('재대련 성 누적 (REQ-734)', () => {
   eq(isRematch(loser, stage.id), false, '패배 뒤 재도전은 재대련이 아니다');
   eq(isFirstEncounterOf(loser, stage.id), true, '패배는 대면 이력을 남기지 않는다 — 절초는 여전히 소문이다');
   eq(duelFoeRank(loser, stage.id), foeRankOf(stage.id), '패배는 상대를 여물게 하지 않는다');
+});
+
+// ------- 7-c. 절초 공개 3층 (REQ-882~884·894) — 대면 이력이 층을 가르는 순수 술어
+
+suite('절초 공개 3층 전이 (REQ-882·883·884·894)', () => {
+  eq([...new Set(Object.values(REVEAL_TIER))].length, 3, '공개 층은 셋이고 값이 겹치지 않는다');
+  for (const tier of Object.values(REVEAL_TIER)) {
+    const view = REVEAL_VIEW[tier];
+    ok(view, `층 ${tier} 에 화면 문구가 있다 — 미매핑이 조용히 통과하지 않는다`);
+    ok(typeof view.cls === 'string', `층 ${tier} 의 표시 클래스가 문자열이다`);
+  }
+
+  const plain = challengerById('A-1');
+  const ult = challengerById('A-4');
+  eq(finisherOf(plain), null, 'A-1 은 절초가 없다');
+  ok(finisherOf(ult), 'A-4 는 절초를 쓰는 유일한 사부 대련 상대다 (REQ-733)');
+
+  // 절초가 없으면 대면 이력과 무관하게 공개할 것이 없다 — 층이 이력에만 매이지 않는다.
+  eq(finisherRevealTier(plain, true), REVEAL_TIER.NONE, '절초 없는 상대는 첫 대면도 NONE');
+  eq(finisherRevealTier(plain, false), REVEAL_TIER.NONE, '절초 없는 상대는 재대련도 NONE');
+  eq(finisherRevealTier(ult, true), REVEAL_TIER.RUMOR, '첫 대면은 존재만 소문으로 (REQ-883)');
+  eq(finisherRevealTier(ult, false), REVEAL_TIER.COUNTER, '재대련부터 이름과 파해 대상 (REQ-884)');
+  throws(() => finisherRevealTier(ult, 0), '불리언이 아닌 대면 여부는 throw', '첫 대면 여부가 불리언이 아니다');
+
+  // 층은 이 세 문구를 실제로 낸다 — 소문 층이 이름을 쥐면 층 구분이 문구 하나로 무너진다.
+  const finisher = finisherOf(ult);
+  const answer = styleById(finisher.counters);
+  const rumor = REVEAL_VIEW[REVEAL_TIER.RUMOR];
+  ok(!rumor.title({}).includes(finisher.name) && !rumor.note({}).includes(answer.name),
+    '소문 층 문구에 절초 이름도 파해 대상도 없다 (REQ-883)');
+  const counter = REVEAL_VIEW[REVEAL_TIER.COUNTER];
+  ok(counter.title({ finisher }).includes(finisher.name), '공개 층 문구가 절초 이름을 댄다');
+  ok(counter.note({ answer }).includes(answer.name), '공개 층 문구가 파해 대상을 댄다 (REQ-884)');
+
+  // 세션 축 — 그 도전자를 이긴 사건 하나가 층을 옮긴다.
+  const session = createSession({ now: () => 0 });
+  session.stage = DUEL_A_STAGES;
+  eq(challengerEntry(session, ult).tier, REVEAL_TIER.RUMOR, '이기기 전에는 소문 층이다');
+  settleDuel(session, { win: false, stage: ult.stage });
+  eq(challengerEntry(session, ult).tier, REVEAL_TIER.RUMOR, '패배는 층을 올리지 않는다 (REQ-894)');
+  settleDuel(session, { win: true, stage: ult.stage });
+  eq(challengerEntry(session, ult).tier, REVEAL_TIER.COUNTER, '한 번 이긴 뒤로 파해가 공개된다');
+
+  // 목록 소유가 홈과 S7 사이를 오가도 파생은 한 자리다 — 두 화면이 다른 층을 말하면 예고가 함정이 된다.
+  const roster = challengerRoster(session);
+  eq(roster.length, session.stage, '목록은 해금된 차수까지다 (REQ-834)');
+  deepEq(roster.map((e) => e.challenger.stage), roster.map((_, i) => i + 1), '목록 순서가 곧 차수다 (REQ-887)');
+  const home = nextChallengerEntry(session);
+  eq(home.challenger.id, roster[roster.length - 1].challenger.id, '홈 요약은 가장 최근에 열린 차수다');
+  eq(home.tier, roster[roster.length - 1].tier, '홈 요약과 목록이 같은 공개 층을 쓴다 (REQ-835)');
+  eq(home.firstEncounter, isFirstEncounterOf(session, home.challenger.id), '요약의 대면 이력도 같은 술어에서 나온다');
+
+  const fresh = createSession({ now: () => 0 });
+  eq(challengerRoster(fresh).length, 1, '첫 진입에는 해금된 도전자가 하나뿐이다');
+});
+
+// 조사는 데이터 이름에 붙으므로 문구에 박을 수 없다 (REQ-830).
+suite('받침 조사 (REQ-830)', () => {
+  eq(particle('파운현월', '이', '가'), '이', '받침이 있으면 이/은/을');
+  eq(particle('유운보', '이', '가'), '가', '받침이 없으면 가/는/를');
+  eq(particle('행운유수', '이', '가'), '가', '중성으로 끝나는 이름도 받침 없음');
+  eq(particle('적운압정', '이', '가'), '이', 'ㅇ 받침도 받침이다');
+  for (const style of STYLES) {
+    ok(['이', '가'].includes(particle(style.name, '이', '가')), `${style.name} 에 조사가 붙는다`);
+  }
 });
 
 suite('역파 성 차 감쇠 · 관통 하한 (REQ-771)', () => {
