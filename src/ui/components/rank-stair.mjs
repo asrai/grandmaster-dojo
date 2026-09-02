@@ -38,3 +38,18 @@ export function rankStair({ rank, progress = 0, gained = 0 }) {
   });
   return el('div', { class: 'steps' }, steps);
 }
+
+/**
+ * 수련 회차 계단 (REQ-845) — 성 계단과 같은 칸 조판을 쓰되 세는 것이 성이 아니라 그 성까지의
+ * 완주 횟수다. 칸 수는 `trainVisitSpan` 이 정하므로 화면이 3 을 상수로 갖지 않는다 (REQ-702).
+ * @param {object} p
+ * @param {number} p.done 채운 칸
+ * @param {number} p.total 칸 수
+ * @returns {HTMLElement} `.steps.visits` 노드
+ */
+export function visitStair({ done, total }) {
+  const steps = Array.from({ length: total }, (_, i) => el('span', {
+    class: `st${i < done ? ' on' : ''}`,
+  }, [el('i', { class: 'fill', style: `width:${i < done ? 100 : 0}%` })]));
+  return el('div', { class: 'steps visits' }, steps);
+}

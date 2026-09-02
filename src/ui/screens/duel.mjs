@@ -10,6 +10,7 @@ import { hanja } from '../components/hanja.mjs';
 import { SFX } from '../audio.mjs';
 import { finisherOf, foeStyleById, styleById } from '../../core.mjs';
 import { SPOT, createArena } from '../arena.mjs';
+import { stageBand } from '../band.mjs';
 import { PHASE, createMatch } from '../match.mjs';
 import { createSequenceInput } from '../sequence-input.mjs';
 import {
@@ -18,67 +19,6 @@ import {
 } from '../session.mjs';
 import { createVerdictOverlay } from '../verdict-overlay.mjs';
 import { composeHooks, duelWiring, logDuelStart } from '../wiring.mjs';
-
-/**
- * 상대 예고 (REQ-822) — 아레나 최상단 가로 스트립이다. 중앙은 판정 오버레이의 자리라 예고가
- * 점유하지 않고, 「이기는 색」이 그 옆에 붙어 슬롯 판단이 한 눈에 닫힌다 (REQ-206).
- */
-function telegraphView(view) {
-  if (view.foeOpen) return el('div', { class: 'tele open', text: '빈틈! — 아무 초식이나 완주하면 완파' });
-  const foe = view.telegraphed;
-  const win = winAttrOf(foe.attr);
-  return el('div', { class: 'tele', style: `--attr:${attrTone(foe.attr)}` }, [
-    el('div', { class: 'tele-attr' }, [
-      attrMark(foe.attr, { size: 'big' }),
-      el('span', { class: 'an', text: attrLabel(foe.attr) }),
-    ]),
-    el('div', { class: 'tele-id' }, [
-      el('b', { class: 'kr', text: foe.name }),
-      el('span', { class: 'sub' }, [hanja(foe.hanja), el('span', { class: 'dim', text: `${foe.len}수 초식` })]),
-    ]),
-    el('div', { class: 'tele-win', style: `--attr:${attrTone(win)}` }, [
-      el('span', { class: 'cap', text: '이기는 색' }),
-      el('span', { class: 'val' }, [attrMark(win), el('b', { text: attrLabel(win) })]),
-    ]),
-  ]);
-}
-
-/**
- * 기력 (REQ-850) — 누가 누구인지를 색 그라디언트에만 맡기지 않고 라벨로 못박는다 (REQ-856).
- * @param {string} label 낭독·시각 공용 이름
- * @param {string} side `foe`(좌상) · `self`(우하) — 실루엣이 선 자리와 같은 축이다
- */
-function vital(label, side) {
-  const fill = el('i', { class: 'fill' });
-  const node = el('div', { class: `vital ${side}` }, [
-    el('span', { class: 'lbl', text: label }),
-    el('span', { class: 'track' }, [fill]),
-  ]);
-  return {
-    node,
-    set(hp, max) { fill.style.width = `${Math.max(0, Math.min(1, hp / max)) * 100}%`; },
-  };
-}
-
-/**
- * 도전자 표찰 (REQ-820·893·897) — 대련 중 상황은 「누구와 몇 초째인가」뿐이라 띠가 그 둘만
- * 진다. 재화·접근성 토글은 대련 밖(도장·예고)의 자리다.
- * @param {object} challenger
- * @param {() => number} exchangeOf 끝난 초의 수 — 표시는 진행 중인 초라 그보다 하나 크다
- * @param {Function} onLeave 물러나기 — 띠를 쓰는 화면의 좌측 첫 자리다 (REQ-897)
- */
-function foeBand(challenger, exchangeOf, onLeave) {
-  const countEl = el('b', { class: 'exch-n' });
-  const node = el('header', { class: 'foe-band' }, [
-    el('button', { class: 'leave', text: '←', 'aria-label': '물러나기', onclick: onLeave }),
-    el('div', { class: 'foe-name' }, [el('b', { text: challenger.name }), hanja(challenger.hanja)]),
-    el('span', { class: 'seal', text: `${challenger.stage}차` }),
-    el('span', { class: 'exch' }, [countEl, el('span', { class: 'exch-u', text: '초째' })]),
-  ]);
-  const paint = () => { countEl.textContent = String(exchangeOf() + 1); };
-  paint();
-  return { node, paint };
-}
 
 /**
  * 절초 공개 (REQ-732 개정 · REQ-883·894) — 역파 벌칙을 가진 유일한 초식이라 그것만 예외로
@@ -222,24 +162,25 @@ export function startDuel(ctx) {
       { spot: SPOT.FAR, id: 'sil_challenger', pose: 'stance' },
       { spot: SPOT.NEAR, id: 'sil_master', pose: 'stance' },
     ],
+    bout: { [SPOT.FAR]: '적', [SPOT.NEAR]: '사부' },
   });
-  const teleEl = el('div', { class: 'tele-slot' });
-  const gaugeFill = el('i', {});
-  const foeVital = vital('적', 'foe');
-  const selfVital = vital('사부', 'self');
   const banner = el('div', { class: 'toast' });
   let exchanges = 0;
-  const band = foeBand(challenger, () => exchanges, () => ctx.go('dojo'));
+  // 대련 중 상황은 「누구와 몇 초째인가」뿐이라 띠가 그 둘만 진다 — 재화·접근성 토글은
+  // 대련 밖(도장·예고)의 자리다 (REQ-820·893·897).
+  const band = stageBand({
+    onLeave: () => ctx.go('dojo'),
+    name: challenger.name,
+    hanja: challenger.hanja,
+    seal: `${challenger.stage}차`,
+    // 끝난 초의 수를 세므로 진행 중인 초는 그보다 하나 크다.
+    count: { value: () => exchanges + 1, unit: '초째' },
+  });
 
   arena.node.append(
-    foeVital.node,
-    selfVital.node,
-    teleEl,
     banner,
     // 시각 오버레이는 아레나 좌표계 안에 살고 이 화면과 함께 사라진다 (REQ-806).
     verdict.node,
-    // 시간 압박은 아레나에 속한 정보라 실루엣을 보는 동안 주변시로 읽힌다 — 숫자 초는 없다 (REQ-823).
-    el('div', { class: 'gauge' }, [gaugeFill]),
   );
 
   composeScreen(ctx, {
@@ -269,8 +210,8 @@ export function startDuel(ctx) {
   });
 
   const renderHp = (view) => {
-    foeVital.set(view.foeHp, view.foeHpMax);
-    selfVital.set(view.selfHp, view.selfHpMax);
+    arena.setVital(SPOT.FAR, view.foeHp, view.foeHpMax);
+    arena.setVital(SPOT.NEAR, view.selfHp, view.selfHpMax);
   };
 
   const match = createMatch({
@@ -282,11 +223,11 @@ export function startDuel(ctx) {
     accessibility: () => session.accessibility,
     hooks: composeHooks(duelWiring(session, { input }), {
       onTelegraph(view) {
-        clear(teleEl).appendChild(telegraphView(view));
+        arena.showTelegraph(view, '빈틈! — 아무 초식이나 완주하면 완파');
         verdict.hide();
         // 성장 고지는 그 초 한정이다 — 남기면 다음 초의 판정 위에 계속 떠 있는다.
         banner.className = 'toast';
-        gaugeFill.style.width = '100%';
+        arena.setWindow(1);
         renderHp(view);
         ctx.pad.render();
         exchanges = view.exchange;
@@ -296,7 +237,7 @@ export function startDuel(ctx) {
         ctx.pad.render();
       },
       onTick(view) {
-        gaugeFill.style.width = `${view.ratio * 100}%`;
+        arena.setWindow(view.ratio);
         ctx.pad.render();
       },
       onVerdict(view, changes) {

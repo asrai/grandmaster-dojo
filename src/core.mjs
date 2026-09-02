@@ -253,6 +253,18 @@ export function trainHitsToNext({ rank, pts }) {
 }
 
 /**
+ * 다음 계단까지의 수련 완주 진척 (REQ-845) — 칸 수는 그 계단의 비용이 정하므로 성마다 달라질 수
+ * 있다. 화면이 3 을 상수로 갖고 있으면 비용을 튜닝한 순간 계단이 거짓말을 한다.
+ * @returns {?{done: number, total: number}} 수련이 무효인 구간이면 null
+ */
+export function trainVisitSpan({ rank, pts }) {
+  const left = trainHitsToNext({ rank, pts });
+  if (left === null) return null;
+  const total = Math.ceil(ladderBandAt(rank).cost / BALANCE.rankLadder.gain.train);
+  return { done: Math.max(0, total - left), total };
+}
+
+/**
  * 유효 성공 1회를 성 축에 적립한다 (REQ-702·703·706).
  * @param {{rank: number, pts: number}} state
  * @param {'train'|'duel'} mode 수련 완주가 `train` · 대련·파견의 유효 성공이 `duel`

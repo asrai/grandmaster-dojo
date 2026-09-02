@@ -1,48 +1,111 @@
-// 수련 모드 (REQ-715) — 상대도 판정도 없고, 실전과 같은 창 `T` 안에 완주하면 성공이다.
+// 수련 모드 (REQ-715·840~846) — 상대도 판정도 없고, 실전과 같은 창 `T` 안에 완주하면 성공이다.
+// 화면은 S1 대련과 픽셀 단위로 같은 3단(띠 50 / 수련장 440 / 입력부 362)을 쓴다 — 전이를
+// 만드는 것은 규칙의 동일함이 아니라 좌표의 동일함이다 (REQ-840). 무대만 아레나가 아닌
+// 도장 안이라 정경을 여기서 짓고, 하단부는 대련과 같은 `pad.mjs` 를 그대로 꽂는다.
 
-import { BALANCE } from '../../balance.mjs';
-import { styleById } from '../../core.mjs';
-import { arrowRow, composeScreen, el, topBand } from '../dom.mjs';
-import { attrMark, attrTone } from '../components/attr-mark.mjs';
+import { ARROW, ATTRS, BALANCE } from '../../balance.mjs';
+import { foeStyleById, styleById, trainVisitSpan } from '../../core.mjs';
+import { clear, composeScreen, el } from '../dom.mjs';
+import { stageBand } from '../band.mjs';
+import { attrMark } from '../components/attr-mark.mjs';
 import { hanja } from '../components/hanja.mjs';
-import { TRAIN_DONE_VIEW } from '../theme.mjs';
+import { visitStair } from '../components/rank-stair.mjs';
+import { TRAIN_DONE_VIEW, attrLabel } from '../theme.mjs';
 import { SFX } from '../audio.mjs';
 import { createSequenceInput } from '../sequence-input.mjs';
 import { ART_NAME, logEvent, rankOfStyle, trainHitsLeft } from '../session.mjs';
 import { createVerdictOverlay } from '../verdict-overlay.mjs';
 import { trainWiring } from '../wiring.mjs';
 
+/**
+ * 구결 족자 (REQ-841·842) — 구절 하나가 방향 하나에 대응하고 친 만큼 점등된다. 딜레이드 힌트가
+ * 0 인 수련에서는 이 점등이 곧 힌트다 (REQ-712). 화면에서 유일하게 밝은 면이라 색이 아니라
+ * 표면(C9 화선지)으로 서고, 상하 축과 주사 낙관이 그것을 족자로 만든다.
+ */
+function gugyeolScroll(style) {
+  const verses = style.gugyeol.map((verse, i) => el('div', { class: 'verse' }, [
+    el('i', { class: 'verse-dir', text: ARROW[style.seq[i]] }),
+    el('span', { text: verse }),
+  ]));
+  // 낙관은 두 자다 — 초식 한자의 앞 두 자를 새긴다.
+  const stamp = el('span', { class: 'stamp' }, [hanja(style.hanja.slice(0, 2), { stacked: true })]);
+  const node = el('div', { class: 'scroll' }, [
+    el('div', { class: 'rod', 'aria-hidden': 'true' }),
+    el('div', { class: 'silk' }, [...verses, stamp]),
+    el('div', { class: 'rod', 'aria-hidden': 'true' }),
+  ]);
+  let lit = -1;
+  return {
+    node,
+    /** @param {number} done 이미 친 키 수 */
+    light(done) {
+      if (lit === done) return;
+      lit = done;
+      verses.forEach((verse, i) => { verse.className = `verse${i < done ? ' lit' : ''}`; });
+    },
+  };
+}
+
+/**
+ * 초식 해설 3줄 (REQ-844) — 파해 1:1 대응(REQ-731)이 그동안 비급 구결 텍스트에만 있었고,
+ * 수련은 그 초식만 보는 유일한 화면이라 해설의 제자리다. 죽간이 1매뿐이라 비는 그 옆에 선다.
+ */
+function styleDetail(style) {
+  const answer = foeStyleById(style.counters);
+  const line = (key, children) => el('div', { class: 'ln' }, [
+    el('span', { class: 'k', text: key }),
+    el('span', { class: 'v' }, children),
+  ]);
+  return el('div', { class: 'detail' }, [
+    line('창안', [
+      el('b', { text: style.founder.name }),
+      hanja(style.founder.hanja),
+      el('span', { class: 'sub', text: ` · ${ART_NAME} 제${style.order}초식` }),
+    ]),
+    line('특성', [
+      attrMark(style.attr),
+      el('b', { text: attrLabel(style.attr) }),
+      el('span', { class: 'sub', text: ` · ${style.seq.length}수 · ${attrLabel(ATTRS[style.attr].beats)}에 우세` }),
+    ]),
+    line('파해', [
+      attrMark(answer.attr),
+      el('b', { class: 'brk', text: answer.name }),
+      hanja(answer.hanja),
+    ]),
+  ]);
+}
+
 export function startTrain(ctx) {
-  const { session, root, params } = ctx;
+  const { session, params } = ctx;
   const style = styleById(params.styleId);
   let windowMs = 1;
 
   const verdict = createVerdictOverlay();
-  const progressEl = el('p', { class: 'dim' });
+  const scroll = gugyeolScroll(style);
+  const progressEl = el('div', { class: 'progress' });
   const windowFill = el('i', {});
 
   composeScreen(ctx, {
-    top: topBand(session, ART_NAME, { onLeave: () => ctx.go('dojo') }),
-    body: el('section', { class: 'card arena' }, [
-      el('div', { class: 'head' }, [
-        el('b', { text: `수련 — ${style.name}` }),
-        hanja(style.hanja),
-      ]),
-      el('div', { class: 'telegraph', style: `--attr:${attrTone(style.attr)}` }, [
-        el('div', { class: 'tg-foe' }, [attrMark(style.attr, { size: 'big' }), el('span', { text: style.gugyeol })]),
-      ]),
-      // 수련은 그 초식만 보는 유일한 화면이라 해설의 제자리다 (REQ-844·891).
-      el('p', { class: 'dim' }, [
-        el('span', { text: `창안 — ${style.founder.name}` }),
-        hanja(style.founder.hanja),
-      ]),
-      arrowRow(style.seq, 0, style.seq.length),
-      el('div', { class: 'window' }, [windowFill]),
+    top: stageBand({
+      onLeave: () => ctx.go('dojo'), cap: '수련', name: style.name, hanja: style.hanja,
+    }),
+    body: el('div', { class: 'hall' }, [
+      el('div', { class: 'layer floor' }),
+      el('div', { class: 'layer mist' }),
+      // 역광이 없으면 먹 실루엣이 어두운 배경에서 사라진다 — 사람과 한 쌍으로만 존재한다 (REQ-821).
+      el('div', { class: 'backlight', 'aria-hidden': 'true' }),
+      el('div', { class: 'fig sil_master_stance', 'aria-hidden': 'true' }),
+      el('div', { class: 'layer vignette' }),
+      el('div', { class: 'ground', 'aria-hidden': 'true' }),
+      scroll.node,
       progressEl,
-      // 시각 오버레이는 아레나 좌표계 안에 살고 이 화면과 함께 사라진다 (REQ-806).
+      el('div', { class: 'gauge' }, [windowFill]),
+      // 시각 오버레이는 무대 좌표계 안에 살고 이 화면과 함께 사라진다 (REQ-806).
       verdict.node,
     ]),
     bottom: ctx.pad.node,
+    // 무대는 풀블리드 레이어라 여백이 붙으면 3단 고정이 어긋난다 (REQ-802·820·840).
+    padded: false,
   });
 
   const input = createSequenceInput({
@@ -56,6 +119,7 @@ export function startTrain(ctx) {
   });
 
   const wiring = trainWiring(session, { styleId: params.styleId, input });
+  const detail = styleDetail(style);
 
   let startedAt = 0;
   let settled = false;
@@ -63,11 +127,18 @@ export function startTrain(ctx) {
   let rearm = 0;
 
   const showProgress = () => {
+    const span = trainVisitSpan(session.progress.styles[style.id]);
     const left = trainHitsLeft(session, style.id);
-    progressEl.textContent = `수련 성공 ${session.trainVisit.hits}`
-      + ` · ${rankOfStyle(session, style.id)}성`
-      // 8성 벽은 「덜 했다」가 아니라 「여기서부터는 실전」이라, 남은 횟수 자리에 그 사유가 선다 (REQ-706).
-      + (left === null ? ' — 수련으로는 여기까지, 실전으로 민다' : ` · 다음 성까지 ${left}회`);
+    clear(progressEl);
+    // 8성 벽은 「덜 했다」가 아니라 「여기서부터는 실전」이라, 계단 자리에 그 사유가 선다 (REQ-706).
+    if (span) progressEl.appendChild(visitStair(span));
+    progressEl.appendChild(el('span', { class: 'cap' }, left === null
+      ? [el('span', { text: '수련으로는 여기까지, 실전으로 민다' })]
+      : [
+        el('span', { text: '다음 ' }),
+        el('b', { text: `${rankOfStyle(session, style.id) + 1}성` }),
+        el('span', { text: `까지 ${left}회` }),
+      ]));
   };
 
   function arm() {
@@ -78,7 +149,9 @@ export function startTrain(ctx) {
       input,
       rankOf: (s) => rankOfStyle(session, s.id),
       accepting: () => !settled,
-      onFire: (fired) => {
+      // 수련에는 후보 필터가 없어 죽간이 1매뿐이므로, 비는 그 옆이 해설의 자리다 (REQ-843·844).
+      aside: detail,
+      onFire: () => {
         if (settled) return;
         settled = true;
         SFX.fire();
@@ -90,6 +163,7 @@ export function startTrain(ctx) {
       },
     });
     verdict.hide();
+    scroll.light(0);
     showProgress();
   }
 
@@ -98,10 +172,13 @@ export function startTrain(ctx) {
     if (settled) return;
     const left = Math.max(0, 1 - (performance.now() - startedAt) / windowMs);
     windowFill.style.width = `${left * 100}%`;
+    scroll.light(input.buffer.length);
     ctx.pad.render();
     if (left > 0) return;
     settled = true;
-    // 수련 실패는 무벌 재시도 — 판정도 로그도 남기지 않고, 창 게이지가 되차오르는 것이 유일한 신호다 (#46).
+    // 수련 실패는 무벌 재시도라 시각 표시가 없다 (#46 · REQ-846). 그래도 실패했다는 사실은
+    // 비시각 사용자에게 관측되어야 하므로 낭독 채널로만 나간다 (#51).
+    verdict.announce('수련 실패 — 창이 다시 열린다');
     rearm = setTimeout(arm, BALANCE.resolveMs);
   }
 
