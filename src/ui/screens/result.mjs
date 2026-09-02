@@ -52,12 +52,16 @@ function stageFigures(kind, win) {
   ].filter(Boolean);
 }
 
-/** 정산 한 줄 — 키는 왼쪽에 작게, 값은 오른쪽에 크게. 값이 문장인 줄은 그 크기를 접는다. */
+/**
+ * 정산 한 줄 — 키는 왼쪽에 작게, 값은 오른쪽에 크게. 값이 문장인 줄은 그 크기를 접는다.
+ * @param {string|HTMLElement[]} value 문장이면 그대로, 조판이 갈리는 값이면 노드 배열 —
+ *   `el` 의 자식은 노드만 받으므로 문장을 배열로 넘기면 그 줄이 렌더에서 죽는다.
+ */
 const line = (cap, value, { muted = false, cls = '' } = {}) => el('div', {
   class: `ln ${cls}${muted ? ' none' : ''}`.trim(),
 }, [
   el('span', { class: 'k', text: cap }),
-  el('span', { class: 'v' }, [].concat(value)),
+  typeof value === 'string' ? el('span', { class: 'v', text: value }) : el('span', { class: 'v' }, value),
 ]);
 
 /** 정산 블록 한 덩이 — 키 한 줄 아래에 내용이 앉는 형태다. */

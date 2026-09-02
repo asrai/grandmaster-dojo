@@ -86,7 +86,7 @@ export function renderTransmit(ctx) {
   const action = el('button', { class: 'primary weak', text: '건너뛰기' });
 
   composeScreen(ctx, {
-    top: stageBand({ onLeave: () => ctx.go('dojo'), cap: '전수', name: ART_NAME }),
+    top: stageBand({ onLeave: () => ctx.go('dojo'), cap: '전수', name: ART_NAME, hanja: ART_HANJA }),
     body: [
       el('div', { class: 'hall transmit' }, [
         el('div', { class: 'layer floor' }),
