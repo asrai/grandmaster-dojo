@@ -7,6 +7,9 @@
 <!-- 본문 주력 서체는 첫 화면부터 전 표면을 그리므로, 스타일시트 파싱을 기다리지 않고 먼저 받는다 (REQ-803). -->
 <link rel="preload" href="assets/fonts/NanumMyeongjo-subset-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="assets/fonts/NanumMyeongjo-subset-800.woff2" as="font" type="font/woff2" crossorigin>
+<!-- 한자 병기는 첫 화면부터 뜨므로 F2 도 함께 물린다 — 늦게 받으면 그 자리만 최대 block 기간 비어 보인다. -->
+<link rel="preload" href="assets/fonts/NotoSerifKR-hanja-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/NotoSerifKR-hanja-800.woff2" as="font" type="font/woff2" crossorigin>
 <style>
 /* 서체는 명조 단일 계열이고, 한글·라틴(F1)과 한자(F2)는 같은 패밀리 안에서 unicode-range 로
    갈린다 — 그래서 한자 병기에 별도 font-family 를 걸 자리가 없다 (REQ-812).
@@ -15,12 +18,12 @@
 @font-face {
   font-family: 'Dojo'; src: url('assets/fonts/NanumMyeongjo-subset-400.woff2') format('woff2');
   font-weight: 400; font-display: block;
-  unicode-range: U+0020-024F,U+1100-11FF,U+2000-206F,U+20A0-20BF,U+2190-21FF,U+25A0-25FF,U+3130-318F,U+AC00-D7AF,U+FF00-FFEF;
+  unicode-range: U+0020-024F,U+1100-11FF,U+2000-206F,U+20A0-20BF,U+2190-21FF,U+25A0-25FF,U+3000-303F,U+3130-318F,U+AC00-D7AF,U+FF00-FFEF;
 }
 @font-face {
   font-family: 'Dojo'; src: url('assets/fonts/NanumMyeongjo-subset-800.woff2') format('woff2');
   font-weight: 800; font-display: block;
-  unicode-range: U+0020-024F,U+1100-11FF,U+2000-206F,U+20A0-20BF,U+2190-21FF,U+25A0-25FF,U+3130-318F,U+AC00-D7AF,U+FF00-FFEF;
+  unicode-range: U+0020-024F,U+1100-11FF,U+2000-206F,U+20A0-20BF,U+2190-21FF,U+25A0-25FF,U+3000-303F,U+3130-318F,U+AC00-D7AF,U+FF00-FFEF;
 }
 @font-face {
   font-family: 'Dojo'; src: url('assets/fonts/NotoSerifKR-hanja-400.woff2') format('woff2');
@@ -182,7 +185,7 @@ button.ghost { background: transparent; }
 
 /* 아이콘은 id 로 참조된다 — 코드는 `icon-<id>` 클래스만 알고 파일 경로는 이 표에만 있어,
    후속 아트 개선이 파일 스왑으로 닫힌다 (REQ-931). 마스크로 그리므로 색은 글자색을 따라간다. */
-.icon { display: inline-block; width: 22px; height: 22px; background: currentColor; }
+.icon { flex: none; display: inline-block; width: 22px; height: 22px; background: currentColor; }
 .icon-reset {
   mask: url('assets/icons/reset.svg') center / contain no-repeat;
   -webkit-mask: url('assets/icons/reset.svg') center / contain no-repeat;
