@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>결과 v2 — 일대종사</title>
+<style>
+@font-face{font-family:'Dojo';src:url('assets/fonts/NanumMyeongjo-Regular.ttf') format('truetype');
+  font-weight:400;font-display:block;
+  unicode-range:U+0020-024F,U+2000-206F,U+20A0-20BF,U+1100-11FF,U+2190-21FF,U+3130-318F,U+AC00-D7AF,U+FF00-FFEF}
+@font-face{font-family:'Dojo';src:url('assets/fonts/NanumMyeongjo-ExtraBold.ttf') format('truetype');
+  font-weight:800;font-display:block;
+  unicode-range:U+0020-024F,U+2000-206F,U+20A0-20BF,U+1100-11FF,U+2190-21FF,U+3130-318F,U+AC00-D7AF,U+FF00-FFEF}
+@font-face{font-family:'Dojo';src:url('assets/fonts/NotoSerifKR-hanja-400.woff2') format('woff2');
+  font-weight:400;font-display:block;unicode-range:U+3400-9FFF,U+F900-FAFF}
+@font-face{font-family:'Dojo';src:url('assets/fonts/NotoSerifKR-hanja-800.woff2') format('woff2');
+  font-weight:800;font-display:block;unicode-range:U+3400-9FFF,U+F900-FAFF}
+
+:root{
+  --ink-deep:#12100e; --ink-mid:#1e1a16; --paper:#e8dcc8;
+  --gold:#c9a227; --seal:#a8332a;
+  --swift:#5fb3e8; --force:#e05a4d; --still:#4fbf7f;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#3a3632;display:flex;flex-direction:column;align-items:center;
+  min-height:100vh;padding:24px 0;font-family:'Dojo',serif}
+.phone{position:relative;width:393px;height:852px;overflow:hidden;
+  background:var(--ink-deep);color:var(--paper);
+  box-shadow:0 18px 60px rgba(0,0,0,.55);display:flex;flex-direction:column}
+.hj{font-size:11px;font-weight:400;color:rgba(232,220,200,.34);letter-spacing:2px}
+
+/* ══ E1 결과 무대 — S1 아레나를 360px 로 접었다 ══ */
+.stage{position:relative;flex:0 0 360px;overflow:hidden}
+.layer{position:absolute;inset:0;pointer-events:none}
+.sky{background:radial-gradient(125% 82% at 50% 24%, #33291f 0%, #211b15 42%, #16120f 72%, var(--ink-deep) 100%)}
+.mist{background:linear-gradient(180deg,rgba(232,220,200,0) 34%,rgba(232,220,200,.08) 52%,rgba(232,220,200,0) 68%)}
+.vignette{background:radial-gradient(112% 82% at 50% 44%, rgba(0,0,0,0) 30%, rgba(0,0,0,.78) 100%)}
+.ground{position:absolute;left:0;right:0;bottom:0;height:96px;
+  background:linear-gradient(180deg,rgba(0,0,0,0),rgba(0,0,0,.52) 55%,rgba(0,0,0,.88))}
+
+.fig{position:absolute;pointer-events:none}
+.fig svg{display:block;width:100%;height:auto}
+.fig .body{fill:#0a0908;stroke:rgba(232,220,200,.16);stroke-width:1}
+/* E2 승자 — 서 있다 */
+.fig.win{right:26px;bottom:26px;width:150px}
+.backlight{position:absolute;border-radius:50%;pointer-events:none;
+  right:10px;bottom:22px;width:200px;height:218px;
+  background:radial-gradient(closest-side, rgba(214,196,164,.22), rgba(214,196,164,0) 72%)}
+/* E3 패자 — 쓰러졌다. 승패는 자세로 먼저 읽힌다 */
+.fig.lose{left:10px;bottom:36px;width:168px}
+.fig.lose .body{fill:#080706;stroke:rgba(232,220,200,.3);stroke-width:1.4}
+
+/* E4 판정 낙인 — 판정 오버레이와 같은 조판, 대련 전체의 결론이므로 그보다 크다 */
+.verdict{position:absolute;left:0;right:0;top:44px;z-index:6;text-align:center;pointer-events:none}
+.verdict .mark{display:block;font-size:26px;font-weight:800;letter-spacing:8px;text-indent:8px;
+  opacity:.5;margin-bottom:2px;color:var(--gold)}
+.verdict .word{display:block;font-size:104px;font-weight:800;line-height:.94;
+  letter-spacing:8px;text-indent:8px;color:var(--gold);
+  text-shadow:0 0 52px rgba(201,162,39,.55),0 6px 0 rgba(0,0,0,.55)}
+.verdict.bad .mark{color:var(--seal)}
+.verdict.bad .word{color:#a5473d;text-shadow:0 0 44px rgba(168,51,42,.5),0 6px 0 rgba(0,0,0,.55)}
+
+/* E5 상대 표찰 */
+.foe-tag{position:absolute;left:0;right:0;bottom:14px;z-index:6;text-align:center;
+  font-size:12px;color:rgba(232,220,200,.5);letter-spacing:.5px}
+.foe-tag b{font-size:15px;font-weight:800;color:var(--paper)}
+.foe-tag .sub{color:rgba(232,220,200,.34)}
+
+/* ══ 정산 ══ */
+.panel{flex:1 1 auto;min-height:0;overflow-y:auto;padding:12px 13px 0;
+  background:linear-gradient(180deg,#0a0908,#161210 40%,#0f0d0b);
+  display:flex;flex-direction:column;gap:9px}
+
+/* E6 결정타 — 어느 초식이 끝냈는가 (REQ-708) */
+.finish{position:relative;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:9px 12px 9px 14px;
+  background:linear-gradient(90deg,rgba(201,162,39,.13),rgba(201,162,39,.03));
+  border:1px solid rgba(201,162,39,.34)}
+.finish::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--gold)}
+.finish .cap{flex:0 0 auto;font-size:10px;letter-spacing:3px;color:rgba(201,162,39,.75)}
+.finish .nm{font-size:17px;font-weight:800;letter-spacing:.3px}
+.sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+.gl{display:inline-block;flex:0 0 auto}
+.gl.swift{width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:13px solid var(--swift)}
+.gl.force{width:14px;height:14px;border-radius:50%;background:var(--force)}
+.gl.still{width:13px;height:13px;background:var(--still)}
+
+/* E7 성 변화 — 이 화면의 보상 본체 */
+.ranks{display:flex;flex-direction:column;gap:6px}
+/* 고정 3블록과 조건부 블록 사이의 경계선 — 위는 늘 있고 아래는 있을 때만 있다 */
+.cond{display:flex;flex-direction:column;gap:8px;padding-top:9px;
+  border-top:1px solid rgba(232,220,200,.08)}
+.loot{display:flex;align-items:center;gap:9px;padding:9px 11px;
+  background:rgba(232,220,200,.022);border:1px solid rgba(232,220,200,.07)}
+.loot .k{flex:0 0 auto;font-size:10px;letter-spacing:3px;color:rgba(232,220,200,.34)}
+.loot .items{margin-left:auto;display:flex;gap:6px}
+.loot .it{display:flex;align-items:baseline;gap:5px;padding:3px 8px;font-size:12px;
+  box-shadow:0 0 0 1px rgba(201,162,39,.35) inset;color:var(--paper)}
+.loot .it b{font-size:13px;font-weight:800;color:var(--gold)}
+.rk{position:relative;padding:8px 10px 8px 12px;
+  background:rgba(232,220,200,.028);border:1px solid rgba(232,220,200,.08)}
+.rk::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px}
+.rk.swift::before{background:var(--swift)}
+.rk.force::before{background:var(--force)}
+.rk-top{display:flex;align-items:center;gap:8px}
+.rk-top .nm{font-size:14px;font-weight:800}
+.rk-top .move{margin-left:auto;display:flex;align-items:baseline;gap:7px;white-space:nowrap}
+.rk-top .from{font-size:13px;color:rgba(232,220,200,.4)}
+.rk-top .arrow{font-size:12px;color:rgba(232,220,200,.28)}
+.rk-top .to{font-size:16px;font-weight:800;color:var(--gold)}
+.steps{display:flex;gap:2px;height:9px;margin-top:8px}
+.st{flex:1;position:relative;background:rgba(0,0,0,.55);
+  box-shadow:0 0 0 1px rgba(232,220,200,.1) inset;overflow:hidden}
+.st.on{background:linear-gradient(180deg,#e0bb3e,#9b7714);box-shadow:none}
+.st.on.wall{box-shadow:-5px 0 0 0 var(--seal)}
+.st.gain{background:linear-gradient(180deg,#fff0b8,#d9b437);box-shadow:0 0 12px rgba(240,217,138,.7)}
+.st.gain.wall{box-shadow:0 0 12px rgba(240,217,138,.7),-5px 0 0 0 var(--seal)}
+.st.wall{margin-left:7px;box-shadow:0 0 0 1px rgba(232,220,200,.1) inset,-5px 0 0 0 var(--seal)}
+/* B5 — ◆✦ 는 서브셋 밖 글리프라 저가 기기에서 두부가 된다. 도형으로 그린다 */
+.mk-d,.mk-s{display:block;background:currentColor}
+.mk-d{width:5px;height:5px;transform:rotate(45deg)}
+.mk-s{width:7px;height:7px;
+  clip-path:polygon(50% 0,61% 39%,100% 50%,61% 61%,50% 100%,39% 61%,0 50%,39% 39%)}
+.st .mk{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  color:rgba(232,220,200,.34)}
+.st.on .mk,.st.gain .mk{color:#1a1408}
+
+/* E11 판정 분포 — 이 판을 어떻게 이겼는가 */
+.verdicts{flex:0 0 auto;padding:9px 10px;background:rgba(232,220,200,.022);
+  border:1px solid rgba(232,220,200,.07)}
+.verdicts .k{font-size:10px;letter-spacing:3px;color:rgba(232,220,200,.34)}
+.chips{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin-top:7px}
+.chips .c{display:flex;flex-direction:column;align-items:center;gap:2px;padding:5px 2px;font-size:10px;
+  box-shadow:0 0 0 1px rgba(232,220,200,.16) inset;color:rgba(232,220,200,.58);letter-spacing:-.2px}
+.chips .c b{font-size:15px;font-weight:800;line-height:1}
+.chips .c.on{color:var(--paper)}
+.chips .c.crush{box-shadow:0 0 0 1px rgba(201,162,39,.55) inset;background:rgba(201,162,39,.12)}
+.chips .c.crush b{color:var(--gold)}
+.chips .c.adv{box-shadow:0 0 0 1px rgba(95,179,232,.45) inset}
+.chips .c.adv b{color:var(--swift)}
+.chips .c.clash b{color:rgba(232,220,200,.8)}
+.chips .c.bad{box-shadow:0 0 0 1px rgba(168,51,42,.4) inset}
+.chips .c.bad b{color:#c4756c}
+
+/* E8·E9 정산 행 */
+.lines{display:flex;flex-direction:column;gap:6px}
+.ln{display:flex;align-items:center;gap:9px;padding:8px 11px;
+  background:rgba(232,220,200,.022);border:1px solid rgba(232,220,200,.07)}
+.ln .k{flex:0 0 auto;font-size:10px;letter-spacing:3px;color:rgba(232,220,200,.34)}
+.ln .v{margin-left:auto;font-size:15px;font-weight:800;letter-spacing:.2px}
+.ln .v .u{font-size:11px;font-weight:400;color:rgba(232,220,200,.45);margin-left:3px}
+.ln.coin .v{color:var(--gold)}
+.ln.none .v{font-size:12px;font-weight:400;color:rgba(232,220,200,.38)}
+
+/* E10 하단 버튼 */
+.acts{flex:0 0 auto;display:flex;gap:8px;padding:11px 13px 13px}
+.btn{flex:1;height:54px;border:1px solid rgba(232,220,200,.18);background:rgba(232,220,200,.05);
+  color:var(--paper);font-family:'Dojo',serif;font-size:16px;font-weight:800;letter-spacing:2px;
+  cursor:pointer}
+.btn.primary{border-color:var(--gold);background:rgba(201,162,39,.15);color:var(--gold)}
+
+/* ── UI 요소 ID 주석 레이어 (/gamedev-ui v0.5 공용 스니펫) ── */
+.ui-annotate-toggle{position:fixed;top:14px;right:14px;z-index:9999;font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;font-size:13px;font-weight:700;color:#fff;background:#2563eb;border:none;border-radius:8px;padding:9px 14px;cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.3)}
+.ui-annotate-toggle:hover{background:#1d4ed8}
+.ui-annotate-overlay{position:absolute;inset:0;z-index:999;pointer-events:none;display:none}
+.ui-annotate-on .ui-annotate-overlay{display:block}
+.ui-annotate-box{position:absolute;border:1.5px solid #2563eb;border-radius:4px;box-shadow:0 0 0 1px rgba(255,255,255,.55)}
+.ui-annotate-chip{position:absolute;font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;font-size:11px;font-weight:800;line-height:1;color:#fff;background:#2563eb;border:1px solid rgba(255,255,255,.75);border-radius:4px;padding:3px 5px}
+.ui-annotate-box.sub{border-color:#60a5fa;border-width:1px;border-style:dashed}
+.ui-annotate-chip.sub{background:#60a5fa;font-size:9px;padding:2px 4px}
+.ui-annotate-legend{margin-top:16px;width:393px;font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;font-size:12px;color:#333;background:rgba(255,255,255,.72);border:1px solid #bbb;border-radius:10px;padding:10px 14px;display:none;column-count:2;column-gap:18px}
+.ui-annotate-on-page .ui-annotate-legend{display:block}
+.ui-annotate-legend div{break-inside:avoid;padding:2px 0}
+.ui-annotate-legend b{color:#2563eb}
+.ui-annotate-legend .sub b{color:#60a5fa}
+.ui-annotate-legend .sub{padding-left:12px}
+.ui-annotate-legend h4{column-span:all;font-size:11px;letter-spacing:1px;color:#888;margin:8px 0 4px;border-bottom:1px solid #ccc;padding-bottom:3px}
+.ui-annotate-legend h4:first-child{margin-top:0}
+.ui-annotate-swatch{display:inline-block;width:12px;height:12px;border-radius:3px;border:1px solid rgba(0,0,0,.2);vertical-align:-2px;margin-right:4px}
+.ui-annotate-legend code{font-size:11px;color:#666}
+body.ui-capture .ui-annotate-toggle,body.ui-capture .ui-annotate-legend{display:none!important}
+body.ui-capture{display:block;min-height:0;padding:0}
+body.ui-capture [data-artboard]{box-shadow:none}
+</style>
+</head>
+<body>
+
+<div class="phone" data-artboard id="phone">
+
+  <!-- ══ E1 결과 무대 ══ -->
+  <div class="stage" data-ui="E1:결과 무대">
+    <div class="layer sky"></div>
+    <svg class="layer" data-ui="E1-1:원경 산 레이어" viewBox="0 0 393 360" preserveAspectRatio="none">
+      <path d="M-10 196 C 40 154, 74 172, 112 140 C 150 108, 178 136, 214 118
+               C 252 98, 286 130, 322 110 C 352 94, 380 118, 403 104 L 403 360 L -10 360 Z"
+            fill="#2a231b"/>
+      <path d="M-10 238 C 46 210, 92 224, 138 202 C 190 176, 232 204, 278 188
+               C 322 172, 362 194, 403 180 L 403 360 L -10 360 Z" fill="#1c1712"/>
+    </svg>
+    <svg class="layer" data-ui="E1-2:중경 대나무 레이어" viewBox="0 0 393 360" preserveAspectRatio="none">
+      <g stroke="#100d0a" stroke-width="7" fill="none" stroke-linecap="round">
+        <path d="M24 360 C 20 268, 30 196, 18 108"/>
+        <path d="M70 360 C 76 282, 64 210, 76 130"/>
+        <path d="M342 360 C 348 276, 336 206, 350 122"/>
+        <path d="M378 360 C 372 284, 384 216, 370 140"/>
+      </g>
+    </svg>
+    <div class="layer mist" data-ui="E1-3:안개 층"></div>
+
+    <div class="backlight"></div>
+
+    <div class="fig lose" data-ui="E3:패자 실루엣">
+      <svg viewBox="0 0 168 116">
+        <path class="body" d="M108 58 L 156 34 L 162 45 L 114 69 Z"/>
+        <circle class="body" cx="40" cy="56" r="15"/>
+        <path class="body" d="M34 70 C 30 84, 34 100, 44 112 L 30 112 C 18 100, 16 82, 22 66 Z"/>
+        <path class="body" d="M46 66 C 66 62, 92 70, 112 84 C 124 92, 132 102, 138 112
+                               L 60 112 C 48 102, 42 84, 46 66 Z"/>
+      </svg>
+    </div>
+
+    <div class="fig win" data-ui="E2:승자 실루엣">
+      <svg viewBox="0 0 170 230">
+        <path class="body" d="M62 132 L 8 168 L 4 161 L 58 125 Z"/>
+        <path class="body" d="M66 124 L 74 136 L 64 142 L 56 130 Z"/>
+        <circle class="body" cx="104" cy="38" r="15"/>
+        <path class="body" d="M99 20 C 101 8, 111 8, 112 20 Z"/>
+        <path class="body" d="M90 52 C 76 66, 70 100, 66 136 C 61 174, 54 200, 44 226
+                               L 104 226 L 110 186 L 120 226 L 160 226
+                               C 148 196, 140 160, 134 122 C 128 88, 120 64, 118 52 Z"/>
+        <path class="body" d="M88 62 C 80 82, 72 106, 64 126 L 76 134 C 86 112, 94 88, 100 68 Z"/>
+        <path class="body" d="M120 60 C 132 74, 138 92, 140 110 L 128 114 C 124 96, 118 78, 110 66 Z"/>
+      </svg>
+    </div>
+
+    <div class="layer vignette"></div>
+    <div class="ground"></div>
+
+    <div class="verdict" id="verdict" data-ui="E4:판정 낙인">
+      <span class="mark" data-ui="E4-2:판정 한자 (보조)">勝</span>
+      <span class="word" data-ui="E4-1:판정 한글">승리</span>
+    </div>
+
+    <div class="foe-tag" data-ui="E5:상대 표찰" id="foeTag">
+      <b>떠돌이 무인</b> <span class="hj">流浪武人</span>
+      <span class="sub">· 4초</span>
+    </div>
+  </div>
+
+  <!-- ══ 정산 ══ -->
+  <div class="panel">
+
+    <div class="verdicts" data-ui="E11:판정 분포">
+      <span class="k">판정</span>
+      <div class="chips" data-ui="E11-1:판정 칩">
+        <span class="c crush on">완파<b>1</b></span>
+        <span class="c adv on">우세<b>2</b></span>
+        <span class="c clash on">상쇄<b>1</b></span>
+        <span class="c">열세<b>0</b></span>
+        <span class="c bad">역파<b>0</b></span>
+        <span class="c">피격<b>0</b></span>
+      </div>
+    </div>
+
+    <div class="finish" id="finish" data-ui="E6:결정타">
+      <span class="cap">결정타</span>
+      <i class="gl swift" data-ui="E6-1:속성 기호"></i>
+      <span class="nm" data-ui="E6-2:초식명">유운보</span>
+      <span class="hj" data-ui="E6-3:한자 (보조)">流雲步</span>
+    </div>
+
+    <div class="ln coin" id="lnCoin" data-ui="E8:재화">
+      <span class="k">재화</span>
+      <span class="v">+30<span class="u">냥</span></span>
+    </div>
+
+    <div class="cond" id="cond">
+      <div class="ranks" id="blkRanks" data-ui="E7:성 변화">
+        <div class="rk swift" data-ui="E7-1:성 변화 행">
+          <div class="rk-top">
+            <i class="gl swift" style="border-left-width:5px;border-right-width:5px;border-bottom-width:10px"></i>
+            <span class="nm" data-ui="E7-2:초식명">유운보</span><span class="hj">流雲步</span>
+            <span class="move">
+              <span class="from">8성</span><span class="arrow">→</span>
+              <span class="to" data-ui="E7-3:오른 성">9성</span>
+            </span>
+          </div>
+          <div class="steps" data-ui="E7-4:성 계단"></div>
+        </div>
+        <div class="rk force">
+          <div class="rk-top">
+            <i class="gl force" style="width:10px;height:10px"></i>
+            <span class="nm">적운압정</span><span class="hj">積雲壓頂</span>
+            <span class="move"><span class="from">5성</span><span class="arrow">→</span><span class="to">6성</span></span>
+          </div>
+          <div class="steps"></div>
+        </div>
+      </div>
+
+      <div class="loot" id="blkLoot" data-ui="E12:전리품">
+        <span class="k">전리품</span>
+        <span class="items" data-ui="E12-1:전리품 항목">
+          <span class="it">비급 조각 <b>2</b></span>
+          <span class="it">영약 <b>1</b></span>
+        </span>
+      </div>
+
+      <div class="ln" id="lnUnlock" data-ui="E9:해금">
+        <span class="k">해금</span>
+        <span class="v">떠돌이 무인 · 2차</span>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="acts" data-ui="E10:하단 버튼">
+    <button class="btn primary" id="btnMain">도장으로</button>
+  </div>
+
+</div>
+
+<div class="ui-annotate-legend" id="uiLegend"></div>
+
+<script type="application/json" id="uiStyleLedger">
+{
+  "colors": [
+    { "id": "C1", "name": "먹 심 (배경 바닥)", "value": "#12100e" },
+    { "id": "C2", "name": "먹 중 (패널)", "value": "#1e1a16" },
+    { "id": "C3", "name": "화선지 (본문)", "value": "#e8dcc8" },
+    { "id": "C4", "name": "금 (승리 · 결정타 · 오른 성 · 재화)", "value": "#c9a227" },
+    { "id": "C5", "name": "주사 (패배 · 8성 벽)", "value": "#a8332a" },
+    { "id": "C6", "name": "쾌", "value": "#5fb3e8" },
+    { "id": "C7", "name": "강", "value": "#e05a4d" },
+    { "id": "C8", "name": "정", "value": "#4fbf7f" }
+  ],
+  "fonts": [
+    { "id": "F1", "family": "Dojo", "name": "나눔명조 (OFL)", "surface": "한글·라틴 — 전 표면 주력" },
+    { "id": "F2", "family": "Dojo", "name": "Noto Serif KR 한자 서브셋 (OFL, 21KB)", "surface": "한자 — 보조 병기 전용 (.hj)" }
+  ]
+}
+</script>
+
+<script>
+/* 성 계단 12칸 — S2 도장·S3 수련과 같은 언어. 이번 판에 오른 칸만 발광한다 */
+function paintSteps(el, from, to){
+  var html = '';
+  for (var i = 1; i <= 12; i++){
+    var cls = 'st';
+    if (i === 8) cls += ' wall';
+    if (i <= from) cls += ' on';
+    else if (i <= to) cls += ' gain';
+    var mk = i === 11 ? '<i class="mk-d"></i>' : (i === 12 ? '<i class="mk-s"></i>' : '');
+    html += '<span class="' + cls + '">' + (mk ? '<span class="mk" aria-hidden="true">' + mk + '</span>' : '') + '</span>';
+  }
+  el.innerHTML = html;
+}
+(function(){
+  var rows = document.querySelectorAll('.rk');
+  paintSteps(rows[0].querySelector('.steps'), 8, 9);
+  paintSteps(rows[1].querySelector('.steps'), 5, 6);
+})();
+</script>
+
+<script>
+/* ?state=duel|dispatch|rematch|lose
+   고정 블록(E11 판정 · E6 결정타 · E8 재화)은 언제나 같은 자리,
+   조건부 블록(E7 성 변화 · E12 전리품 · E9 해금)은 있을 때만 붙는다 */
+(function(){
+  var st = new URLSearchParams(location.search).get('state') || 'duel';
+  var v = document.getElementById('verdict');
+  function hide(id){ var e = document.getElementById(id); if (e) e.remove(); }
+  function chips(vals){
+    var cs = document.querySelectorAll('.chips .c');
+    var names = ['완파','우세','상쇄','열세','역파','피격'];
+    var cls = ['crush','adv','clash','','bad','bad'];
+    cs.forEach(function(c, i){
+      c.className = 'c' + (cls[i] ? ' ' + cls[i] : '') + (vals[i] > 0 ? ' on' : '');
+      c.innerHTML = names[i] + '<b>' + vals[i] + '</b>';
+    });
+  }
+
+  if (st === 'dispatch'){
+    v.querySelector('.word').textContent = '완수';
+    v.querySelector('.mark').textContent = '完';
+    document.getElementById('foeTag').innerHTML =
+      '<b>월영문</b> <span class="hj">月影門</span><span class="sub">\u00b7 임무 \u00b7 7초</span>';
+    document.querySelector('.finish .cap').textContent = '제자 결정타';
+    chips([1,3,2,1,0,0]);
+    document.getElementById('lnUnlock').querySelector('.v').textContent = '다음 임무';
+  }
+
+  if (st === 'rematch'){
+    document.getElementById('foeTag').innerHTML =
+      '<b>떠돌이 무인</b> <span class="hj">流浪武人</span><span class="sub">\u00b7 재대련 2차 \u00b7 6초</span>';
+    var c = document.getElementById('lnCoin');
+    c.className = 'ln none';
+    c.querySelector('.v').textContent = '재대련은 재화를 주지 않는다';
+    chips([0,3,2,1,0,0]);
+    hide('blkLoot');
+    document.getElementById('lnUnlock').querySelector('.k').textContent = '다음';
+    document.getElementById('lnUnlock').querySelector('.v').textContent = '3차 · 상대 성 +1';
+  }
+
+  if (st === 'lose'){
+    v.className = 'verdict bad';
+    v.querySelector('.word').textContent = '패배';
+    v.querySelector('.mark').textContent = '敗';
+
+    /* 서 있는 쪽이 도전자, 쓰러진 쪽이 사부다 — 실루엣을 맞바꾼다 */
+    var w = document.querySelector('.fig.win svg');
+    w.setAttribute('viewBox', '0 0 130 210');
+    w.innerHTML =
+      '<path class="body" d="M96 40 L124 12 L129 18 L101 48 L96 46 Z"/>' +
+      '<circle class="body" cx="58" cy="34" r="14"/>' +
+      '<path class="body" d="M42 30 C 46 16, 70 14, 76 28 C 68 22, 50 22, 42 30 Z"/>' +
+      '<path class="body" d="M45 47 C 32 60, 26 92, 22 124 C 18 154, 20 178, 16 204' +
+      ' L 54 204 L 60 168 L 70 204 L 108 204' +
+      ' C 100 176, 96 150, 92 122 C 88 92, 82 60, 71 47 Z"/>' +
+      '<path class="body" d="M70 54 C 82 52, 92 44, 98 40 L 103 50 C 94 56, 82 64, 72 66 Z"/>';
+    document.querySelector('.fig.lose svg').insertAdjacentHTML('afterbegin',
+      '<path class="body" d="M31 40 C 33 31, 43 31, 45 40 Z"/>');
+
+    document.getElementById('foeTag').innerHTML =
+      '<b>월영문 계승자</b> <span class="hj">月影門</span><span class="sub">\u00b7 12초</span>';
+
+    var f = document.getElementById('finish');
+    f.style.background = 'rgba(232,220,200,.03)';
+    f.style.borderColor = 'rgba(232,220,200,.1)';
+    f.innerHTML = '<span class="cap" style="color:rgba(232,220,200,.34)">결정타</span>' +
+      '<span class="nm" style="color:rgba(232,220,200,.42);font-size:15px">없다 — 끝내지 못했다</span>';
+
+    chips([0,2,1,3,1,2]);
+
+    var lc = document.getElementById('lnCoin');
+    lc.className = 'ln none';
+    lc.querySelector('.v').textContent = '없음';
+
+    /* 져도 성은 오른다 (REQ-703) — 그것만 남기고 전리품·해금은 붙지 않는다 */
+    hide('blkLoot'); hide('lnUnlock');
+
+    document.querySelector('.acts').innerHTML =
+      '<button class="btn" data-ui="E10-1:도장으로">도장으로</button>' +
+      '<button class="btn primary" data-ui="E10-2:재도전">재도전</button>';
+  }
+})();
+</script>
+
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var captureMode = params.has('capture');
+  var startOn = params.has('annotate');
+  if (captureMode) document.body.classList.add('ui-capture');
+
+  var board = document.querySelector('[data-artboard]');
+  var overlay = document.createElement('div');
+  overlay.className = 'ui-annotate-overlay';
+  board.appendChild(overlay);
+
+  function buildBadges() {
+    overlay.innerHTML = '';
+    var legend = document.getElementById('uiLegend');
+    legend.innerHTML = '';
+    var h = document.createElement('h4'); h.textContent = 'UI 요소'; legend.appendChild(h);
+    var boardRect = board.getBoundingClientRect();
+    document.querySelectorAll('[data-ui]').forEach(function (el) {
+      var parts = el.getAttribute('data-ui').split(':');
+      var id = parts[0], name = parts[1] || '';
+      var isSub = id.indexOf('-') > -1;
+      var r = el.getBoundingClientRect();
+      var top = r.top - boardRect.top, left = r.left - boardRect.left;
+      var box = document.createElement('div');
+      box.className = 'ui-annotate-box' + (isSub ? ' sub' : '');
+      box.style.cssText = 'top:'+top+'px;left:'+left+'px;width:'+r.width+'px;height:'+r.height+'px;';
+      overlay.appendChild(box);
+      var chip = document.createElement('div');
+      chip.className = 'ui-annotate-chip' + (isSub ? ' sub' : '');
+      chip.textContent = id; chip.title = name;
+      chip.style.cssText = 'top:'+Math.max(2,top-8)+'px;left:'+Math.max(2,left-6)+'px;';
+      overlay.appendChild(chip);
+      var row = document.createElement('div');
+      if (isSub) row.className = 'sub';
+      row.innerHTML = '<b>'+id+'</b> '+name;
+      legend.appendChild(row);
+    });
+    var ledgerEl = document.getElementById('uiStyleLedger');
+    if (ledgerEl) {
+      var ledger = JSON.parse(ledgerEl.textContent);
+      if (ledger.colors && ledger.colors.length) {
+        var hc = document.createElement('h4'); hc.textContent = '배경·색상'; legend.appendChild(hc);
+        ledger.colors.forEach(function (c) {
+          var row = document.createElement('div');
+          row.innerHTML = '<b>'+c.id+'</b> <span class="ui-annotate-swatch" style="background:'+c.value+'"></span>'+c.name+' <code>'+c.value+'</code>';
+          legend.appendChild(row);
+        });
+      }
+      if (ledger.fonts && ledger.fonts.length) {
+        var hf = document.createElement('h4'); hf.textContent = '폰트'; legend.appendChild(hf);
+        ledger.fonts.forEach(function (f) {
+          var row = document.createElement('div');
+          row.innerHTML = '<b>'+f.id+'</b> '+f.name+' — '+f.surface;
+          legend.appendChild(row);
+        });
+      }
+    }
+  }
+
+  var btn = document.createElement('button');
+  btn.className = 'ui-annotate-toggle';
+  function setState(on) {
+    document.body.classList.toggle('ui-annotate-on', on);
+    document.body.classList.toggle('ui-annotate-on-page', on);
+    btn.textContent = on ? '요소 번호 숨기기' : '요소 번호 표시';
+    btn.dataset.on = on ? '1' : '0';
+  }
+  btn.addEventListener('click', function () { setState(btn.dataset.on !== '1'); });
+  document.body.appendChild(btn);
+
+  window.addEventListener('load', function () { buildBadges(); setState(startOn); });
+})();
+</script>
+</body>
+</html>
