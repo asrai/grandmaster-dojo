@@ -33,14 +33,69 @@
   font-weight: 800; font-display: block; unicode-range: U+3400-9FFF,U+F900-FAFF;
 }
 
+/* ══ 시각 토큰 원장 ══ 7화면·모든 컴포넌트가 상속하는 스타일 SoT 는 이 블록 하나이며,
+   화면별 재정의를 두지 않는다 (spec § ①). 색·크기·타이밍의 수치는 전부 여기에만 있고
+   아래 규칙과 JS 는 이름으로만 참조하므로, 튜닝이 이 한 곳에서 닫힌다.
+   밸런스 tunable(`src/balance.data.json`)과는 다른 축이다 — 그쪽은 게임 규칙의 SoT 이고
+   여기는 렌더 층의 SoT 다. 규칙 값이 렌더에 닿아야 하면 JS 가 변수로 주입한다(`--hit`·`--vd-dur`). */
 :root {
-  --bg: #0e1116; --panel: #161b23; --line: #262d38; --fg: #e6eaf0; --dim: #8d97a5;
-  --gold: #ffd166; --hit: 56px; --letterbox: #05070a;
+  /* 색 9종 C1~C9 (REQ-810) — 화면·컴포넌트는 리터럴 색을 쓰지 않는다. */
+  --c1: #12100e;  /* 먹 심 */
+  --c2: #1e1a16;  /* 먹 중 */
+  --c3: #e8dcc8;  /* 화선지 */
+  --c4: #c9a227;  /* 금 */
+  --c5: #a8332a;  /* 주사 — 막힘·경고 전용 (REQ-811) */
+  --c6: #5fb3e8;  /* 쾌 */
+  --c7: #e05a4d;  /* 강 */
+  --c8: #4fbf7f;  /* 정 */
+  --c9: #cdbb9c;  /* 화선지 면 */
+  /* 그림자·스크림의 기준 — 팔레트의 색이 아니라 명도 축이라 C1~C9 와 별개로 둔다. */
+  --shadow: #000;
+
+  /* 역할 이름 — 규칙은 이쪽만 부르고, 어느 원장 색을 쓰는지는 이 표가 정한다. */
+  --bg: var(--c1);
+  --panel: var(--c2);
+  --letterbox: color-mix(in srgb, var(--c1) 62%, var(--shadow));
+  --fg: var(--c3);
+  --dim: color-mix(in srgb, var(--c3) 55%, transparent);
+  --line: color-mix(in srgb, var(--c3) 12%, transparent);
+  --gold: var(--c4);
+  --sunken: color-mix(in srgb, var(--shadow) 55%, transparent);
+  --raised: color-mix(in srgb, var(--c3) 8%, var(--c2));
+  --hit: 56px;  /* 부팅 직후 app.mjs 가 BALANCE.buttonHitPx 로 덮는다 — 첫 페인트 폴백이다 */
+
+  /* 서체 역할 (REQ-812·813) — 한 패밀리 'Dojo' 안에서 unicode-range 가 F1/F2 를 가른다. */
+  --font-body: 15px/1.5 'Dojo', serif;
+  --hj-size: 12px;
+  --hj-tone: color-mix(in srgb, var(--c3) 34%, transparent);
+
+  /* 6단 판정 4중 부호화 (REQ-814) — 크기·위치 두 축의 수치. 완파↔역파는 같은 값의 부호만
+     달라 상하 대칭이 규칙으로 고정된다. 색·자형 축은 아래 .verdict.* 와 theme.mjs 가 진다. */
+  --vd-size-extreme: 96px;  /* 완파·역파 */
+  --vd-size-mid: 66px;      /* 우세·열세 */
+  --vd-size-clash: 54px;    /* 상쇄 */
+  --vd-size-struck: 80px;   /* 피격 */
+  --vd-shift-extreme: 84px;
+  --vd-shift-mid: 44px;
+  --vd-shift-clash: 0px;
+  --vd-shift-struck: 116px;
+  --vd-mark-size: 26px;
+
+  /* juice — 극단 2등급(완파·역파)에만 배정된 축 (REQ-815). 히트스톱 80ms 는 실측 전 초기값이다. */
+  --juice-hitstop: 80ms;
+  --juice-shake: 420ms;
+
+  /* 성(成) 계단 (REQ-817) */
+  --stair-h: 13px;
+  --stair-gap: 2px;
+  --stair-wall-gap: 7px;   /* 8성 벽이 앞 칸과 벌어지는 간격 */
+  --stair-wall-w: 5px;     /* 그 사이에 서는 주사색 세로선의 두께 */
+  --stair-glow: 7px;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; height: 100dvh; overflow: hidden; }
 body {
-  background: var(--bg); color: var(--fg); font: 15px/1.5 'Dojo', serif;
+  background: var(--bg); color: var(--fg); font: var(--font-body);
   overscroll-behavior: none;
 }
 #frame {
@@ -56,7 +111,7 @@ body {
 #tools button { padding: 4px 8px; font-size: 12px; }
 #tools button.urge { border-color: var(--gold); color: var(--gold); }
 /* 치트 패널은 명시 토글로만 열리므로(REQ-781) 띠를 늘리지 않고 무대 위로 펼친다. */
-#tools .cheat { position: absolute; top: 100%; left: 8px; z-index: 3; background: #0b0e13; }
+#tools .cheat { position: absolute; top: 100%; left: 8px; z-index: 3; background: var(--c1); }
 
 /* 스테이지 배율의 기준은 창이 아니라 이 상자다 — 도구 띠가 먹은 만큼은 무대가 쓸 수 없다. */
 #stagebox { flex: 1; min-height: 0; container-type: size; display: grid; place-content: center; }
@@ -68,6 +123,15 @@ body {
   transform: scale(var(--k)); transform-origin: center;
   background: var(--bg); border-radius: 18px; overflow: hidden;
   box-shadow: 0 0 0 1px var(--line);
+}
+/* 흔들림이 걸리는 유일한 노드 — 스테이지는 `transform: scale(var(--k))` 를 이미 쓰므로 거기 걸면
+   완파·역파마다 그 배율이 날아가 화면이 100% 로 튄다 (REQ-816). */
+.shell { position: relative; height: 100%; }
+.shell.punch { animation: punch-shake var(--juice-shake) var(--juice-hitstop) cubic-bezier(.36, .07, .19, .97) both; }
+@keyframes punch-shake {
+  10% { transform: translate(-6px, 3px) } 22% { transform: translate(5px, -4px) }
+  36% { transform: translate(-4px, -2px) } 52% { transform: translate(3px, 3px) }
+  70% { transform: translate(-2px, 1px) } 100% { transform: translate(0, 0) }
 }
 /* 화면이 통째로 소유하는 자리 — 전역 여백이 없어야 어떤 화면이든 y=0 부터 깔 수 있다 (REQ-802). */
 #app { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
@@ -87,6 +151,16 @@ body {
 }
 .top-row { display: flex; gap: 10px; align-items: center; min-width: 0; white-space: nowrap; }
 .top-row > * { overflow: hidden; text-overflow: ellipsis; }
+/* 물러나기는 띠를 쓰는 화면의 좌측 첫 자리에 고정된다 (REQ-897) — 시각 크기는 두고 히트 영역만
+   최소치까지 넓혀, 조판을 흔들지 않으면서 손가락에 닿는다. */
+.top-band .leave {
+  position: relative; flex: none; width: 28px; height: 28px; padding: 0;
+  border: 0; background: none; color: var(--dim); font-size: 19px; line-height: 1;
+}
+.top-band .leave::after {
+  content: ''; position: absolute; left: 50%; top: 50%;
+  width: var(--hit); height: var(--hit); transform: translate(-50%, -50%);
+}
 .top-band .top-label { font-weight: 700; color: var(--gold); }
 .top-band .top-coins { margin-left: auto; }
 .top-band label { display: flex; gap: 4px; align-items: center; color: var(--dim); }
@@ -118,16 +192,24 @@ body {
 .card p { margin: 6px 0; }
 .head { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
 .head button { margin-left: auto; }
-.hanja, .dim { color: var(--dim); font-size: 12px; }
+.dim { color: var(--dim); font-size: 12px; }
+/* 한자는 어디서나 한글 옆의 보조 표기다 (REQ-813). 화면의 한자 조판이 이 한 규칙에만 있어
+   「한자 전면 제거」가 규칙 하나의 변경으로 닫힌다. */
+.hj { font-size: var(--hj-size); font-weight: 400; color: var(--hj-tone); letter-spacing: 2px; }
+/* 한글 우측 세로열 — 높이가 모자라면 조용히 2열로 접히므로 nowrap·overflow 가 한 세트다. */
+.hj.stacked {
+  writing-mode: vertical-rl; text-orientation: upright;
+  white-space: nowrap; overflow: hidden; letter-spacing: 1px;
+}
 .badge {
   display: inline-block; padding: 2px 8px; border-radius: 999px;
   border: 1px solid var(--gold); color: var(--gold); font-size: 12px;
 }
-.badge.max { background: var(--gold); color: #1a1206; font-weight: 700; }
+.badge.max { background: var(--gold); color: var(--c1); font-weight: 700; }
 .tag { font-size: 11px; color: var(--dim); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
 
 button {
-  font: inherit; color: var(--fg); background: #202836; border: 1px solid var(--line);
+  font: inherit; color: var(--fg); background: var(--raised); border: 1px solid var(--line);
   border-radius: 8px; padding: 8px 12px; cursor: pointer;
 }
 button:disabled { opacity: .35; cursor: default; }
@@ -163,25 +245,50 @@ button.ghost { background: transparent; }
   /* 아래 형제 위로 겹치므로, 포인터를 통과시켜야 그 형제의 탭을 가로채지 않는다. */
   position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 1;
   pointer-events: none; font-size: 12px;
-  color: var(--gold); background: #201a0c; border: 1px solid var(--gold);
+  color: var(--gold); background: color-mix(in srgb, var(--c4) 14%, var(--c1)); border: 1px solid var(--gold);
   border-radius: 6px; padding: 2px 8px;
 }
 /* 지목의 주 신호 — 말풍선이 가려져도 어느 버튼을 누르라는 것인지는 테두리로 읽힌다. */
 .tip-target { border-color: var(--gold); color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
-.meter { height: 5px; background: #0b0e13; border-radius: 3px; margin: 6px 0; overflow: hidden; }
+.meter { height: 5px; background: var(--sunken); border-radius: 3px; margin: 6px 0; overflow: hidden; }
 .meter i { display: block; height: 100%; background: var(--gold); }
-/* 성 게이지 — 연속 막대(다음 계단까지의 진척) 위에 12 계단 눈금을 얹는다 (REQ-707). */
+/* 성(成) 계단 (REQ-817) — 화면마다 계단을 다시 짜면 같은 규칙이 화면 수만큼 갈라진다. */
 .rank-gauge { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.rank-gauge .meter { flex: 1 1 100%; margin: 4px 0 0; }
-.ticks { flex: 1 1 100%; display: grid; grid-template-columns: repeat(12, 1fr); gap: 2px; }
-.ticks .tick { height: 4px; border-radius: 1px; background: #0b0e13; border: 1px solid var(--line); }
-.ticks .tick.lit { background: var(--gold); border-color: var(--gold); }
-/* 11·12 눈금은 적립이 아니라 결정타·완파로 열린다 — 형태를 달리해 규칙이 화면에서 읽히게 한다. */
-.ticks .tick.gate { border-style: dashed; border-radius: 0 0 3px 3px; }
-.cheat { margin-top: 6px; padding: 8px; border: 1px dashed var(--line); border-radius: 6px; background: #0b0e13; max-width: 320px; }
+.steps { flex: 1 1 100%; display: flex; gap: var(--stair-gap); height: var(--stair-h); }
+.st {
+  /* 네 상태의 테두리·발광·벽을 이름으로 조립한다 — 조합 규칙이 어느 조각을 잃지 않게 (REQ-818). */
+  --st-ring: 0 0 0 1px var(--line) inset;
+  --st-lit: 0 0 0 1px color-mix(in srgb, var(--c4) 45%, transparent) inset;
+  --st-glow: 0 0 0 1px var(--c4) inset, 0 0 var(--stair-glow) var(--c4);
+  --st-wall: calc(-1 * var(--stair-wall-w)) 0 0 0 var(--c5);
+  position: relative; flex: 1; background: var(--sunken); overflow: hidden;
+  box-shadow: var(--st-ring);
+}
+.st > .fill {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 0;
+  background: linear-gradient(180deg, var(--c4), color-mix(in srgb, var(--c4) 60%, var(--c1)));
+}
+.st.on { box-shadow: var(--st-lit); }
+/* 이번 판에 오른 칸 — 결과 화면이 「무엇이 올랐는가」를 이 발광 하나로 말한다. */
+.st.gain { box-shadow: var(--st-glow); }
+/* 8성 벽 — 수련이 끊기고 실전만 남는 경계라 C5(주사)가 맡는 막힘의 하나다 (REQ-706·811). */
+.st.wall { margin-left: var(--stair-wall-gap); box-shadow: var(--st-ring), var(--st-wall); }
+/* 벽 칸이 점등·발광 칸을 겸할 때 한쪽 box-shadow 가 다른 쪽을 통째로 덮으므로 둘을 합친다 (REQ-818). */
+.st.on.wall { box-shadow: var(--st-lit), var(--st-wall); }
+.st.gain.wall { box-shadow: var(--st-glow), var(--st-wall); }
+/* 11·12 칸은 적립이 아니라 결정타·완파로 열린다 — 서브셋 밖 글리프(◆✦)가 두부가 되지 않도록
+   같은 형태를 CSS 도형으로 그린다 (REQ-817). */
+.st > .mk { position: absolute; inset: 0; margin: auto; color: var(--hj-tone); background: currentColor; }
+.st.on > .mk { color: var(--c1); }
+.st > .mk.finish { width: 5px; height: 5px; transform: rotate(45deg); }
+.st > .mk.crush {
+  width: 7px; height: 7px;
+  clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%);
+}
+.cheat { margin-top: 6px; padding: 8px; border: 1px dashed var(--line); border-radius: 6px; background: var(--sunken); max-width: 320px; }
 .cheat-rows { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
 .cheat-row { display: flex; gap: 6px; align-items: center; font-size: 12px; }
-.cheat-row input { width: 56px; background: #11151c; color: var(--fg); border: 1px solid var(--line); border-radius: 4px; }
+.cheat-row input { width: 56px; background: var(--c1); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; }
 
 /* 아이콘은 id 로 참조된다 — 코드는 `icon-<id>` 클래스만 알고 파일 경로는 이 표에만 있어,
    후속 아트 개선이 파일 스왑으로 닫힌다 (REQ-931). 마스크로 그리므로 색은 글자색을 따라간다. */
@@ -194,13 +301,13 @@ button.ghost { background: transparent; }
 .mark { font-size: 15px; line-height: 1; }
 .mark.big { font-size: 24px; }
 .arrows { display: flex; gap: 6px; margin: 4px 0; }
-.arrows i { font-style: normal; font-size: 20px; width: 24px; text-align: center; color: #39424f; }
+.arrows i { font-style: normal; font-size: 20px; width: 24px; text-align: center; color: color-mix(in srgb, var(--c3) 22%, transparent); }
 .arrows i.on { color: var(--gold); }
-.arrows i.hint { color: #5d6a7c; animation: pop .18s ease-out; }
+.arrows i.hint { color: var(--dim); animation: pop .18s ease-out; }
 @keyframes pop { from { transform: scale(.6); opacity: 0 } to { transform: scale(1); opacity: 1 } }
 
-.hpbar { height: 10px; background: #0b0e13; border-radius: 5px; overflow: hidden; margin: 6px 0; }
-.hpbar i { display: block; height: 100%; background: linear-gradient(90deg, #ff5a5a, #ffd166); transition: width .25s; }
+.hpbar { height: 10px; background: var(--sunken); border-radius: 5px; overflow: hidden; margin: 6px 0; }
+.hpbar i { display: block; height: 100%; background: linear-gradient(90deg, var(--c7), var(--c4)); transition: width .25s; }
 
 /* 판정 오버레이의 기준 상자 — 시각 층은 아레나 좌표계 안에 산다 (REQ-806). */
 /* 판정은 오버레이가 지므로 남는 세로는 빈 칸으로 남긴다 — 아래 절반의 자리를 그대로 유지한다. */
@@ -211,15 +318,15 @@ button.ghost { background: transparent; }
 .telegraph.open { border-color: var(--gold); color: var(--gold); justify-content: center; font-weight: 700; }
 .tg-foe { display: flex; gap: 6px; align-items: center; flex: 1; }
 .tg-win { display: flex; gap: 4px; align-items: center; border-left: 1px solid var(--line); padding-left: 10px; color: var(--attr); }
-.window { height: 6px; background: #0b0e13; border-radius: 3px; overflow: hidden; margin: 8px 0; }
-.window i { display: block; height: 100%; background: #4aa8ff; }
+.window { height: 6px; background: var(--sunken); border-radius: 3px; overflow: hidden; margin: 8px 0; }
+.window i { display: block; height: 100%; background: var(--c6); }
 
 .icons { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
 .cand {
   display: flex; gap: 6px; align-items: center; padding: 8px 10px; min-height: 44px;
-  border: 2px solid var(--attr); border-radius: 10px; background: #131922; color: var(--fg);
+  border: 2px solid var(--attr); border-radius: 10px; background: var(--c2); color: var(--fg);
 }
-.cand.top { background: #1d2735; box-shadow: 0 0 0 2px var(--attr) inset; }
+.cand.top { background: var(--raised); box-shadow: 0 0 0 2px var(--attr) inset; }
 .cand.mini, .cand.big-icon { pointer-events: none; }
 .cand.big-icon { font-size: 18px; padding: 14px 18px; }
 .cand.picked { outline: 2px solid var(--gold); }
@@ -235,11 +342,12 @@ button.ghost { background: transparent; }
 /* 결과는 상단 띠가 없는 유일한 화면이라 무대가 스테이지 y=0 에서 곧장 시작한다 (REQ-802·870). */
 .result-stage {
   padding: 28px 12px; text-align: center;
-  background: #131922; border-bottom: 1px solid var(--line);
+  background: var(--c2); border-bottom: 1px solid var(--line);
 }
 .result-stage h2 { margin: 0; font-size: 28px; }
 .result-stage h2.win { color: var(--gold); }
-.result-stage h2.lose { color: #ff5a5a; }
+/* 패배는 막힘이라 C5(주사)를 쓴다 (REQ-811). */
+.result-stage h2.lose { color: var(--c5); }
 .result-stage p { margin: 6px 0 0; }
 .result-ledger { padding: 12px; display: flex; flex-direction: column; gap: 12px; }
 .result-ledger ul { margin: 0; padding-left: 18px; }
@@ -256,21 +364,45 @@ button.ghost { background: transparent; }
 .toast.show { opacity: 1; }
 
 /* 판정은 흐름 밖에서 뜬다 — 자리를 차지하면 문구 등장마다 아래 형제가 밀린다 (#40). */
-.verdict-overlay {
-  position: absolute; inset: 0; z-index: 2; pointer-events: none;
-  display: flex; align-items: center; justify-content: center;
+.verdict-overlay { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+/* 위치가 승패 축이다 (REQ-814) — 오버레이 중심이 상쇄이고, 등급마다 그만큼 위·아래로 민다. */
+.verdict-pop {
+  position: absolute; left: 0; right: 0; top: 50%; padding: 0 12px; text-align: center;
+  transform: translateY(calc(-50% + var(--vd-shift, 0px)));
+  text-shadow: 0 2px 16px var(--shadow), 0 0 32px var(--shadow);
+  animation: verdict-pop var(--vd-dur, .5s) ease-out forwards;
 }
-.verdict-pop { padding: 0 12px; text-align: center; text-shadow: 0 2px 16px #000, 0 0 32px #000; animation: verdict-pop .5s ease-out forwards; }
-.verdict-mark { display: block; font-size: 88px; font-weight: 800; line-height: 1; }
-.verdict-label { display: block; margin-top: 8px; font-size: 22px; font-weight: 800; letter-spacing: 3px; }
-/* 마크 없이 뜨는 판정은 기본 라벨 크기로는 중앙 오버레이로 읽히지 않아, 라벨이 그 자리를 대신 이끈다 (#46). */
-.verdict-label.lead { margin-top: 0; font-size: 56px; letter-spacing: 6px; line-height: 1; }
+/* 히트스톱 — 충격 순간 문자가 늦게 뜨는 것이 그 정지다. 늦은 만큼 재생을 줄여 총 길이가
+   `--vd-dur` 를 넘지 않게 한다: 넘기면 판정이 다음 예고 위로 흘러든다 (spec § build-Plan 결정 사항). */
+.verdict-pop.punched {
+  animation-delay: var(--juice-hitstop);
+  animation-duration: calc(var(--vd-dur, .5s) - var(--juice-hitstop));
+}
+/* 한글이 주 표기이고 한자는 그 위 낙관 격이라 크기·농도가 함께 내려간다 (REQ-813). */
+.verdict-pop .hj {
+  display: block; font-size: var(--vd-mark-size); font-weight: 800;
+  letter-spacing: 6px; text-indent: 6px; color: inherit; opacity: .55;
+}
+.verdict-label {
+  display: block; font-size: var(--vd-size, var(--vd-size-clash)); font-weight: 800;
+  line-height: .98; letter-spacing: 4px; text-indent: 4px;
+}
+/* 크기·색·위치의 3축을 등급마다 갈라 두는 자리 — 자형(한자) 축은 theme.mjs 의 마크가 진다.
+   완파↔역파는 같은 수치의 부호만 달라 상하 대칭이 규칙으로 고정된다 (REQ-814). */
+.verdict-pop.crush { --vd-size: var(--vd-size-extreme); --vd-shift: calc(-1 * var(--vd-shift-extreme)); color: var(--c4); }
+.verdict-pop.advantage { --vd-size: var(--vd-size-mid); --vd-shift: calc(-1 * var(--vd-shift-mid)); color: var(--c6); }
+.verdict-pop.clash { --vd-size: var(--vd-size-clash); --vd-shift: var(--vd-shift-clash); color: color-mix(in srgb, var(--c3) 82%, transparent); }
+.verdict-pop.disadvantage { --vd-size: var(--vd-size-mid); --vd-shift: var(--vd-shift-mid); color: color-mix(in srgb, var(--c7) 80%, var(--c1)); }
+.verdict-pop.reversal { --vd-size: var(--vd-size-extreme); --vd-shift: var(--vd-shift-extreme); color: var(--c7); }
+.verdict-pop.struck { --vd-size: var(--vd-size-struck); --vd-shift: var(--vd-shift-struck); color: color-mix(in srgb, var(--c7) 60%, var(--c1)); }
+/* 수련 성공에는 등급이 없다 — 마크를 빌리면 「우세 판정」으로 오학습되므로 자리와 색만 상속한다 (#46). */
+.verdict-pop.train-done { --vd-size: var(--vd-size-struck); --vd-shift: 0px; color: var(--c8); }
 /* 위 .5s 는 폴백이고 실제 재생 시간은 show 가 인라인으로 덮는다 — 주입이 비어도 판정은 보여야 한다. */
 @keyframes verdict-pop {
-  0% { opacity: 0; transform: scale(.6) }
-  20% { opacity: 1; transform: scale(1.1) }
-  36% { transform: scale(1) }
-  100% { opacity: 0; transform: scale(1); visibility: hidden }
+  0% { opacity: 0; transform: translateY(calc(-50% + var(--vd-shift, 0px))) scale(.6) }
+  20% { opacity: 1; transform: translateY(calc(-50% + var(--vd-shift, 0px))) scale(1.1) }
+  36% { transform: translateY(calc(-50% + var(--vd-shift, 0px))) scale(1) }
+  100% { opacity: 0; transform: translateY(calc(-50% + var(--vd-shift, 0px))) scale(1); visibility: hidden }
 }
 
 .pad { border-top: 1px solid var(--line); padding: 8px 12px; background: var(--panel); height: calc(var(--hit) * 2 + 160px); }
@@ -299,7 +431,7 @@ button.ghost { background: transparent; }
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
 }
 .dpad .pad-reset.urge { --attr: var(--gold); border-color: var(--gold); color: var(--gold); animation: flash .8s ease-in-out infinite; }
-.dpad button.down { background: #2d3a4d; transform: scale(.96); }
+.dpad button.down { background: color-mix(in srgb, var(--c3) 14%, var(--c2)); transform: scale(.96); }
 .shake { animation: shake .2s linear 1; }
 @keyframes shake {
   0%, 100% { transform: translateX(0) } 25% { transform: translateX(-5px) }
@@ -318,7 +450,7 @@ button.ghost { background: transparent; }
 
   <div id="stagebox">
     <div id="stage">
-      <div id="app"></div>
+      <div id="shell" class="shell"><div id="app"></div></div>
       <div id="live" class="sr-only" role="status" aria-live="polite"></div>
     </div>
   </div>

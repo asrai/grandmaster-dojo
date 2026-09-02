@@ -3,7 +3,7 @@
 
 import { readFileSync } from 'node:fs';
 import {
-  ART_SETS, BALANCE, BALANCE_REV, CHALLENGERS, DISCIPLE, FOE_STYLES, STYLES,
+  ART_SETS, ATTRS, BALANCE, BALANCE_REV, CHALLENGERS, DISCIPLE, FOE_STYLES, STYLES,
   validateBalance, validateStyleContent, valueDigest,
 } from '../src/balance.mjs';
 import { LOG_SCHEMA, TIME_FIELD, createLogBuffer, validate } from '../src/log.mjs';
@@ -26,7 +26,7 @@ import {
 import {
   composeHooks, dispatchWiring, duelWiring, trainWiring,
 } from '../src/ui/wiring.mjs';
-import { GRADE_VIEW } from '../src/ui/theme.mjs';
+import { ATTR_VIEW, EXTREME_GRADES, GRADE_VIEW, TRAIN_DONE_VIEW } from '../src/ui/theme.mjs';
 import { BOT_UNREACHABLE, KILL, killVerdicts, readout } from './kill-readout.mjs';
 import {
   accrueDiscipleStyle, accrueRank, applyDiscipleTraining, applyEffectiveSuccess, applyOutcome,
@@ -2109,6 +2109,19 @@ suite('BALANCE 파라미터 census (REQ-606)', () => {
   // 표시 규약이 빠진 등급은 화면에 빈 판정으로 나가므로, 판정표와 같은 키 집합이어야 한다.
   deepEq(Object.keys(GRADE_VIEW).sort(), Object.keys(BALANCE.grades).sort(),
     '판정 표시 규약이 6단 전 등급을 덮는다');
+  // 속성 표시 규약이 빠지면 `attrMark` 가 맨몸 TypeError 로 죽는다 — 같은 키 집합이어야 한다.
+  deepEq(Object.keys(ATTR_VIEW).sort(), Object.keys(ATTRS).sort(),
+    '속성 표시 규약이 3속성 전부를 덮는다');
+  // juice 배정 등급의 오타는 에러 없이 흔들림만 지운다 — 등급 이름임을 여기서 못박는다 (REQ-815).
+  deepEq([...EXTREME_GRADES].sort(), ['crush', 'reversal'],
+    '흔들림·히트스톱이 극단 2등급에만 배정된다');
+  ok([...EXTREME_GRADES].every((g) => g in BALANCE.grades), '극단 2등급이 판정표의 등급 이름이다');
+
+  // 표시 클래스의 규칙이 원장에서 사라지면 크기·위치·색이 조용히 폴백으로 대체된다 (REQ-814).
+  const ledger = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  for (const { cls } of [...Object.values(GRADE_VIEW), TRAIN_DONE_VIEW]) {
+    ok(ledger.includes(`.verdict-pop.${cls} `), `원장에 .verdict-pop.${cls} 규칙이 있다`);
+  }
 });
 
 suite('밸런스 데이터 스키마 (#45)', () => {

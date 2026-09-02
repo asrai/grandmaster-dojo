@@ -1,8 +1,8 @@
 // 죽간 렌더러 (REQ-805) — 십자 키패드에서 분리돼 있어, 키패드가 없는 화면(S4 파견 관전)도
 // 죽간만 장착할 수 있다. 매수 자체가 「후보가 좁혀졌다」의 표현이라 1매는 크게 그린다 (REQ-824).
 
-import { attrMark, clear, el } from './dom.mjs';
-import { ATTR_VIEW } from './theme.mjs';
+import { clear, el } from './dom.mjs';
+import { attrMark, attrTone } from './components/attr-mark.mjs';
 
 /**
  * 죽간 매 하나.
@@ -16,7 +16,7 @@ import { ATTR_VIEW } from './theme.mjs';
 function tablet({ style, mods = '', tags = [], title = null, onTap = null }) {
   const attrs = {
     class: `cand${mods ? ` ${mods}` : ''}`,
-    style: `--attr:${ATTR_VIEW[style.attr].color}`,
+    style: `--attr:${attrTone(style.attr)}`,
     title,
   };
   if (onTap) {

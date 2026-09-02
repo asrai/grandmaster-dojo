@@ -4,8 +4,10 @@
 import { BALANCE } from '../../balance.mjs';
 import { createDiscipleHand } from '../../bot.mjs';
 import { discipleStyleRank, discipleStyles, finisherOf, foeStyleById } from '../../core.mjs';
-import { attrMark, clear, composeScreen, el, hpBar, topBand } from '../dom.mjs';
-import { ATTR_VIEW, attrLabel, winAttrOf } from '../theme.mjs';
+import { clear, composeScreen, el, hpBar, topBand } from '../dom.mjs';
+import { attrLabel, winAttrOf } from '../theme.mjs';
+import { attrMark, attrTone } from '../components/attr-mark.mjs';
+import { hanja } from '../components/hanja.mjs';
 import { SFX } from '../audio.mjs';
 import { createMatch } from '../match.mjs';
 import {
@@ -17,7 +19,7 @@ import { createVerdictOverlay } from '../verdict-overlay.mjs';
 import { composeHooks, dispatchWiring, logDispatchResult } from '../wiring.mjs';
 
 const styleIcon = (style, extra = '', rankTag = null) => el('div', {
-  class: `cand${extra ? ` ${extra}` : ''}`, style: `--attr:${ATTR_VIEW[style.attr].color}`,
+  class: `cand${extra ? ` ${extra}` : ''}`, style: `--attr:${attrTone(style.attr)}`,
 }, [
   attrMark(style.attr),
   el('span', { class: 'cand-name', text: style.name }),
@@ -33,7 +35,8 @@ function finisherTell(finisher) {
   return el('div', {}, [
     el('div', { class: 'icons' }, [styleIcon(finisher, 'big-icon')]),
     el('p', {}, [
-      el('b', { text: `절초 ${finisher.name} ${finisher.hanja}` }),
+      el('b', { text: `절초 ${finisher.name}` }),
+      hanja(finisher.hanja),
       el('span', { class: 'dim', text: ` · ${attrLabel(finisher.attr)} · ${finisher.len}수 · 이기는 색 ${attrLabel(winAttrOf(finisher.attr))}` }),
     ]),
   ]);
@@ -69,10 +72,13 @@ export function renderPreview(ctx) {
   const challenger = mission ? mission.challenger : DISPATCH_CHALLENGER;
 
   composeScreen(ctx, {
-    top: topBand(session, ART_NAME),
+    top: topBand(session, ART_NAME, { onLeave: () => ctx.go('dojo') }),
     body: el('section', { class: 'card' }, [
     // 차수는 대련과 같은 「N차」로 부른다 — 스펙 식별자(`B-n`)만 사라지고 데이터·로그에는 남는다 (REQ-895·896).
-    el('h2', { text: `임무 ${session.dispatchStage}차 — ${challenger.name} ${challenger.hanja}` }),
+    el('h2', {}, [
+      el('span', { text: `임무 ${session.dispatchStage}차 — ${challenger.name}` }),
+      hanja(challenger.hanja),
+    ]),
     el('p', {
       class: 'dim',
       text: session.dispatchStage <= 1
@@ -90,7 +96,6 @@ export function renderPreview(ctx) {
       el('button', {
         class: 'primary', text: '파견 보내기', disabled: !unlocked, onclick: () => ctx.go('dispatch'),
       }),
-      el('button', { class: 'small ghost', text: '도장으로', onclick: () => ctx.go('dojo') }),
     ]),
   ].filter(Boolean)) });
 }
@@ -112,11 +117,11 @@ export function startDispatch(ctx) {
   const windowFill = el('i', {});
 
   composeScreen(ctx, {
-    top: topBand(session, ART_NAME),
+    top: topBand(session, ART_NAME, { onLeave: () => ctx.go('dojo') }),
     body: el('section', { class: 'card arena' }, [
       el('div', { class: 'head' }, [
         el('b', { text: challenger.name }),
-        el('span', { class: 'hanja', text: challenger.hanja }),
+        hanja(challenger.hanja),
         el('span', { class: 'dim', text: '관전 — 지시는 선택이다' }),
       ]),
       foeHpEl,
@@ -176,13 +181,13 @@ export function startDispatch(ctx) {
         windowFill.style.width = '100%';
         clear(telegraphEl).appendChild(view.foeOpen
           ? el('div', { class: 'telegraph open', text: '빈틈! — 제자가 연환을 잇는다' })
-          : el('div', { class: 'telegraph', style: `--attr:${ATTR_VIEW[view.telegraphed.attr].color}` }, [
+          : el('div', { class: 'telegraph', style: `--attr:${attrTone(view.telegraphed.attr)}` }, [
             el('div', { class: 'tg-foe' }, [
               attrMark(view.telegraphed.attr, { size: 'big' }),
               el('b', { text: view.telegraphed.name }),
               el('span', { class: 'dim', text: `${attrLabel(view.telegraphed.attr)} · ${view.telegraphed.len}수` }),
             ]),
-            el('div', { class: 'tg-win', style: `--attr:${ATTR_VIEW[winAttrOf(view.telegraphed.attr)].color}` }, [
+            el('div', { class: 'tg-win', style: `--attr:${attrTone(winAttrOf(view.telegraphed.attr))}` }, [
               el('span', { class: 'dim', text: '이기는 색' }),
               attrMark(winAttrOf(view.telegraphed.attr), { size: 'big' }),
             ]),
