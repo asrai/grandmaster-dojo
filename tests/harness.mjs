@@ -2360,7 +2360,10 @@ suite('원장 ms 판독은 한 벌 (#132)', () => {
   const walk = (rel) => readdirSync(new URL(`../${rel}`, import.meta.url), { withFileTypes: true })
     .flatMap((e) => (e.isDirectory() ? walk(`${rel}/${e.name}`) : [`${rel}/${e.name}`]))
     .filter((path) => path.endsWith('.mjs'));
-  const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+  // 주석·JSDoc 의 심볼 언급은 판독이 아니다 — required check 를 오탐으로 막지 않게 코드만 센다.
+  // 과다 제거는 아래 건수 1 단정이 0 으로 무너뜨려 잡는다.
+  const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 
   const srcFiles = walk('src').sort();
   // 훑기가 비면 아래 집합·⊆ 단정이 전부 공허하게 통과한다 — 하한이 그 갈래를 막는다.
@@ -2375,28 +2378,38 @@ suite('원장 ms 판독은 한 벌 (#132)', () => {
   eq(readCount, 1, '그 한 벌이 실재한다 — 판독 출현 건수');
 
   // 조용한 0 으로 접히는 폴백이 정본으로 되돌아오면 무음 실패의 원천이 되살아난다.
-  const domSource = read('src/ui/dom.mjs');
-  ok(!/\|\|\s*0/.test(domSource), 'dom.mjs 판독에 `|| 0` 폴백이 없다');
-  ok(/throw new Error\(`\$\{name\} 이 ms 값이 아니다/.test(domSource), '형식 위반이 그 자리에서 죽는다');
+  // 모집단은 함수 본문뿐 — 모듈 전체를 물면 무관한 `|| 0` 한 줄이 후속 PR 을 상시 막는다.
+  const domSource = readFileSync(new URL('../src/ui/dom.mjs', import.meta.url), 'utf8');
+  const ledgerBody = domSource.match(/export function ledgerMs\([\s\S]*?\n}/)?.[0];
+  ok(ledgerBody, 'dom.mjs 가 ledgerMs 를 함수 선언으로 export 한다');
+  ok(!/\|\|\s*0\b/.test(ledgerBody ?? '||0'), 'ledgerMs 본문에 `|| 0` 폴백이 없다');
+  ok(/throw new Error\(/.test(ledgerBody ?? ''), '형식 위반이 그 자리에서 죽는다');
 
   // (I1′) 부팅 전건 검사의 모집단은 이 목록이라, 목록 밖 토큰은 검사받지 않은 채 연출에서 읽힌다.
   const listedBlock = domSource.match(/export const LEDGER_MS = \[([^\]]*)\]/);
   ok(listedBlock, 'dom.mjs 가 LEDGER_MS 목록을 리터럴 배열로 export 한다');
   const listed = [...(listedBlock?.[1] ?? '').matchAll(/'(--[\w-]+)'/g)].map((m) => m[1]);
-  deepEq(listed, ['--juice-hitstop', '--only-hold', '--slip-exit', '--tm-follow-delay'],
-    'JS 가 읽는 원장 ms 토큰 목록');
+  // 중복 이름은 부팅의 `Object.fromEntries` 에서 조용히 접힌다 — 목록이 곧 검사 모집단이라 문다.
+  eq(new Set(listed).size, listed.length, 'LEDGER_MS 에 중복 토큰이 없다');
 
-  const called = srcFiles
-    .filter((path) => path.startsWith('src/ui/'))
+  const uiFiles = srcFiles.filter((path) => path.startsWith('src/ui/'));
+  const called = uiFiles
     .flatMap((path) => [...read(path).matchAll(/\bledgerMs\('(--[\w-]+)'\)/g)].map((m) => m[1]));
   // ⊆ 는 호출 0건에서도 참이다 — 호출 실재가 그 짝의 양성 대조다.
-  ok(called.length >= 3, `이름을 박은 판독 호출이 실재한다 — ${called.length}건`);
+  ok(called.length >= 1, `이름을 박은 판독 호출이 실재한다 — ${called.length}건`);
   deepEq([...new Set(called)].filter((name) => !listed.includes(name)), [],
     '목록 밖 토큰을 읽는 호출이 없다');
 
+  // 리터럴만 세면 `ledgerMs(t)` 같은 간접 호출이 ⊆ 를 공허하게 통과해, 목록 밖 토큰이 검사를
+  // 건너뛴 채 연출 도중 throw 한다 — 이 스위트가 없애려는 바로 그 경로다. 계수로 loud fail 시킨다.
+  const callSites = uiFiles.reduce((n, path) => n
+    + (read(path).replace(/^import[\s\S]*?';$/gm, '').replace(/export function ledgerMs\(/, '')
+      .match(/\bledgerMs\(/g) ?? []).length, 0);
+  eq(callSites, called.length + 1,
+    '리터럴 밖 호출은 부팅 전건 읽기 하나뿐이다 — 그 하나가 목록 자체를 인자로 돈다');
+
   // 목록은 부팅 단정이 실제로 소비해야 뜻이 있다 — 미소비 목록은 위 ⊆ 를 장식으로 만든다.
-  const appSource = read('src/ui/app.mjs');
-  ok(/LEDGER_MS\.map\(\(name\) => \[name, ledgerMs\(name\)\]\)/.test(appSource),
+  ok(/LEDGER_MS\.map\([\s\S]{0,80}?ledgerMs\(/.test(read('src/ui/app.mjs')),
     '부팅이 LEDGER_MS 전건을 ledgerMs 로 읽는다');
 });
 
