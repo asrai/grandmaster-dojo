@@ -114,7 +114,7 @@ export function createSession({ now = () => Date.now() } = {}) {
  * 안에서만 센 수가 있어야 한다. 통합 로그는 세션 전체라 그 슬라이스를 되찾을 수 없으므로,
  * 판정과 성 변화가 지나는 자리에서 함께 쌓는다.
  */
-const createBout = (attempt = 0) => ({ attempt, verdicts: {}, gains: {}, finisher: null });
+const createBout = (attempt = 0) => ({ attempt, verdicts: {}, gains: {}, finisher: null, resultLogged: false });
 
 /**
  * 판의 시작 — **싸움이 실제로 시작되는 자리**에서만 부른다. 임무 확정에서 부르면 예고만 보고
@@ -123,6 +123,25 @@ const createBout = (attempt = 0) => ({ attempt, verdicts: {}, gains: {}, finishe
  *   되짚지 않게 실제로 싸운 값을 들고 간다. 임무에는 회차 축이 없어 0 이다.
  */
 export const beginBout = (session, attempt = 0) => { session.bout = createBout(attempt); };
+
+/**
+ * 이 판의 결과 항목을 낼 권리를 집는다 — 「한 판은 결과를 하나만 낸다」(REQ-744)를 화면 전이
+ * 순서가 아니라 판의 상태로 문다. 두 번째 호출부터 `false` 이고, 다음 판은 `beginBout` 이 되돌린다.
+ */
+/**
+ * 스키마는 지켰지만 계약을 어긴 적재 — 검증이 못 보는 층이라 같은 원장에 쌓아, 내보내기가
+ * 결손을 조용히 실어 나르지 않게 한다. 「한 판 한 결과」(REQ-744)가 그 첫 소비처다.
+ */
+export function noteLogViolation(session, event, reason) {
+  session.logViolations.push({ event, reason });
+  console.warn(`[로그 계약] ${event}: ${reason}`);
+}
+
+export function claimBoutResult(session) {
+  if (session.bout.resultLogged) return false;
+  session.bout.resultLogged = true;
+  return true;
+}
 
 /**
  * 그 판에 오른 성 한 건 — 같은 초식이 한 판에 여러 번 오르면 시작은 첫 값, 끝은 마지막 값이라

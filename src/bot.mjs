@@ -117,7 +117,7 @@ export function createHand({
       keys = [];
       at = 0;
       strayed = false;
-      // 놓친 키 하나가 그 창을 미완주로 닫는다 — kill (b) 분모의 `timeout` 이 여기서 난다.
+      // 놓친 키 하나가 그 창을 미완주로 닫는다 — 그 미완주가 kill (b) 분모의 `timeout` 이 되는 것은 대련 창뿐이다.
       for (const dir of style ? style.seq : []) {
         if (pace.misses()) break;
         keys.push(dir);

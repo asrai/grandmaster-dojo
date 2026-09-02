@@ -27,7 +27,10 @@ export const KILL = {
   minManualWindows: BALANCE.killReadout.minManualWindows,
 };
 
-/** 실전 창 = 사부 대련 구간. 수련 창을 섞으면 (b) 가 손의 증거가 아니라 연습량이 된다. */
+/**
+ * 실전 창 = 사부 대련 구간. 수련 창을 섞으면 (b) 가 손의 증거가 아니라 연습량이 된다.
+ * 수련 창은 분모 밖이라 미완주가 로그에 아예 없다 — 무벌 재시도의 짝이고, 그 실패는 낭독 채널로만 관측된다.
+ */
 const DUEL_PHASE = 'duel';
 
 const SELF_TEST_SEED = 20260902;
@@ -151,7 +154,7 @@ export function readout(payload) {
   // 종점은 사이클의 성질이라 손 구간 필터와 무관하게 전체에서 찾는다.
   const cycleDone = all.find((e) => e.event === 'cycle' && e.phase === 'cycle_done') ?? null;
 
-  // kill (b) 는 완주율 — 실전 창의 손 입력만 세고 원터치 창은 분모에서 뺀다 (REQ-302·603).
+  // kill (b) 는 완주율 — 실전 창의 손 입력만 세고 원터치 창은 분모에서 뺀다 (REQ-302·603·793).
   const duel = tagged.filter((e) => e.phase_at === DUEL_PHASE);
   const handFires = duel.filter((e) => e.event === 'fire' && e.oneTap === false).length;
   const timeouts = duel.filter((e) => e.event === 'timeout').length;
@@ -238,6 +241,7 @@ function metricsOf(cycle, all) {
   }, {});
   const finishes = cycle.filter((e) => e.event === 'finish');
   const trains = all.filter((e) => e.event === 'disciple_train');
+  const dispatches = all.filter((e) => e.event === 'dispatch');
   const rematches = cycle.filter((e) => e.event === 'rematch');
   return {
     rematch_attempts: count(rematches, 'attempt_n'),
@@ -254,8 +258,12 @@ function metricsOf(cycle, all) {
     disciple_train_ranks: trains.reduce((acc, e) => acc + (Number(e.to) - Number(e.from) || 0), 0),
     // 병렬성의 유일한 증거 — 사부가 그동안 무엇을 하고 있었는가 (REQ-754).
     disciple_train_activity: count(trains, 'master_activity'),
-    dispatch_by_stage: all.filter((e) => e.event === 'dispatch')
+    dispatch_by_stage: dispatches
       .map((e) => ({ stage: e.stage, result: e.result, foe_set: e.foe_set, locked_until: e.locked_until })),
+    // 이탈은 싸움이 끝나지 않은 판이라 승패 어느 쪽도 아니다 — 세되 승률의 분모에는 넣지 않는다 (REQ-744).
+    dispatch_aborts: dispatches.filter((e) => e.result === 'abort').length,
+    dispatch_win_rate: rate(dispatches.filter((e) => e.result === 'win').length,
+      dispatches.filter((e) => e.result === 'win' || e.result === 'loss').length),
   };
 }
 
@@ -314,6 +322,7 @@ function report(result) {
     + ` · 슬롯 교체 ${JSON.stringify(metrics.slot_by_challenger)} · 결정타 ${JSON.stringify(metrics.finish_by_style)}`
     + ` (의도 일치 ${pct(metrics.finish_intended_rate)}) · 8성 벽 ${metrics.rank_wall}회`);
   console.log(`    제자 축  파견 ${metrics.dispatch_by_stage.map((m) => `${m.stage}:${m.result}[${m.foe_set?.join('+') ?? '?'}]`).join(' · ') || '—'}`
+    + ` (승률 ${pct(metrics.dispatch_win_rate)}${metrics.dispatch_aborts ? ` · 이탈 ${metrics.dispatch_aborts}건은 분모 밖` : ''})`
     + ` · 수련 ${metrics.disciple_train_events}회 ${metrics.disciple_train_ranks}성`
     + ` · 8성 벽 ${metrics.disciple_rank_wall}회 · 병렬 ${JSON.stringify(metrics.disciple_train_activity)}`);
   return { a, b, d, gate: g };
@@ -381,7 +390,7 @@ function main(argv) {
       + ' — 파생 지표(창 잔여·유효 성공률)는 현재 표 기준이다');
   }
   if (payload.log_violations.length) {
-    console.error(`✗ 로그 스키마 위반 ${payload.log_violations.length}건 — kill 산식 입력으로 쓸 수 없다`);
+    console.error(`✗ 로그 계약 위반 ${payload.log_violations.length}건 — kill 산식 입력으로 쓸 수 없다`);
     for (const v of payload.log_violations.slice(0, 5)) console.error(`    ${v.event}: ${v.reason}`);
     failures += 1;
   }

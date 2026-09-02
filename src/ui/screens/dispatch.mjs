@@ -20,7 +20,7 @@ import {
 } from '../session.mjs';
 import { createTablets } from '../tablets.mjs';
 import { createVerdictOverlay } from '../verdict-overlay.mjs';
-import { composeHooks, dispatchWiring, logDispatchResult } from '../wiring.mjs';
+import { composeHooks, dispatchWiring, logDispatchAbort, logDispatchResult } from '../wiring.mjs';
 
 const styleIcon = (style, extra = '', rankTag = null) => el('div', {
   class: `cand${extra ? ` ${extra}` : ''}`, style: `--attr:${attrTone(style.attr)}`,
@@ -132,7 +132,8 @@ export function startDispatch(ctx) {
 
   let exchanges = 0;
   const band = stageBand({
-    onLeave: () => ctx.go('dojo'),
+    // 진행 중인 판을 두고 나가는 자리 — 결과 항목이 없으면 그 판만 판독 분모에서 사라진다 (REQ-744).
+    onLeave: () => { logDispatchAbort(session, { mission }); ctx.go('dojo'); },
     name: challenger.name,
     hanja: challenger.hanja,
     seal: `${session.dispatchStage}차`,

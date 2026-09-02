@@ -35,7 +35,7 @@ export const LOG_SCHEMA = {
   rematch:   { fields: ['challenger', 'foe_rank', 'attempt_n'] },
   slot:      { fields: ['action', 'styleId', 'challenger'], sv: 2 },
   transmit:  { fields: ['art', 'styles'], sv: 2 },
-  dispatch:  { fields: ['stage', 'foe_set', 'disciple_ranks', 'locked_until', 'result'], sv: 2, enums: { result: ['win', 'loss'] } },
+  dispatch:  { fields: ['stage', 'foe_set', 'disciple_ranks', 'locked_until', 'result'], sv: 2, enums: { result: ['win', 'loss', 'abort'] } },
   disciple_train: { fields: ['style', 'from', 'to', 'elapsed_ms', 'master_activity'] },
   select:    { fields: ['styleId', 'byUser'] },
   coins:     { fields: ['delta', 'reason'] },
