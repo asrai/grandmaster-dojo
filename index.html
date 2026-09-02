@@ -37,7 +37,7 @@
    화면별 재정의를 두지 않는다 (spec § ①). 색·크기·타이밍의 수치는 전부 여기에만 있고
    아래 규칙과 JS 는 이름으로만 참조하므로, 튜닝이 이 한 곳에서 닫힌다.
    밸런스 tunable(`src/balance.data.json`)과는 다른 축이다 — 그쪽은 게임 규칙의 SoT 이고
-   여기는 렌더 층의 SoT 다. 두 원장이 겹치는 값은 없다. */
+   여기는 렌더 층의 SoT 다. 규칙 값이 렌더에 닿아야 하면 JS 가 변수로 주입한다(`--hit`·`--vd-dur`). */
 :root {
   /* 색 9종 C1~C9 (REQ-810) — 화면·컴포넌트는 리터럴 색을 쓰지 않는다. */
   --c1: #12100e;  /* 먹 심 */
@@ -127,9 +127,6 @@ body {
    완파·역파마다 그 배율이 날아가 화면이 100% 로 튄다 (REQ-816). */
 .shell { position: relative; height: 100%; }
 .shell.punch { animation: punch-shake var(--juice-shake) var(--juice-hitstop) cubic-bezier(.36, .07, .19, .97) both; }
-/* 히트스톱 — 충격 순간 화면을 붙든다. 그 순간 도는 애니메이션은 판정 팝 하나뿐이라, 흔들림과
-   같은 만큼 그 시작을 미루는 것이 곧 정지다 (spec § build-Plan 결정 사항). */
-.shell.punch .verdict-pop { animation-delay: var(--juice-hitstop); }
 @keyframes punch-shake {
   10% { transform: translate(-6px, 3px) } 22% { transform: translate(5px, -4px) }
   36% { transform: translate(-4px, -2px) } 52% { transform: translate(3px, 3px) }
@@ -254,7 +251,7 @@ button.ghost { background: transparent; }
 .tip-target { border-color: var(--gold); color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
 .meter { height: 5px; background: var(--sunken); border-radius: 3px; margin: 6px 0; overflow: hidden; }
 .meter i { display: block; height: 100%; background: var(--gold); }
-/* 성(成) 계단 (REQ-817) — S2·S3·S5·S6 이 이 한 벌을 공유하므로 화면마다 계단을 다시 짜지 않는다. */
+/* 성(成) 계단 (REQ-817) — 화면마다 계단을 다시 짜면 같은 규칙이 화면 수만큼 갈라진다. */
 .rank-gauge { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .steps { flex: 1 1 100%; display: flex; gap: var(--stair-gap); height: var(--stair-h); }
 .st {
@@ -348,7 +345,7 @@ button.ghost { background: transparent; }
 }
 .result-stage h2 { margin: 0; font-size: 28px; }
 .result-stage h2.win { color: var(--gold); }
-/* 패배는 C5(주사)가 맡는 막힘·경고 5종의 하나다 (REQ-811). */
+/* 패배는 막힘이라 C5(주사)를 쓴다 (REQ-811). */
 .result-stage h2.lose { color: var(--c5); }
 .result-stage p { margin: 6px 0 0; }
 .result-ledger { padding: 12px; display: flex; flex-direction: column; gap: 12px; }
@@ -372,7 +369,13 @@ button.ghost { background: transparent; }
   position: absolute; left: 0; right: 0; top: 50%; padding: 0 12px; text-align: center;
   transform: translateY(calc(-50% + var(--vd-shift, 0px)));
   text-shadow: 0 2px 16px var(--shadow), 0 0 32px var(--shadow);
-  animation: verdict-pop .5s ease-out forwards;
+  animation: verdict-pop var(--vd-dur, .5s) ease-out forwards;
+}
+/* 히트스톱 — 충격 순간 문자가 늦게 뜨는 것이 그 정지다. 늦은 만큼 재생을 줄여 총 길이가
+   `--vd-dur` 를 넘지 않게 한다: 넘기면 판정이 다음 예고 위로 흘러든다 (spec § build-Plan 결정 사항). */
+.verdict-pop.punched {
+  animation-delay: var(--juice-hitstop);
+  animation-duration: calc(var(--vd-dur) - var(--juice-hitstop));
 }
 /* 한글이 주 표기이고 한자는 그 위 낙관 격이라 크기·농도가 함께 내려간다 (REQ-813). */
 .verdict-pop .hj {

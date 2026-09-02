@@ -4,7 +4,10 @@
 
 import { ATTRS, BALANCE } from '../balance.mjs';
 
-/** 색 원장 C1~C9 의 이름 (REQ-810) — JS 가 색을 쓸 때 리터럴 대신 부르는 유일한 통로다. */
+/**
+ * 색 원장 C1~C9 의 이름 (REQ-810) — 팔레트 색을 JS 에서 부르는 자리다. 역할 토큰(`--line`·`--dim`
+ * 등)은 팔레트가 아니라 원장의 파생이라 이 표에 없고, 호출부가 그 이름을 직접 쓴다.
+ */
 export const C = {
   inkDeep: 'var(--c1)',
   inkMid: 'var(--c2)',
