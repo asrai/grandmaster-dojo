@@ -1,4 +1,4 @@
-// 입력 패드 — 4방향 버튼·키보드·버퍼 줄을 한 곳에서 소유하고, 죽간은 `tablets.mjs` 에 맡긴다.
+// 입력 패드 — 4방향 버튼·키보드·트레일을 한 곳에서 소유하고, 죽간은 `tablets.mjs` 에 맡긴다.
 // 어떤 화면이 붙어 있든 방향은 `input.press()` 한 경로로만 흐른다 (REQ-101).
 // 마크업을 스스로 만들어 `node` 로 내놓으므로, 하단부에 이것을 둘지는 화면이 정한다 (REQ-801).
 
@@ -6,8 +6,7 @@ import { ARROW, BALANCE } from '../balance.mjs';
 import { isOneTapRank } from '../core.mjs';
 import { arrowRow, clear, el, shake } from './dom.mjs';
 import { createTablets } from './tablets.mjs';
-import { attrLabel } from './theme.mjs';
-import { attrMark, attrTone } from './components/attr-mark.mjs';
+import { attrTone } from './components/attr-mark.mjs';
 import { SFX } from './audio.mjs';
 
 const KEYMAP = {
@@ -18,22 +17,27 @@ const RESET_KEYS = new Set([' ', 'Spacebar', 'Escape']);
 const DIRS = [['U', '위', '↑'], ['L', '왼쪽', '←'], ['D', '아래', '↓'], ['R', '오른쪽', '→']];
 
 export function createPad() {
+  // 진행형 후보 색은 전폭 발광 띠 하나로만 말한다 — 「지금 내 색」이 화면에서 가장 큰 피드백이고,
+  // 속성의 형태 축과 후보 수는 죽간이 이미 진다 (REQ-828).
   const colorEl = el('div', { class: 'pad-color none' });
   const tablets = createTablets({ soloEmphasis: true });
-  const seqEl = el('div', { class: 'pad-seq' });
-  const resetBtn = el('button', { class: 'pad-reset' }, [
+  const seqEl = el('div', { class: 'pad-trail' });
+  const undoBtn = el('button', {
+    class: 'undo', 'aria-label': '되돌리기', title: '되돌리기 (Space)',
+  }, [
     // 아이콘은 파일 경로가 아니라 id 로 온다 — 경로는 index.html 의 `icon-<id>` 표에만 있다 (REQ-931).
     el('span', { class: 'icon icon-reset', 'aria-hidden': 'true' }),
-    el('span', { text: '리셋' }), el('span', { class: 'dim', text: 'Space' }),
   ]);
   const dirButtons = new Map(DIRS.map(([dir, label, glyph]) => [
-    dir, el('button', { 'data-dir': dir, 'aria-label': label, text: glyph }),
+    dir, el('button', { class: 'key', 'data-dir': dir, 'aria-label': label, text: glyph }),
   ]));
   const root = el('footer', { class: 'pad' }, [
     colorEl,
     tablets.node,
     seqEl,
-    el('div', { class: 'dpad' }, [...dirButtons.values(), resetBtn]),
+    // 오조작 비용이 정반대인 두 조작을 한 flex 행에 묶지 않는다 — 되돌리기는 십자 밖 우측 끝에
+    // 별개 그룹으로 선다 (REQ-829).
+    el('div', { class: 'keys' }, [el('div', { class: 'cross' }, [...dirButtons.values()]), undoBtn]),
   ]);
   let active = null;
   let structureSig = null;
@@ -92,23 +96,18 @@ export function createPad() {
 
   function renderStructure(top) {
     const { input } = active;
-    const solo = input.candidates.length === 1;
 
     colorEl.className = `pad-color${top ? '' : ' none'}`;
-    clear(colorEl);
-    if (top) {
-      colorEl.style.color = attrTone(top.attr);
-      colorEl.append(
-        attrMark(top.attr, { size: 'big' }),
-        el('b', { text: attrLabel(top.attr) }),
-        el('span', { class: 'pad-name', text: solo ? top.name : `후보 ${input.candidates.length}` }),
-      );
-    }
+    // 띠의 색만 바꾼다 — 발광은 원장이 `currentColor` 로 파생하므로 여기 수치가 없다.
+    colorEl.style.color = top ? attrTone(top.attr) : '';
 
     tablets.render(input.candidates.map((style) => {
-      const oneTap = isOneTapRank(active.rankOf(style));
+      const rank = active.rankOf(style);
+      const oneTap = isOneTapRank(rank);
       return {
         style,
+        // 속성과 성이 한 쌍으로 위력을 정하므로 죽간 한 매가 둘을 함께 진다 (REQ-721·827).
+        rank,
         mods: [style === top ? 'top' : '', oneTap ? 'onetap' : ''].filter(Boolean).join(' '),
         tags: oneTap ? ['원터치'] : [],
         title: style.gugyeol,
@@ -121,7 +120,7 @@ export function createPad() {
         },
       };
     }));
-    resetBtn.classList.toggle('urge', input.ignores >= BALANCE.ignoreHighlightAt);
+    undoBtn.classList.toggle('urge', input.ignores >= BALANCE.ignoreHighlightAt);
   }
 
   function render() {
@@ -131,8 +130,9 @@ export function createPad() {
     root.classList.toggle('idle', !accepting());
     root.classList.toggle('bot', botOwned);
     // 구조가 그대로면 노드를 건드리지 않는다 — 재생성은 클릭 타깃과 스크롤 위치까지 매 프레임 날린다.
+    // 성은 대련 도중에도 오르므로(REQ-721) 후보 목록과 함께 지문에 든다 — 빠지면 배지가 굳는다.
     const sig = [
-      input.candidates.map((s) => s.id).join(','), top ? top.id : '',
+      input.candidates.map((s) => `${s.id}:${active.rankOf(s)}`).join(','), top ? top.id : '',
       input.buffer.length, input.ignores >= BALANCE.ignoreHighlightAt,
     ].join('|');
     if (sig !== structureSig) {
@@ -159,7 +159,7 @@ export function createPad() {
   }
 
   window.addEventListener('keydown', onKeyDown);
-  resetBtn.addEventListener('click', reset);
+  undoBtn.addEventListener('click', reset);
   for (const [dir, button] of dirButtons) {
     button.addEventListener('click', () => press(dir, 'button'));
   }
@@ -167,6 +167,9 @@ export function createPad() {
   return {
     /** 화면이 자기 하단부에 꽂는 노드 — 꽂지 않은 화면에는 패드가 존재하지 않는다. */
     node: root,
+
+    /** 죽간 금테 확대가 뜬 시각 — 판정 대기가 이 값을 읽는다 (REQ-826). */
+    onlyShownAt: () => tablets.onlyShownAt(),
 
     /**
      * 봇 v2 의 손 (REQ-605) — 사람 입력과 완전히 같은 경로를 지난다.
@@ -194,8 +197,9 @@ export function createPad() {
       root.classList.remove('idle');
       tablets.clear();
       clear(seqEl);
-      clear(colorEl);
-      resetBtn.classList.remove('urge');
+      colorEl.className = 'pad-color none';
+      colorEl.style.color = '';
+      undoBtn.classList.remove('urge');
     },
     render,
   };
