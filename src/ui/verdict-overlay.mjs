@@ -54,6 +54,8 @@ export function createVerdictOverlay({ heldSince = () => null } = {}) {
   // 마크는 라벨의 시각적 중복 표현이라, 낭독은 리전 한 곳으로만 나간다.
   const node = el('div', { class: 'verdict-overlay', 'aria-hidden': 'true' });
   let waiting = 0;
+  /** 아직 낭독되지 않은 대기 판정의 문면 — 시각이 자리를 잃어도 이것만은 남겨야 한다 (REQ-807). */
+  let unspoken = null;
 
   /** 확정 연출이 아직 빚진 시간 — 이미 충분히 보였거나 확정 상태가 아니면 0 이다. */
   function owedMs() {
@@ -95,11 +97,13 @@ export function createVerdictOverlay({ heldSince = () => null } = {}) {
       const deferMs = owedMs();
       const paint = () => {
         waiting = 0;
+        unspoken = null;
         if (extreme) shakeShell();
         show({ mark: view.mark, label: gradeLabel(grade), cls: view.cls, punched: extreme, deferMs });
         onShow?.();
       };
       if (deferMs <= 0) { paint(); return; }
+      unspoken = gradeLabel(grade);
       waiting = setTimeout(paint, deferMs);
     },
     /** 화면 teardown·다음 예고가 부르는 자리 — 남겨 두면 판정이 다음 예고 위에 겹쳐 남는다. */
@@ -107,6 +111,9 @@ export function createVerdictOverlay({ heldSince = () => null } = {}) {
       // 대기 중인 판정이 살아남으면 다음 예고 위에 뒤늦게 뜬다.
       clearTimeout(waiting);
       waiting = 0;
+      // 시계가 튀어(백그라운드 복귀) 대기가 통째로 넘어간 초에도 판정이 있었다는 사실은 남긴다 —
+      // 자리를 내주는 것은 시각 층뿐이고 낭독은 유실되지 않는다 (REQ-807).
+      if (unspoken !== null) { announce(unspoken); unspoken = null; }
       clear(node);
     },
   };
