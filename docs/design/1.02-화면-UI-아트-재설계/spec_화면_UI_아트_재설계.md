@@ -8,7 +8,7 @@ engine: HTML5 (vanilla JS, zero dependency, no build step)
 art_contract: true
 vault_path: docs/design/1.02-화면-UI-아트-재설계/spec_화면_UI_아트_재설계.md
 created: 2026-09-02 13:10
-updated: 2026-09-02 13:10
+updated: 2026-09-02 14:26
 tags:
   - 게임개발
   - 문서유형/설계서
@@ -405,9 +405,9 @@ tags:
 
 | id | class | spec_ref | filename | format | dimensions | alpha | bgm_loop | count | tier | consistency_group | semantic_intent | license_meta | repo_path |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| sil_master | sprite | REQ-932 | sil_master_*.png | png | 512x1024 | true | — | 6 | final | ink_silhouette | 사부의 먹 실루엣 6자세 — 대치(S1·S6 승자 겸용) · 도장 서기(S2) · 잘린 뒷모습 관전(S4) · 시범 몸통과 팔 분리 2파일(S5) · 엎드림(S6 패배). 붓으로 친 단색 실루엣이며 얼굴 이목구비가 없다. | AI 생성(MJ base + NB variant) · 상업 이용 가능 · 생성 이력 `docs/ai-log.md` 기록 | assets/art/silhouettes/ |
-| sil_disciple | sprite | REQ-932 | sil_disciple_*.png | png | 512x1024 | true | — | 4 | final | ink_silhouette | 제자의 먹 실루엣 4자세 — 도장 서기(S2) · 아레나 대치(S4) · 따라 하기 몸통과 팔 분리 2파일(S5). 사부보다 작고 어깨가 좁아 한눈에 갈린다. | AI 생성(MJ base + NB variant) · 상업 이용 가능 · 생성 이력 `docs/ai-log.md` 기록 | assets/art/silhouettes/ |
-| sil_challenger | sprite | REQ-932 | sil_challenger_*.png | png | 512x1024 | true | — | 2 | final | ink_silhouette | 도전자의 먹 실루엣 2자세 — 대치(S1·S4·S6 승자 겸용) · 엎드림(S6 승리). 사부와 실루엣만으로 구분되도록 도포 자락과 무기 실루엣이 다르다. | AI 생성(MJ base + NB variant) · 상업 이용 가능 · 생성 이력 `docs/ai-log.md` 기록 | assets/art/silhouettes/ |
+| sil_master | sprite | REQ-932 | sil_master_{pose}.png | png | 512x1024 | true | — | 6 | final | ink_silhouette | 사부의 먹 실루엣 6자세 — 대치(S1·S6 승자 겸용) · 도장 서기(S2) · 잘린 뒷모습 관전(S4) · 시범 몸통과 팔 분리 2파일(S5) · 엎드림(S6 패배). 붓으로 친 단색 실루엣이며 얼굴 이목구비가 없다. | AI 생성(MJ base + NB variant) · 상업 이용 가능 · 생성 이력 `docs/ai-log.md` 기록 | assets/art/silhouettes/ |
+| sil_disciple | sprite | REQ-932 | sil_disciple_{pose}.png | png | 512x1024 | true | — | 4 | final | ink_silhouette | 제자의 먹 실루엣 4자세 — 도장 서기(S2) · 아레나 대치(S4) · 따라 하기 몸통과 팔 분리 2파일(S5). 사부보다 작고 어깨가 좁아 한눈에 갈린다. | AI 생성(MJ base + NB variant) · 상업 이용 가능 · 생성 이력 `docs/ai-log.md` 기록 | assets/art/silhouettes/ |
+| sil_challenger | sprite | REQ-932 | sil_challenger_{pose}.png | png | 512x1024 | true | — | 2 | final | ink_silhouette | 도전자의 먹 실루엣 2자세 — 대치(S1·S4·S6 승자 겸용) · 엎드림(S6 승리). 사부와 실루엣만으로 구분되도록 도포 자락과 무기 실루엣이 다르다. | AI 생성(MJ base + NB variant) · 상업 이용 가능 · 생성 이력 `docs/ai-log.md` 기록 | assets/art/silhouettes/ |
 | sfx_key | sfx | REQ-922 | sfx_key.ogg | ogg | — | — | — | 1 | final | dojo_sfx | 방향 키 하나를 칠 때의 짧고 건조한 타격음. 재생 시 피치가 랜덤화되므로 자체는 무색·무잔향이어야 한다. | Suno Sounds 생성 · 상업 이용 가능 · 생성 이력 `docs/ai-log.md` 기록 | assets/audio/ |
 | sfx_lock | sfx | REQ-923 | sfx_lock.ogg | ogg | — | — | — | 1 | final | dojo_sfx | 후보가 1개로 확정되는 순간의 잠김음. 금테 확대와 같은 순간이라 「맞물렸다」로 읽혀야 한다. | Suno Sounds 생성 · 상업 이용 가능 · 생성 이력 `docs/ai-log.md` 기록 | assets/audio/ |
 | sfx_break | sfx | REQ-924 | sfx_break.ogg | ogg | — | — | — | 1 | final | dojo_sfx | 완파 판정의 결정음. 6단 중 유일하게 통쾌해야 하는 소리이며 화면 흔들림과 동시에 난다. | Suno Sounds 생성 · 상업 이용 가능 · 생성 이력 `docs/ai-log.md` 기록 | assets/audio/ |
