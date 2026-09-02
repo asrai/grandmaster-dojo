@@ -13,11 +13,11 @@
 // `unicode-range` 한 곳에서만 정해진다.
 
 // 수집기의 선언된 한계 (best-effort, 여기서 멈춘다): 주석 제거는 따옴표·템플릿 보간·정규식
-// 리터럴까지 모델링하되, 정규식과 나눗셈을 직전 유의 토큰으로 가르므로 `}` 뒤의 `/` 처럼
-// 블록 끝과 객체 리터럴 끝이 같은 글자인 자리에서는 어긋날 수 있다. 어긋나면 주석이 남아
-// 과수집되고, `src/**` 주석의 범위 밖 기호(2026-09 실측 `≥`·`δ`·`∞` 3자)가 [A] red 로 뜬다 —
-// 오차단이며 메시지가 그 글자를 짚어 준다. 완결은 JS 파서를 들여야 닫히는데 무의존 계약과
-// 맞바꿀 값이 아니다. 주석 기호가 몰려 있는 CJK 구두점은 `unicode-range` 가 덮어 두었다.
+// 리터럴까지 모델링하되, 정규식과 나눗셈은 직전 토큰으로만 가르므로 `}` 뒤의 `/` 처럼 블록 끝과
+// 객체 리터럴 끝이 같은 글자인 자리에서는 어긋날 수 있다. 어긋나면 주석이 남아 과수집되고,
+// `src/**` 주석의 범위 밖 기호(2026-09 실측 `≥`·`δ`·`∞` 3자)가 [A] red 로 뜬다 — 오차단이며
+// 메시지가 그 글자를 짚어 준다. 완결은 JS 파서를 들여야 닫히는데 무의존 계약과 맞바꿀 값이
+// 아니다. 주석 기호가 몰려 있는 CJK 구두점은 `unicode-range` 가 덮어 두었다.
 
 import { existsSync, readFileSync, readdirSync, writeSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -30,8 +30,13 @@ const ENTRY_HTML = 'index.html';
 /* ── 1. 출하 번들이 그리는 글자 ────────────────────────────────────────── */
 
 /** 주석은 렌더되지 않으므로 뺀다 — 넣으면 읽히지도 않을 글리프로 서브셋이 부푼다. */
-// `/` 가 나눗셈인지 정규식 시작인지는 직전 유의 토큰이 가른다 — 값으로 끝났으면 나눗셈이다.
+// `/` 가 나눗셈인지 정규식 시작인지는 직전 유의 토큰이 가른다 — 값으로 끝났으면 나눗셈이고,
+// 그 값처럼 보이는 것이 식을 여는 키워드면 다시 정규식이다.
 const DIV_AFTER = /[\w$)\]]/u;
+const EXPR_KEYWORDS = new Set([
+  'return', 'throw', 'yield', 'typeof', 'instanceof', 'in', 'of', 'case',
+  'delete', 'void', 'new', 'do', 'else', 'await',
+]);
 
 /** 정규식 리터럴을 건너뛴다 — 그 안의 따옴표를 문자열로 읽으면 뒤따르는 주석이 통째로 남는다. */
 function skipRegex(src, start) {
@@ -53,6 +58,7 @@ function stripJsComments(src) {
   let state = 'code';
   let depth = 0;
   let prev = '';
+  let word = '';
   let i = 0;
   while (i < src.length) {
     const c = src[i];
@@ -60,9 +66,9 @@ function stripJsComments(src) {
     if (state === 'code') {
       if (c === '/' && d === '/') { state = 'line'; i += 2; continue; }
       if (c === '/' && d === '*') { state = 'block'; i += 2; continue; }
-      if (c === '/' && !DIV_AFTER.test(prev)) {
+      if (c === '/' && (!DIV_AFTER.test(prev) || EXPR_KEYWORDS.has(word))) {
         const end = skipRegex(src, i);
-        if (end > i) { out.push(src.slice(i, end + 1)); prev = '/'; i = end + 1; continue; }
+        if (end > i) { out.push(src.slice(i, end + 1)); prev = '/'; word = ''; i = end + 1; continue; }
       }
       if (c === "'" || c === '"' || c === '`') { frames.push({ state, depth }); state = c; }
       else if (c === '{') depth += 1;
@@ -72,6 +78,9 @@ function stripJsComments(src) {
         else if (frames.length > 0) ({ state, depth } = frames.pop());
       }
       if (!/\s/u.test(c)) prev = c;
+      // 공백은 낱말을 끊지 않는다 — `return /re/` 의 `/` 직전 글자는 공백이 아니라 `n` 이다.
+      if (/[\w$]/u.test(c)) word += c;
+      else if (!/\s/u.test(c)) word = '';
       out.push(c); i += 1; continue;
     }
     if (state === 'line') { if (c === '\n') { state = 'code'; out.push(c); } i += 1; continue; }
@@ -80,7 +89,7 @@ function stripJsComments(src) {
     if (state === '`' && c === '$' && d === '{') {
       frames.push({ state, depth }); state = 'code'; depth = 0; out.push(c, d); i += 2; continue;
     }
-    if (c === state) { ({ state, depth } = frames.pop() ?? { state: 'code', depth }); prev = c; }
+    if (c === state) { ({ state, depth } = frames.pop() ?? { state: 'code', depth }); prev = c; word = ''; }
     out.push(c); i += 1;
   }
   return out.join('');
@@ -110,22 +119,30 @@ function decodeCssEscapes(css) {
 }
 
 const BLOCK_RE = /<(style|script)\b[^>]*>([\s\S]*?)<\/\1>/gi;
-const NAMED_REF_RE = /&([A-Za-z][A-Za-z0-9]*);/g;
+// HTML 은 `;` 없는 참조도 해독하므로 종결자를 선택으로 둔다. 명명형은 XML 5종의 `;` 형태만
+// 허용하고 나머지는 거부한다 — 목록이 2천 항의 열린 집합이라 해독하는 쪽은 닫히지 않는다.
+const NUMERIC_REF_RE = /&#(?:[xX]([0-9a-fA-F]+)|([0-9]+));?/g;
+const ANY_NAMED_REF_RE = /&([A-Za-z][A-Za-z0-9]*)(;?)/g;
 const XML_REFS = new Set(['amp', 'lt', 'gt', 'quot', 'apos']);
 
-/** `&#x65B0;` 는 소스에 ASCII 로 적히지만 화면에는 글리프로 나온다 — CSS·JS 이스케이프와 같은 축이다. */
+/** `&#x65B0;` 은 소스에 ASCII 로 적히지만 화면에는 글리프로 나온다 — CSS·JS 이스케이프와 같은 축이다. */
 function decodeNumericRefs(markup) {
   const cps = [];
-  for (const m of markup.matchAll(/&#(?:[xX]([0-9a-fA-F]+)|([0-9]+));/g)) {
+  for (const m of markup.matchAll(NUMERIC_REF_RE)) {
     const cp = Number.parseInt(m[1] ?? m[2], m[1] ? 16 : 10);
     if (cp > 0x20 && cp <= 0x10ffff) cps.push(String.fromCodePoint(cp));
   }
   return cps.join('');
 }
 
-/** 명명 문자 참조는 목록이 2천 항의 열린 집합이라 해독하지 않는다 — 대신 쓰지 못하게 막는다. */
-function namedRefs(markup) {
-  return [...new Set([...markup.matchAll(NAMED_REF_RE)].map((m) => m[1]))].filter((n) => !XML_REFS.has(n)).sort();
+/** `<script>`·`<style>` 는 raw text 라 참조를 해독하지 않는다 — 그 안의 `&&` 를 참조로 읽으면 오차단이다. */
+const markupText = (html) => stripHtmlComments(html).replace(BLOCK_RE, ' ');
+
+function namedRefs(html) {
+  const found = [...markupText(html).matchAll(ANY_NAMED_REF_RE)]
+    .filter((m) => !(m[2] === ';' && XML_REFS.has(m[1])))
+    .map((m) => `&${m[1]}${m[2]}`);
+  return [...new Set(found)].sort();
 }
 
 /** `<style>`·`<script>` 는 언어가 달라 주석 문법도 다르다 — 블록별로 갈라 벗긴다. */
@@ -144,9 +161,8 @@ function renderableTextFromHtml(html) {
     }
     last = m.index + m[0].length;
   }
-  const tail = body.slice(last);
-  parts.push(tail);
-  return `${parts.join('\n')}\n${decodeNumericRefs(body)}`;
+  parts.push(body.slice(last));
+  return `${parts.join('\n')}\n${decodeNumericRefs(markupText(html))}`;
 }
 
 function walk(dir, out = []) {
@@ -376,10 +392,10 @@ function run() {
     return 1;
   }
 
-  const named = namedRefs(stripHtmlComments(html));
+  const named = namedRefs(html);
   if (named.length > 0) {
     fail(`::error::[E] index.html 에 명명 문자 참조가 있다 (${named.length}건) — 이 게이트는 해독하지 않으므로 커버리지가 무의미해진다`);
-    fail(`    ${named.map((n) => `&${n};`).join(' ')}`);
+    fail(`    ${named.join(' ')}`);
     fail('    조치: 그 자리에 유니코드 문자를 그대로 적는다 (문서는 UTF-8 이다). 수치형 참조(&#x2026;)는 해독하므로 그대로 써도 된다.');
     return 1;
   }
