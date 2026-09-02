@@ -2423,7 +2423,7 @@ suite('원장 ms 판독은 한 벌 (#132)', () => {
 
 // ------------------------- 12-a-3. 크롬 조립 계약 — 띠 원장 · 히트 축 · 포커스 소유 (#133)
 
-suite('크롬 원장은 한 토큰 한 값 · 포커스 소유는 조립 한 곳 (#133)', () => {
+suite('크롬 원장은 한 토큰 한 값 (#133)', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
   // (I2) 두 띠가 같은 토큰을 쓰는가. 규칙 블록을 떼어내지 못하면 아래 부재 단정이 전부 공허하게
@@ -2448,13 +2448,17 @@ suite('크롬 원장은 한 토큰 한 값 · 포커스 소유는 조립 한 곳
   eq((rootBlock.match(/44px/g) ?? []).length, 4,
     ':root 안 부분 문자열 히트는 4건 — 경계 인식이 그중 -144px 하나를 뺀다');
 
-  const outside = html.slice(0, rootAt.index) + html.slice(rootAt.index + rootBlock.length);
+  // 추출이 빗나갔을 때 예외로 죽으면 아래 단정이 통째로 건너뛰어진다 — 계수로 red 를 낸다.
+  const outside = rootAt ? html.slice(0, rootAt.index) + html.slice(rootAt.index + rootBlock.length) : '';
   ok(outside.length > 1000, `:root 밖 모집단이 실재한다 — ${outside.length}자`);
   deepEq(outside.match(HIT44) ?? [], [], ':root 밖에 44px 리터럴이 없다');
   // 부재만 두면 「그 규칙을 통째로 지웠다」도 통과한다 — 치환이 실제로 앉았음을 함께 문다.
   ok((outside.match(/var\(--hit-min\)/g) ?? []).length >= 3,
     ':root 밖 히트 축이 --hit-min 을 부른다 — 치환 실재');
+});
 
+// 원장 축과 스위트를 가르는 것은 격리다 — 한쪽 추출이 무너져도 다른 축의 단정이 함께 침묵하지 않는다.
+suite('재렌더 포커스의 소유는 조립 한 곳 (#133)', () => {
   // (I4) 재렌더 포커스의 소유는 `dom.mjs` 의 `composeScreen` 한 곳이다. 화면이 자기 손으로
   // 되돌리면 id 가 전이하는 경로에서 헛돌고, 그 헛돎이 화면마다 따로 재발한다.
   // 모집단은 화면 모듈뿐 — `composeScreen` 의 소유 호출은 이 계약의 정본이라 의도적으로 밖이다.
