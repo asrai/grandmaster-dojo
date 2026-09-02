@@ -67,6 +67,12 @@ jobs:
           node tests/kill-readout.mjs --emit "$OUT"
           node tests/kill-readout.mjs "$OUT"
 
+      - name: 폰트 커버리지 게이트
+        # 서브셋 문자 집합은 사람이 손으로 관리하므로, 새 문구가 두부(□)로 렌더되는 것을
+        # 잡을 층이 이것뿐이다 (REQ-804). 생성기(`subset-fonts.sh`)는 개발자 수동 실행이라
+        # `pyftsubset` 은 러너에 올리지 않는다 — 여기서는 커밋된 woff2 만 읽는다.
+        run: node scripts/check-font-coverage.mjs
+
       - name: comment-lint self-test
         run: python3 scripts/comment-lint.py --self-test
 
