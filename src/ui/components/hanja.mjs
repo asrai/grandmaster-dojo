@@ -8,8 +8,7 @@ import { el } from '../dom.mjs';
  * @param {string} text 한자 문자열
  * @param {object} [p]
  * @param {boolean} [p.stacked] 한글 우측 세로열로 세울지 — 기본은 옆·아래 가로 병기다 (REQ-827·863)
- * @param {string} [p.mods] 호출부가 얹는 상태 클래스
  */
-export function hanja(text, { stacked = false, mods = '' } = {}) {
-  return el('span', { class: `hj${stacked ? ' stacked' : ''}${mods ? ` ${mods}` : ''}`, text });
+export function hanja(text, { stacked = false } = {}) {
+  return el('span', { class: `hj${stacked ? ' stacked' : ''}`, text });
 }

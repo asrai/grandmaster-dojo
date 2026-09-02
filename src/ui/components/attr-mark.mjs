@@ -10,9 +10,16 @@ import { ATTR_VIEW } from '../theme.mjs';
  * @param {string} [p.size] 크기 변형 클래스 (`big`)
  */
 export function attrMark(attrId, { size = '' } = {}) {
-  const view = ATTR_VIEW[attrId];
+  const view = viewOf(attrId);
   return el('span', { class: `mark ${size}`.trim(), text: view.shape, style: `color:${view.color}` });
 }
 
 /** 죽간·행의 색띠에 꽂는 속성 색 — 호출부가 인라인 `--attr` 로 넘긴다. */
-export const attrTone = (attrId) => ATTR_VIEW[attrId].color;
+export const attrTone = (attrId) => viewOf(attrId).color;
+
+// 표시 규약이 빠진 속성은 형태 없는 빈 표식으로 그려지므로, 그 자리에서 터뜨린다.
+function viewOf(attrId) {
+  const view = ATTR_VIEW[attrId];
+  if (!view) throw new Error(`표시 규약이 없는 속성: ${attrId}`);
+  return view;
+}

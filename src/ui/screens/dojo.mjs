@@ -52,8 +52,8 @@ const rowToggleId = (styleId) => `row-toggle-${styleId}`;
 let chosen = null;
 
 /**
- * 초식 성 게이지 (REQ-707·817) — 계단 자체는 4화면이 공유하는 컴포넌트가 그리고, 여기서는
- * 그 옆에 성 배지와 다음 계단 안내를 붙인다.
+ * 초식 성 게이지 (REQ-707·817) — 계단 자체는 공유 컴포넌트가 그리고, 여기서는 그 옆에
+ * 성 배지와 다음 계단 안내를 붙인다.
  */
 function rankGauge(session, style) {
   const { rank, pts } = session.progress.styles[style.id];
