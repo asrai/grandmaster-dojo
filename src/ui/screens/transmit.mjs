@@ -10,7 +10,7 @@ import { stageBand } from '../band.mjs';
 import { attrMark, attrTone } from '../components/attr-mark.mjs';
 import { hanja } from '../components/hanja.mjs';
 import { STAIR_TONE, rankStair } from '../components/rank-stair.mjs';
-import { SFX } from '../audio.mjs';
+import { CUE, play } from '../audio.mjs';
 import {
   ART_HANJA, ART_ID, ART_NAME, enterTransmit, rankOfStyle,
 } from '../session.mjs';
@@ -118,7 +118,7 @@ export function renderTransmit(ctx) {
     if (learned) return;
     learned = true;
     clearTimeout(timer);
-    SFX.transmit();
+    play(CUE.TRANSMIT);
     // 팔이 사부와 나란해지는 것이 「익혔다」의 전부다 (REQ-861).
     pupil.classList.remove('following');
     paintRows(true);

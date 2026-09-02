@@ -289,6 +289,13 @@ body {
   content: ''; position: absolute; left: 50%; top: 50%;
   width: var(--hit); height: var(--hit); transform: translate(-50%, -50%);
 }
+/* 음소거 (REQ-926) — 싸우는 중이 아니라 들어가기 전에 정하는 설정이라 이 줄에 산다. 상태를
+   색이 아니라 문면으로도 말해야 낭독에서 「지금 켜져 있는가」가 읽힌다. */
+.top-band .mute {
+  margin-left: auto; flex: none; padding: 2px 8px;
+  font-size: 11px; border-radius: 4px; color: var(--dim);
+}
+.top-band .mute.off { color: var(--c5); border-color: color-mix(in srgb, var(--c5) 45%, transparent); }
 .top-band .top-label { font-weight: 700; color: var(--gold); }
 .top-band .top-coins { margin-left: auto; }
 .top-band label { display: flex; gap: 4px; align-items: center; color: var(--dim); }

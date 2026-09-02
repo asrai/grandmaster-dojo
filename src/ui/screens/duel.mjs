@@ -5,7 +5,7 @@
 
 import { BALANCE } from '../../balance.mjs';
 import { composeScreen, el } from '../dom.mjs';
-import { SFX } from '../audio.mjs';
+import { CUE, play, playVerdict } from '../audio.mjs';
 import { styleById } from '../../core.mjs';
 import { SCREEN } from '../theme.mjs';
 import { SPOT, createArena } from '../arena.mjs';
@@ -115,15 +115,12 @@ export function startDuel(ctx) {
         // 소리는 흔들림·글자와 한 덩어리로 읽혀야 해서 판정이 실제로 뜨는 순간에 맡긴다 —
         // 확정 연출을 기다리는 초에는 그만큼 함께 늦는다 (REQ-826).
         // 죽간이 다시 그려지기 전에 예약한다 — 대기 시간은 지금 화면에 뜬 금테를 기준으로 잰다.
-        verdict.showGrade(resolved.grade, {
-          onShow: () => (resolved.grade === 'crush' ? SFX.crush
-            : resolved.dmgIn > 0 ? SFX.hit : SFX.fire)(),
-        });
+        verdict.showGrade(resolved.grade, { onShow: () => playVerdict(resolved.grade) });
         ctx.pad.render();
 
         if (!changes) return;
         if (changes.rank) {
-          SFX.rank();
+          play(CUE.RANK_UP);
           const name = styleById(changes.rank.style).name;
           toast(changes.rank.to >= BALANCE.rankMax
             ? `${name} — 완벽히 깨달음`
@@ -146,7 +143,7 @@ export function startDuel(ctx) {
     accepting: () => match.phase === PHASE.WINDOW,
     // 봇이 「이기는 색」을 화면과 같은 근거로 고를 수 있게 그 초의 예고를 함께 건넨다 (REQ-605).
     foeStyle: () => match.view().telegraphed,
-    onFire: (fired) => { SFX.fire(); match.fire(fired); },
+    onFire: (fired) => { play(CUE.FIRE); match.fire(fired); },
   });
   match.start();
   return () => { match.stop(); verdict.hide(); };

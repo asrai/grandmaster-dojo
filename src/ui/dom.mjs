@@ -2,6 +2,7 @@
 // 전부 src/ui/ 아래에만 산다.
 
 import { ARROW } from '../balance.mjs';
+import { isMuted, toggleMute } from './audio.mjs';
 
 export const $ = (id) => document.getElementById(id);
 
@@ -75,6 +76,19 @@ export function topBand(session, artName, { onLeave = null } = {}) {
     session.accessibilityToggles += 1;
   });
 
+  // 음소거는 싸우는 중이 아니라 들어가기 전에 정하는 설정이라, 실전 3단 좌표를 건드리지 않는
+  // 이 설정 줄이 그 자리다 (REQ-926). 시안에 자리가 지정된 컨트롤이 아니다.
+  const mute = el('button', { class: 'mute' });
+  const paintMute = () => {
+    const off = isMuted();
+    mute.textContent = off ? '소리 꺼짐' : '소리 켜짐';
+    mute.setAttribute('aria-pressed', String(off));
+    mute.setAttribute('aria-label', off ? '음소거 해제' : '음소거');
+    mute.classList.toggle('off', off);
+  };
+  mute.addEventListener('click', () => { toggleMute(); paintMute(); });
+  paintMute();
+
   const node = el('header', { class: 'top-band' }, [
     el('div', { class: 'top-row' }, [
       onLeave ? el('button', { class: 'leave', text: '←', 'aria-label': '물러나기', onclick: onLeave }) : null,
@@ -84,6 +98,7 @@ export function topBand(session, artName, { onLeave = null } = {}) {
     ]),
     el('div', { class: 'top-row' }, [
       el('label', {}, [a11y, el('span', { text: '응수 창 ×1.3 (쉬움)' })]),
+      mute,
     ]),
   ]);
 
@@ -92,6 +107,7 @@ export function topBand(session, artName, { onLeave = null } = {}) {
     labelEl.textContent = session.label;
     coinsEl.textContent = `${session.coins} 냥`;
     a11y.checked = session.accessibility;
+    paintMute();
   };
   paint();
   return { node, paint };

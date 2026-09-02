@@ -7,6 +7,7 @@ import { clear, el } from './dom.mjs';
 import { attrMark, attrTone } from './components/attr-mark.mjs';
 import { hanja } from './components/hanja.mjs';
 import { TABLET, tabletStates } from './tablet-state.mjs';
+import { CUE, play } from './audio.mjs';
 
 /** 전이 길이는 시각 토큰이라 원장(`:root`)이 값을 갖고 여기는 이름만 부른다. */
 const exitMs = () => parseFloat(
@@ -139,7 +140,11 @@ export function createTablets({ soloEmphasis = false } = {}) {
       const confirmed = soloEmphasis && next.length === 1;
       // 확정 연출이 얼마나 오래 보였는지는 판정 대기의 입력이라 그 시각을 여기서 잡는다 (REQ-826).
       if (!confirmed) onlyAt = null;
-      else if (onlyAt === null) onlyAt = performance.now();
+      else if (onlyAt === null) {
+        onlyAt = performance.now();
+        // 확정음은 금테 확대와 **같은 순간**이라, 그 전이를 잡는 이 자리 말고는 붙을 데가 없다 (REQ-923).
+        play(CUE.CONFIRM);
+      }
     },
     clear() {
       for (const id of [...sinking.keys()]) bury(id);

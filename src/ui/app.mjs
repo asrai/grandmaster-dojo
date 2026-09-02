@@ -4,10 +4,11 @@
 import { BALANCE } from '../balance.mjs';
 import { createBot } from '../bot.mjs';
 import { $ } from './dom.mjs';
+import { initAudio, resumeAudio } from './audio.mjs';
 import { mountCheatPanel } from './cheat.mjs';
 import { createPad } from './pad.mjs';
 import {
-  createSession, enterPhase, exportPayload, logSessionMeta, setBotRunning,
+  createSession, enterPhase, exportPayload, flushScreenView, logEvent, logSessionMeta, setBotRunning,
 } from './session.mjs';
 import { renderDojo } from './screens/dojo.mjs';
 import { renderPreview, startDispatch } from './screens/dispatch.mjs';
@@ -96,6 +97,8 @@ if (preroll >= BALANCE.resolveMs) {
 
 /** 로그 내보내기 (REQ-602) — 위반 목록을 함께 실어, 결손 로그가 조용히 판독에 쓰이지 않게 한다. */
 function exportLog() {
+  // 화면 체류는 이탈에서 찍히므로, 그대로 내보내면 지금 보고 있는 화면이 통째로 빠진다.
+  flushScreenView(session);
   const payload = exportPayload(session);
   if (payload.log_violations.length) {
     window.alert(`로그 스키마 위반 ${payload.log_violations.length}건이 함께 실린다`
@@ -144,6 +147,31 @@ const refreshCheat = mountCheatPanel({
 
 // 도구 띠가 세로를 먹어 무대 배율이 1 밑으로 내려가므로, 목업 대조 스크린샷은 이 스위치로 1:1 을 되찾는다.
 if (new URLSearchParams(window.location.search).get('tools') === '0') $('tools').hidden = true;
+
+// 오디오는 컨텍스트를 정지 상태로 먼저 세우고 파일을 디코드해 둔다 — 첫 제스처가 오는 순간
+// 이미 준비돼 있어야 「그 입력부터 소리가 난다」가 성립한다 (REQ-920·921).
+initAudio({ log: (event, fields) => logEvent(session, event, fields), now: () => performance.now() });
+// 자동재생 정책을 푸는 것은 제스처 하나뿐이라, 어느 입력이 첫 입력이든 같은 자리를 지난다 (REQ-921).
+for (const type of ['pointerdown', 'keydown']) {
+  window.addEventListener(type, resumeAudio, { once: true, capture: true });
+}
+
+/**
+ * 서체 로드 계측 (REQ-803) — 서브셋의 효과가 「로딩 비용이 주 변수」라는 진단의 검증이므로,
+ * 실제로 받은 바이트와 그것이 서브셋 파일이었는지를 함께 남긴다.
+ */
+function logFontReady() {
+  const woff2 = performance.getEntriesByType('resource').filter((e) => e.name.endsWith('.woff2'));
+  const declared = [...document.styleSheets[0].cssRules]
+    .filter((rule) => rule instanceof CSSFontFaceRule).length;
+  logEvent(session, 'font_ready', {
+    ms: Math.round(performance.now()),
+    bytes: woff2.reduce((sum, e) => sum + (e.encodedBodySize || e.transferSize || 0), 0),
+    // 선언한 면을 전부 받았는가 — 한 벌이라도 빠지면 그 범위가 폴백 산세리프로 그려진다.
+    subset_hit: declared > 0 && woff2.length >= declared,
+  });
+}
+document.fonts.ready.then(logFontReady, logFontReady);
 
 $('exportBtn').addEventListener('click', exportLog);
 $('botBtn').addEventListener('click', () => {

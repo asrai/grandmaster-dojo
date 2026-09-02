@@ -11,7 +11,7 @@ import { stageBand } from '../band.mjs';
 import { REASON_VIEW, attrLabel, winAttrOf } from '../theme.mjs';
 import { attrMark, attrTone } from '../components/attr-mark.mjs';
 import { hanja } from '../components/hanja.mjs';
-import { SFX } from '../audio.mjs';
+import { CUE, play, playVerdict } from '../audio.mjs';
 import { SPOT, createArena } from '../arena.mjs';
 import { createMatch } from '../match.mjs';
 import {
@@ -254,8 +254,8 @@ export function startDispatch(ctx) {
       onVerdict(view, ranked) {
         renderHp(view);
         verdict.showGrade(view.verdict.grade);
-        (view.verdict.grade === 'crush' ? SFX.crush : SFX.hit)();
-        if (ranked) SFX.rank();
+        playVerdict(view.verdict.grade);
+        if (ranked) play(CUE.RANK_UP);
       },
       onEnd(view) {
         logDispatchResult(session, { mission, win: view.outcome.win });

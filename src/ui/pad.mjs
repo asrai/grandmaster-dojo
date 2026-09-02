@@ -7,7 +7,7 @@ import { isOneTapRank } from '../core.mjs';
 import { arrowRow, clear, el, shake } from './dom.mjs';
 import { createTablets } from './tablets.mjs';
 import { attrTone } from './components/attr-mark.mjs';
-import { SFX } from './audio.mjs';
+import { CUE, play } from './audio.mjs';
 
 const KEYMAP = {
   ArrowUp: 'U', ArrowDown: 'D', ArrowLeft: 'L', ArrowRight: 'R',
@@ -58,11 +58,11 @@ export function createPad() {
     const result = active.input.press(dir, device);
     const button = dirButtons.get(dir);
     if (result.accepted) {
-      SFX.key();
+      play(CUE.KEY);
       button?.classList.add('down');
       setTimeout(() => button?.classList.remove('down'), 90);
     } else {
-      SFX.ignore();
+      play(CUE.IGNORE);
       shake(button ?? root);
       shake(seqEl.firstChild ?? root);
       active.onIgnore?.();
@@ -74,7 +74,7 @@ export function createPad() {
   function reset() {
     if (!accepting() || locked()) return;
     active.input.reset();
-    SFX.reset();
+    play(CUE.RESET);
     render();
   }
 
