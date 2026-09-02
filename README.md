@@ -47,7 +47,10 @@ python3 -m http.server 8000
 ```bash
 node tests/harness.mjs        # 헤드리스 회귀 — 판정 등급·피해 정수·상태 전이·밸런스 게이트·봇 1사이클
 node tests/kill-readout.mjs   # kill 판독 — 봇 1사이클을 만들어 (a)(b)(d)·ignore_rate 를 산출
+node scripts/check-font-coverage.mjs   # 폰트 커버리지 — 서브셋이 못 덮는 글자를 열거한다
 ```
+
+폰트는 사용 글자 기반 서브셋이라 **새 문구를 넣으면 커버리지 게이트가 red 로 잡는 것이 정상**이다. 그때는 `bash scripts/subset-fonts.sh` 로 `assets/fonts/` 의 woff2 를 다시 만들어 같은 커밋에 담는다 (생성에는 `fonttools`·`brotli` 와 Noto Serif KR 가변 폰트가 필요하며, 절차는 그 스크립트 헤더에 있다).
 
 `src/balance.mjs`(콘텐츠 테이블 + `balance.data.json` 로더) · `src/core.mjs`(순수 로직) · `src/log.mjs`(로그 스키마) · `src/bot.mjs`(봇·헤드리스 사이클)는 DOM 을 모르므로 브라우저와 하네스가 같은 모듈을 쓴다. DOM 을 아는 코드는 `src/ui/` 아래에 있고, 그중 입력기 `src/ui/sequence-input.mjs` · 대련 루프 `src/ui/match.mjs` · 세션 상태 `src/ui/session.mjs` · 계측 배선 `src/ui/wiring.mjs` 는 DOM-free 라 하네스가 함께 회귀한다 — 파견 밸런스 게이트도 사본이 아니라 이 대련 루프를 가상 시계로 돌려 검증하고, 화면과 헤드리스 사이클은 같은 계측 배선 한 벌 위에 각자의 렌더·구동만 얹는다.
 

@@ -21,7 +21,9 @@ export function createPad() {
   const tablets = createTablets({ soloEmphasis: true });
   const seqEl = el('div', { class: 'pad-seq' });
   const resetBtn = el('button', { class: 'pad-reset' }, [
-    el('span', { text: '리셋' }), el('br'), el('span', { class: 'dim', text: 'Space' }),
+    // 아이콘은 파일 경로가 아니라 id 로 온다 — 경로는 index.html 의 `icon-<id>` 표에만 있다 (REQ-931).
+    el('span', { class: 'icon icon-reset', 'aria-hidden': 'true' }),
+    el('span', { text: '리셋' }), el('span', { class: 'dim', text: 'Space' }),
   ]);
   const dirButtons = new Map(DIRS.map(([dir, label, glyph]) => [
     dir, el('button', { 'data-dir': dir, 'aria-label': label, text: glyph }),

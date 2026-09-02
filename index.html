@@ -4,7 +4,35 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>일대종사 一代宗師</title>
+<!-- 본문 주력 서체는 첫 화면부터 전 표면을 그리므로, 스타일시트 파싱을 기다리지 않고 먼저 받는다 (REQ-803). -->
+<link rel="preload" href="assets/fonts/NanumMyeongjo-subset-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/NanumMyeongjo-subset-800.woff2" as="font" type="font/woff2" crossorigin>
+<!-- 한자 병기는 첫 화면부터 뜨므로 F2 도 함께 물린다 — 늦게 받으면 그 자리만 최대 block 기간 비어 보인다. -->
+<link rel="preload" href="assets/fonts/NotoSerifKR-hanja-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/NotoSerifKR-hanja-800.woff2" as="font" type="font/woff2" crossorigin>
 <style>
+/* 한글·라틴(F1)과 한자(F2)가 같은 패밀리 안에서 unicode-range 로 갈리므로, 한자 병기에 별도
+   font-family 를 걸 자리가 없다 — 그래서 `font-display: block` 이 폴백 산세리프가 잠깐이라도
+   표면에 뜨는 것을 막는 유일한 수단이다 (REQ-812). woff2 는 `scripts/subset-fonts.sh` 산출물. */
+@font-face {
+  font-family: 'Dojo'; src: url('assets/fonts/NanumMyeongjo-subset-400.woff2') format('woff2');
+  font-weight: 400; font-display: block;
+  unicode-range: U+0020-024F,U+1100-11FF,U+2000-206F,U+20A0-20BF,U+2190-21FF,U+25A0-25FF,U+3000-303F,U+3130-318F,U+AC00-D7AF,U+FF00-FFEF;
+}
+@font-face {
+  font-family: 'Dojo'; src: url('assets/fonts/NanumMyeongjo-subset-800.woff2') format('woff2');
+  font-weight: 800; font-display: block;
+  unicode-range: U+0020-024F,U+1100-11FF,U+2000-206F,U+20A0-20BF,U+2190-21FF,U+25A0-25FF,U+3000-303F,U+3130-318F,U+AC00-D7AF,U+FF00-FFEF;
+}
+@font-face {
+  font-family: 'Dojo'; src: url('assets/fonts/NotoSerifKR-hanja-400.woff2') format('woff2');
+  font-weight: 400; font-display: block; unicode-range: U+3400-9FFF,U+F900-FAFF;
+}
+@font-face {
+  font-family: 'Dojo'; src: url('assets/fonts/NotoSerifKR-hanja-800.woff2') format('woff2');
+  font-weight: 800; font-display: block; unicode-range: U+3400-9FFF,U+F900-FAFF;
+}
+
 :root {
   --bg: #0e1116; --panel: #161b23; --line: #262d38; --fg: #e6eaf0; --dim: #8d97a5;
   --gold: #ffd166; --hit: 56px; --letterbox: #05070a;
@@ -12,7 +40,7 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; height: 100dvh; overflow: hidden; }
 body {
-  background: var(--bg); color: var(--fg); font: 15px/1.5 -apple-system, "Noto Sans KR", sans-serif;
+  background: var(--bg); color: var(--fg); font: 15px/1.5 'Dojo', serif;
   overscroll-behavior: none;
 }
 #frame {
@@ -122,8 +150,9 @@ button.ghost { background: transparent; }
   flex: 1; display: flex; gap: 6px; align-items: center;
   text-align: left; background: transparent; border: 0; padding: 0;
 }
-.row-name::before { content: '\25B8'; color: var(--dim); font-size: 11px; }
-.row.open .row-name::before { content: '\25BE'; }
+/* 서브셋 원본인 나눔명조에 작은 삼각(U+25B8/25BE)이 없어 큰 삼각을 쓰고 크기로 줄인다 (REQ-804). */
+.row-name::before { content: '\25B6'; color: var(--dim); font-size: 11px; }
+.row.open .row-name::before { content: '\25BC'; }
 .meter-line { display: flex; gap: 8px; align-items: center; }
 .meter-line .meter { flex: 1; }
 
@@ -153,6 +182,14 @@ button.ghost { background: transparent; }
 .cheat-rows { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
 .cheat-row { display: flex; gap: 6px; align-items: center; font-size: 12px; }
 .cheat-row input { width: 56px; background: #11151c; color: var(--fg); border: 1px solid var(--line); border-radius: 4px; }
+
+/* 아이콘은 id 로 참조된다 — 코드는 `icon-<id>` 클래스만 알고 파일 경로는 이 표에만 있어,
+   후속 아트 개선이 파일 스왑으로 닫힌다 (REQ-931). 마스크로 그리므로 색은 글자색을 따라간다. */
+.icon { flex: none; display: inline-block; width: 22px; height: 22px; background: currentColor; }
+.icon-reset {
+  mask: url('assets/icons/reset.svg') center / contain no-repeat;
+  -webkit-mask: url('assets/icons/reset.svg') center / contain no-repeat;
+}
 
 .mark { font-size: 15px; line-height: 1; }
 .mark.big { font-size: 24px; }
@@ -257,7 +294,10 @@ button.ghost { background: transparent; }
 .dpad [data-dir="L"] { grid-area: 2 / 1; }
 .dpad [data-dir="D"] { grid-area: 2 / 2; }
 .dpad [data-dir="R"] { grid-area: 2 / 3; }
-.dpad .pad-reset { grid-area: 1 / 4 / 3 / 5; font-size: 14px; }
+.dpad .pad-reset {
+  grid-area: 1 / 4 / 3 / 5; font-size: 14px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+}
 .dpad .pad-reset.urge { --attr: var(--gold); border-color: var(--gold); color: var(--gold); animation: flash .8s ease-in-out infinite; }
 .dpad button.down { background: #2d3a4d; transform: scale(.96); }
 .shake { animation: shake .2s linear 1; }
