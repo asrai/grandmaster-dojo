@@ -666,6 +666,7 @@ button.ghost { background: transparent; }
   text-align: center; font-size: 12px; color: var(--dim);
 }
 .scene .foe-tag b { font-size: 15px; font-weight: 800; color: var(--fg); }
+.scene .foe-tag .sub { color: var(--hj-tone); }
 
 .settle {
   flex: 1; min-height: 0; overflow-y: auto;
@@ -684,7 +685,7 @@ button.ghost { background: transparent; }
 .settle .ln.none .v { font-size: 12px; font-weight: 400; color: var(--dim); }
 
 /* 판정 분포 6열 1행 (REQ-872) — 색 부호화는 S1 과 같은 이름을 부른다. */
-.chips { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+.chips { display: grid; grid-template-columns: repeat(var(--chips, 6), 1fr); gap: 4px; }
 .chips .c {
   display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 5px 2px;
   font-size: 10px; letter-spacing: -.2px; color: var(--dim);

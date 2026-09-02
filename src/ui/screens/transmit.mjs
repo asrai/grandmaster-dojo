@@ -100,7 +100,7 @@ export function renderTransmit(ctx) {
         sigil(),
       ]),
       // 목록이 뒤늦게 도착하므로, 그 도착을 낭독으로도 알 수 있어야 전이가 화면 밖에서도 성립한다.
-      el('section', { class: 'panel', 'aria-live': 'polite' }, [rows]),
+      el('section', { class: 'transfer', 'aria-live': 'polite' }, [rows]),
     ],
     bottom: el('div', { class: 'acts' }, [action]),
     padded: false,
@@ -108,6 +108,7 @@ export function renderTransmit(ctx) {
 
   /** 연출의 종점 — 건너뛰기와 자연 종료가 같은 자리로 모인다. 세션은 이미 진입에서 움직였다. */
   let learned = false;
+  let timer = 0;
   function land() {
     if (learned) return;
     learned = true;
@@ -122,6 +123,6 @@ export function renderTransmit(ctx) {
   // 바닥의 버튼은 자리를 지키고 뜻만 바뀐다 — 연출 중에는 건너뛰기, 완료 후에는 출구다 (REQ-865).
   action.addEventListener('click', () => (learned ? ctx.go('dojo') : land()));
 
-  const timer = setTimeout(land, FOLLOW_MS);
+  timer = setTimeout(land, FOLLOW_MS);
   return () => clearTimeout(timer);
 }

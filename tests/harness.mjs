@@ -2306,6 +2306,8 @@ suite('판 원장 — 그 판의 판정 분포·성 변화·결정타 (REQ-872·
   eq(boutLedger(session).finisher, null, '초 상한 비교승은 결정타로 세지 않는다');
   recordDuelVerdict(session, view('crush', { over: true, win: true, by: 'hp' }));
   eq(boutLedger(session).finisher, style.id, '상대를 쓰러뜨린 초가 결정타다');
+  // 결과 표찰의 초 수는 이 도출에 기댄다 — 한 초에 판정 하나가 아니면 그 수가 조용히 어긋난다.
+  eq(boutLedger(session).exchanges, 5, '초 수는 판정 분포의 합이다');
 
   // 회차는 승수에서 파생하므로 다음 대면을 재대련으로 만들려면 이 판의 승리를 먼저 정산한다.
   settleDuel(session, { win: true, stage: 1 });
@@ -2428,14 +2430,56 @@ suite('결과 정산은 진입 1회 — 재렌더 멱등 (#70)', () => {
     eq(session.stage, 3, '새 진입의 차수 전진도 실제로 일어난다');
   }
 
+  // ⑥ 메모는 진입 파라미터가 아니라 **그 판**에 묶인다 — 파라미터를 물려 쓰는 관용이 이미 있어
+  //    객체 신원만 보면 다음 판의 정산이 앞 판의 메모에 조용히 삼켜진다.
+  {
+    const session = duelSession(1);
+    const params = { kind: 'duel', win: true, stage: 1 };
+    settleResult(session, params);
+    const coinsAfterFirst = session.coins;
+    beginDuel(session, challengerOfStage(1).id);
+    settleResult(session, params);
+    eq(session.coins, coinsAfterFirst, '재대련이라 재화는 그대로지만');
+    eq(session.duelWins[challengerOfStage(1).id], 2, '같은 파라미터를 물려 써도 새 판은 새로 정산된다');
+  }
+
   // 정산 스냅샷은 그 판의 원장을 함께 싣는다 — 결과 화면이 로그를 다시 세지 않는 근거다.
   {
     const session = duelSession(1);
     const snapshot = settleResult(session, { kind: 'duel', win: true, stage: 1 });
     deepEq(Object.keys(snapshot).sort(),
-      ['attempt', 'cleared', 'finisher', 'gains', 'kind', 'rematch', 'reward', 'unlocked', 'verdicts', 'win'],
+      ['attempt', 'cleared', 'exchanges', 'finisher', 'gains', 'kind', 'rematch', 'reward', 'unlocked', 'verdicts', 'win'],
       '정산 스냅샷이 내는 필드 집합');
   }
+});
+
+suite('파견의 판 경계는 임무 확정이 아니라 그 판의 시작이다 (REQ-872·873)', () => {
+  const session = createSession();
+  session.progress = masteredProgress;
+  runTransmit(session);
+  const style = artStyles(ART)[0];
+
+  // ① 예고 진입 — 임무가 확정된다. 이 시점은 아직 싸움이 아니다.
+  const mission = currentMission(session, { random: createSeededRandom(7) });
+  ok(mission, '예고에서 임무가 확정된다');
+
+  // ② 물러나기 → 대련 한 판. 그 판정·성 변화가 원장에 쌓인다.
+  beginDuel(session, challengerOfStage(1).id);
+  recordDuelVerdict(session, {
+    verdict: { grade: 'crush', dmgOut: 10, dmgIn: 0, opening: 'foe' },
+    fire: { style },
+    outcome: { over: false, win: null, by: null },
+    challenger: challengerOfStage(1),
+  });
+  ok(boutLedger(session).verdicts.crush > 0, '대련분이 원장에 쌓였다');
+
+  // ③ 파견 재진입 — 임무는 차수가 같아 재사용되므로 `beginMission` 이 돌지 않는다.
+  eq(currentMission(session, { random: createSeededRandom(7) }), mission, '같은 차수의 임무가 재사용된다');
+  // 판을 여는 것은 배선이다 — 여기서 비워지지 않으면 대련분이 파견 결과 화면에 그대로 실린다.
+  dispatchWiring(session, { disciple: { arm() {}, tick: () => null } });
+  deepEq(boutLedger(session).verdicts, {}, '파견의 판이 앞선 대련분을 물려받지 않는다');
+  deepEq(boutLedger(session).gains, [], '앞선 대련의 성 변화도 물려받지 않는다');
+  eq(boutLedger(session).finisher, null, '앞선 대련의 결정타도 물려받지 않는다');
 });
 
 suite('전수도 진입 1회 (#70 과 같은 축 · REQ-761)', () => {

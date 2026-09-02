@@ -5,7 +5,7 @@
 
 import { responseWindowMs, styleById } from '../core.mjs';
 import {
-  beginDuel, beginTrainVisit, equippedStyles, logEvent, logTimeout, missionLockRankOf,
+  beginBout, beginDuel, beginTrainVisit, equippedStyles, logEvent, logTimeout, missionLockRankOf,
   recordDispatchVerdict, recordDuelVerdict, recordEffectiveSuccess,
 } from './session.mjs';
 
@@ -85,6 +85,8 @@ export function duelWiring(session, { input }) {
  *   그 초 한정이라 호출부가 `onTelegraph` 에서 비워야 한다 (안 비우면 직전 초의 지시가 이어진다).
  */
 export function dispatchWiring(session, { disciple, instructed = () => null }) {
+  // 파견의 판은 여기서 열린다 — 임무는 차수가 같은 동안 재사용되므로 그 확정 시점은 판이 아니다.
+  beginBout(session);
   return {
     onTelegraph: () => disciple.arm(),
     // 지시는 그 초 한정이라 매 프레임 현재 값을 다시 읽는다.

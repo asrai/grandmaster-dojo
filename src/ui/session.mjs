@@ -113,11 +113,12 @@ export function createSession({ now = () => Date.now() } = {}) {
 const createBout = (attempt = 0) => ({ attempt, verdicts: {}, gains: {}, finisher: null });
 
 /**
- * 판의 시작 — 대련 진입과 임무 확정 둘뿐이고, 화면과 헤드리스가 그 두 자리를 공유한다.
+ * 판의 시작 — **싸움이 실제로 시작되는 자리**에서만 부른다. 임무 확정에서 부르면 예고만 보고
+ * 나온 뒤의 대련분이 그 임무의 원장에 그대로 남는다 (임무는 차수가 같은 동안 재사용된다).
  * @param {number} [attempt] 그 대면의 회차 — 결과 화면의 표찰이 「몇 차 재대련이었나」를 산술로
  *   되짚지 않게 실제로 싸운 값을 들고 간다. 임무에는 회차 축이 없어 0 이다.
  */
-const beginBout = (session, attempt = 0) => { session.bout = createBout(attempt); };
+export const beginBout = (session, attempt = 0) => { session.bout = createBout(attempt); };
 
 /**
  * 그 판에 오른 성 한 건 — 같은 초식이 한 판에 여러 번 오르면 시작은 첫 값, 끝은 마지막 값이라
@@ -131,12 +132,17 @@ function noteGain(session, change) {
 }
 
 /** 그 판의 판정 분포·성 변화 스냅샷 — 결과 화면이 읽는 유일한 형태다 (REQ-871). */
-export const boutLedger = (session) => ({
-  attempt: session.bout.attempt,
-  finisher: session.bout.finisher,
-  verdicts: { ...session.bout.verdicts },
-  gains: Object.entries(session.bout.gains).map(([style, move]) => ({ style, ...move })),
-});
+export const boutLedger = (session) => {
+  const verdicts = { ...session.bout.verdicts };
+  return {
+    attempt: session.bout.attempt,
+    finisher: session.bout.finisher,
+    verdicts,
+    // 한 초에 판정 하나라 분포의 합이 곧 그 판의 초 수다 — 결과 화면이 대련 뷰를 따로 들지 않는다.
+    exchanges: Object.values(verdicts).reduce((sum, n) => sum + n, 0),
+    gains: Object.entries(session.bout.gains).map(([style, move]) => ({ style, ...move })),
+  };
+};
 
 /** 상대를 쓰러뜨린 초인가 — 초 상한의 잔여 HP 비교승은 그 타격이 확정한 승리가 아니다 (REQ-708). */
 const isFinishingBlow = (view) => view.outcome?.win === true && view.outcome.by === 'hp';
@@ -458,7 +464,6 @@ export const canDispatch = (session) => session.transmitted
  * 매 임무 새로 뽑아 눌러앉기를 구조로 막는다. 난이도는 성으로만 오른다 (파견 무대는 하나다).
  */
 export function beginMission(session, { random = Math.random } = {}) {
-  beginBout(session);
   const stage = session.dispatchStage;
   const foeSet = stage <= 1 ? DISPATCH_CHALLENGER.styles.slice() : missionFoeSet(random);
   session.mission = {
@@ -663,18 +668,20 @@ export function settleDispatch(session, { win }) {
 }
 
 /**
- * 결과 화면 진입 정산 (#70) — 상태를 움직이는 것은 한 진입에 한 번이고, 같은 진입을 다시
- * 렌더하면 같은 값이 그대로 돌아온다. 메모가 **진입 파라미터**에 사는 것이 그 「한 번」의 정의다:
- * `go()` 가 화면마다 새 객체를 만들므로 그 객체의 수명이 곧 한 진입이고, 정산을 부르는 주체가
- * 렌더 자신이라 진입 경로가 늘어도 정산이 통째로 빠지는 갈래가 생기지 않는다.
+ * 결과 화면 진입 정산 (#70) — 상태를 움직이는 것은 한 판에 한 번이고, 같은 판을 다시 렌더하면
+ * 같은 값이 그대로 돌아온다. 메모를 진입 파라미터에 두되 **그 판에 묶는 것**이 그 「한 번」의
+ * 정의다: 파라미터를 화면 사이로 물려 쓰는 관용이 이 코드베이스에 이미 있어, 객체 신원만으로는
+ * 다음 판의 정산이 앞 판의 메모에 조용히 삼켜진다. 정산을 부르는 주체가 렌더 자신이라
+ * 진입 경로가 늘어도 정산이 통째로 빠지는 갈래는 생기지 않는다.
  * 원장 스냅샷을 정산보다 **먼저** 뜨는 것은 `settleDispatch` 가 임무를 비우기 때문이다.
  * @param {{kind: string, win: boolean, stage?: number}} params `go('result', …)` 가 만든 그 객체
  */
 export function settleResult(session, params) {
-  if (params.settled) return params.settled;
+  if (params.settled && params.settledBout === session.bout) return params.settled;
   const ledger = boutLedger(session);
   const moved = params.kind === 'duel'
     ? settleDuel(session, params) : settleDispatch(session, params);
+  params.settledBout = session.bout;
   params.settled = {
     kind: params.kind,
     win: Boolean(params.win),

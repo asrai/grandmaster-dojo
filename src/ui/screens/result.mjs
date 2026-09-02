@@ -20,7 +20,7 @@ const STAGE_H = '--result-scene-h';
 
 /**
  * 6단의 표시 순서 (REQ-872) — 판정표의 `order` 가 그 축이라 화면이 등급 목록을 따로 갖지 않는다.
- * 등급이 늘면 이 배열이 함께 늘고, 아래 칩 6열도 같은 수만큼 늘어난다.
+ * 열 수도 이 배열에서 주입하므로 등급이 늘면 칩 줄이 그만큼 함께 는다.
  */
 const GRADE_ORDER = Object.keys(BALANCE.grades)
   .sort((a, b) => BALANCE.grades[a].order - BALANCE.grades[b].order);
@@ -99,7 +99,9 @@ const SPOILS_PLACEHOLDER = [{ name: '비급 조각', count: 2 }, { name: '영약
  * @param {{session: object, foe: object}} at 그 판의 세션과 상대
  */
 const BLOCK_VIEW = {
-  verdicts: (s) => block('판정', el('div', { class: 'chips' }, GRADE_ORDER.map((grade) => {
+  verdicts: (s) => block('판정', el('div', {
+    class: 'chips', style: `--chips:${GRADE_ORDER.length}`,
+  }, GRADE_ORDER.map((grade) => {
     const count = s.verdicts[grade] ?? 0;
     return el('span', { class: `c ${GRADE_VIEW[grade].cls}${count ? ' on' : ''}` }, [
       el('span', { text: gradeLabel(grade) }),
@@ -187,11 +189,11 @@ function ledgerBlocks(settled, at) {
 }
 
 /** 상대 표찰 (REQ-878) — 이름·한자·초 수까지다. 남은 기력은 끝난 판의 정보가 아니다. */
-function foeTag(settled, foe, exchanges) {
+function foeTag(settled, foe) {
   const marks = [
     settled.kind === 'duel' ? null : '임무',
     settled.attempt > 1 ? `재대련 ${settled.attempt}차` : null,
-    `${exchanges}초`,
+    `${settled.exchanges}초`,
   ].filter(Boolean);
   return el('div', { class: 'foe-tag' }, [
     el('b', { text: foe.name }),
@@ -216,7 +218,7 @@ export function renderResult(ctx) {
   const retryable = duel && !settled.win;
 
   const arena = createArena({ height: STAGE_H, figures: stageFigures(settled.kind, settled.win) });
-  arena.node.append(brandView(brand), foeTag(settled, foe, params.view.exchange));
+  arena.node.append(brandView(brand), foeTag(settled, foe));
 
   composeScreen(ctx, {
     padded: false,
