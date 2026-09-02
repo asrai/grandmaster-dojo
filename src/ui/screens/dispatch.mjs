@@ -4,7 +4,7 @@
 import { BALANCE } from '../../balance.mjs';
 import { createDiscipleHand } from '../../bot.mjs';
 import { discipleStyleRank, discipleStyles, finisherOf, foeStyleById } from '../../core.mjs';
-import { attrMark, clear, el, hpBar } from '../dom.mjs';
+import { attrMark, clear, composeScreen, el, hpBar, topBand } from '../dom.mjs';
 import { ATTR_VIEW, attrLabel, winAttrOf } from '../theme.mjs';
 import { SFX } from '../audio.mjs';
 import { createMatch } from '../match.mjs';
@@ -12,7 +12,8 @@ import {
   ART_ID, ART_NAME, DISPATCH_CHALLENGER, canDispatch, currentMission,
   missionLockRankOf, missionShortfallOf,
 } from '../session.mjs';
-import { hideVerdict, showGradeVerdict } from '../verdict-overlay.mjs';
+import { createTablets } from '../tablets.mjs';
+import { createVerdictOverlay } from '../verdict-overlay.mjs';
 import { composeHooks, dispatchWiring, logDispatchResult } from '../wiring.mjs';
 
 const styleIcon = (style, extra = '', rankTag = null) => el('div', {
@@ -21,8 +22,6 @@ const styleIcon = (style, extra = '', rankTag = null) => el('div', {
   attrMark(style.attr),
   el('span', { class: 'cand-name', text: style.name }),
   rankTag ? el('span', { class: 'tag', text: rankTag }) : null,
-  // 지시 여부를 외곽선 색만으로 두면 색각 이상에서 구분되지 않는다.
-  extra.includes('picked') ? el('span', { class: 'tag', text: '지시' }) : null,
 ]);
 
 /**
@@ -70,9 +69,10 @@ export function renderPreview(ctx) {
   const challenger = mission ? mission.challenger : DISPATCH_CHALLENGER;
   const stageLabel = `B-${session.dispatchStage}`;
   ctx.pad.detach();
-  clear(root);
 
-  root.append(el('section', { class: 'card' }, [
+  const top = topBand(session, ART_NAME);
+  ctx.ownTop(top.paint);
+  composeScreen(root, { top: top.node, body: el('section', { class: 'card' }, [
     el('h2', { text: `임무 ${stageLabel} — ${challenger.name} ${challenger.hanja}` }),
     el('p', {
       class: 'dim',
@@ -93,7 +93,7 @@ export function renderPreview(ctx) {
       }),
       el('button', { class: 'small ghost', text: '도장으로', onclick: () => ctx.go('dojo') }),
     ]),
-  ].filter(Boolean)));
+  ].filter(Boolean)) });
 }
 
 export function startDispatch(ctx) {
@@ -104,51 +104,60 @@ export function startDispatch(ctx) {
   const challenger = mission.challenger;
   const styles = discipleStyles(session.disciple, ART_ID);
   ctx.pad.detach();
-  clear(root);
 
+  const verdict = createVerdictOverlay();
+  // 관전 화면에는 십자 키패드가 없다 — 죽간만 따로 장착하는 경로다 (REQ-805·851).
+  const tablets = createTablets();
   const foeHpEl = el('div', {});
   const selfHpEl = el('div', {});
   const telegraphEl = el('div', { class: 'tg-slot' });
-  const iconsEl = el('div', { class: 'icons' });
   const windowFill = el('i', {});
 
-  root.append(el('section', { class: 'card arena' }, [
-    el('div', { class: 'head' }, [
-      el('b', { text: challenger.name }),
-      el('span', { class: 'hanja', text: challenger.hanja }),
-      el('span', { class: 'dim', text: '관전 — 지시는 선택이다' }),
+  const top = topBand(session, ART_NAME);
+  ctx.ownTop(top.paint);
+  composeScreen(root, {
+    top: top.node,
+    body: el('section', { class: 'card arena' }, [
+      el('div', { class: 'head' }, [
+        el('b', { text: challenger.name }),
+        el('span', { class: 'hanja', text: challenger.hanja }),
+        el('span', { class: 'dim', text: '관전 — 지시는 선택이다' }),
+      ]),
+      foeHpEl,
+      telegraphEl,
+      el('div', { class: 'arena-gap' }),
+      el('div', { class: 'window' }, [windowFill]),
+      el('div', { class: 'head' }, [el('b', { text: '제자' }), el('span', { class: 'dim', text: ART_NAME })]),
+      selfHpEl,
+      tablets.node,
+      // 시각 오버레이는 아레나 좌표계 안에 살고 이 화면과 함께 사라진다 (REQ-806).
+      verdict.node,
     ]),
-    foeHpEl,
-    telegraphEl,
-    el('div', { class: 'arena-gap' }),
-    el('div', { class: 'window' }, [windowFill]),
-    el('div', { class: 'head' }, [el('b', { text: '제자' }), el('span', { class: 'dim', text: ART_NAME })]),
-    selfHpEl,
-    iconsEl,
-  ]));
+  });
 
   let instructed = null;
   let fired = false;
   const disciple = createDiscipleHand({ session, styles, fire: (shot) => match.fire(shot) });
 
-  function renderIcons(view, { flash = false } = {}) {
+  function renderTablets(view, { flash = false } = {}) {
     // 그 수 예고의 파해를 제자가 보유하면 한 번 반짝여 지시를 유도한다 (강제 아님).
     const hintId = view.telegraphed
       ? styles.find((s) => s.counters === view.telegraphed.id)?.id ?? null
       : null;
-    clear(iconsEl);
-    for (const style of styles) {
-      const icon = styleIcon(style, [
+    tablets.render(styles.map((style) => ({
+      style,
+      mods: [
         style === instructed ? 'picked' : '',
         flash && style.id === hintId ? 'flash' : '',
-      ].filter(Boolean).join(' '));
-      icon.addEventListener('click', () => {
+      ].filter(Boolean).join(' '),
+      // 지시 여부를 외곽선 색만으로 두면 색각 이상에서 구분되지 않는다.
+      tags: style === instructed ? ['지시'] : [],
+      onTap: () => {
         if (fired) return;
         instructed = style;
-        renderIcons(view);
-      });
-      iconsEl.appendChild(icon);
-    }
+        renderTablets(view);
+      },
+    })));
   }
 
   const renderHp = (view) => {
@@ -167,7 +176,7 @@ export function startDispatch(ctx) {
       onTelegraph(view) {
         instructed = null;
         fired = false;
-        hideVerdict();
+        verdict.hide();
         windowFill.style.width = '100%';
         clear(telegraphEl).appendChild(view.foeOpen
           ? el('div', { class: 'telegraph open', text: '빈틈! — 제자가 연환을 잇는다' })
@@ -184,7 +193,7 @@ export function startDispatch(ctx) {
           ]));
         renderHp(view);
         // 반짝임은 그 수의 예고에서 한 번뿐 — 지시 탭으로 다시 그릴 때는 재생하지 않는다.
-        renderIcons(view, { flash: true });
+        renderTablets(view, { flash: true });
       },
       onTick(view, executed) {
         windowFill.style.width = `${view.ratio * 100}%`;
@@ -192,7 +201,7 @@ export function startDispatch(ctx) {
       },
       onVerdict(view, ranked) {
         renderHp(view);
-        showGradeVerdict(view.verdict.grade);
+        verdict.showGrade(view.verdict.grade);
         (view.verdict.grade === 'crush' ? SFX.crush : SFX.hit)();
         if (ranked) SFX.rank();
       },
@@ -204,5 +213,5 @@ export function startDispatch(ctx) {
   });
 
   match.start();
-  return () => { match.stop(); hideVerdict(); };
+  return () => { match.stop(); verdict.hide(); };
 }

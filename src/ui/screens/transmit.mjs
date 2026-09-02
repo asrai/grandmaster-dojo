@@ -3,7 +3,7 @@
 
 import { BALANCE } from '../../balance.mjs';
 import { artStyles, discipleStyleRank, discipleStyles, styleRank } from '../../core.mjs';
-import { attrMark, clear, el } from '../dom.mjs';
+import { attrMark, clear, composeScreen, el, topBand } from '../dom.mjs';
 import { ATTR_VIEW } from '../theme.mjs';
 import { SFX } from '../audio.mjs';
 import { ART_ID, ART_NAME, runTransmit } from '../session.mjs';
@@ -43,8 +43,9 @@ export function renderTransmit(ctx) {
   paintDisciple(discipleSide, before);
 
   ctx.pad.detach();
-  clear(root);
-  root.append(el('section', { class: 'card transmit' }, [
+  const top = topBand(session, ART_NAME);
+  ctx.ownTop(top.paint);
+  composeScreen(root, { top: top.node, body: el('section', { class: 'card transmit' }, [
     el('p', {}, [el('span', {
       class: 'badge max',
       text: masterRank >= BALANCE.rankMax ? `${ART_NAME} — 완벽히 깨달음` : `${ART_NAME} 전 초식 ${masterRank}성`,
@@ -61,7 +62,7 @@ export function renderTransmit(ctx) {
     el('div', { class: 'actions' }, [
       el('button', { class: 'primary', text: '도장으로', onclick: () => ctx.go('dojo') }),
     ]),
-  ]));
+  ]) });
 
   // 사부 쪽이 먼저 켜지고 제자 쪽이 뒤따라 켜져야 "옮겨 갔다" 로 읽힌다.
   const arriveTimer = setTimeout(() => {

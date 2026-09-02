@@ -26,6 +26,66 @@ export function clear(node) {
   return node;
 }
 
+/**
+ * 화면 크롬 조립 (REQ-801) — 상단 띠·하단부의 유무와 본문 여백을 화면이 정한다. 전역 규칙이던
+ * 시절에는 어떤 화면도 풀블리드 레이어를 y=0 부터 깔 수 없었다 (REQ-802).
+ * @param {HTMLElement} root 화면 컨테이너 (`#app`) — 이 함수가 비우고 다시 채운다
+ * @param {object} p
+ * @param {HTMLElement} [p.top] 상단 띠 — 넘기지 않으면 본문이 y=0 에서 시작한다
+ * @param {HTMLElement} [p.bottom] 하단부 (밴드·입력 패드)
+ * @param {boolean} [p.padded] 본문 여백 12px/gap 12px 적용 여부
+ * @returns {HTMLElement} 본문 노드
+ */
+export function composeScreen(root, {
+  top = null, body = [], bottom = null, padded = true,
+}) {
+  clear(root);
+  if (top) root.appendChild(top);
+  const main = el('main', { class: `screen-body${padded ? ' padded' : ''}` },
+    [].concat(body).filter(Boolean));
+  root.appendChild(main);
+  if (bottom) root.appendChild(bottom);
+  return main;
+}
+
+/**
+ * 표준 상단 띠 (REQ-801) — 띠를 쓰는 화면이 각자 만들고, 갱신 주체도 그 화면이다.
+ * @param {object} session
+ * @param {string} artName 무공 이름 — 성이 초식 단위로 내려가 무공에는 표시할 성이 없다 (REQ-701·707)
+ * @returns {{node: HTMLElement, paint: () => void}} `paint` 를 `ctx.ownTop` 에 넘기면
+ *   `ctx.refreshTop()` 이 그 화면의 띠만 다시 그린다
+ */
+export function topBand(session, artName) {
+  const labelEl = el('b', { class: 'top-label' });
+  const coinsEl = el('span', { class: 'top-coins' });
+  const a11y = el('input', { type: 'checkbox' });
+  a11y.checked = session.accessibility;
+  a11y.addEventListener('change', () => {
+    // 데이터 테이블은 시드로 두고 런타임 값은 세션이 갖는다 — 다음 창부터 반영된다.
+    session.accessibility = a11y.checked;
+    // 사이클 도중에 창 배율이 바뀐 세션은 모집단이 섞인 것이라, 판독기가 그 사실을 알아야 한다.
+    session.accessibilityToggles += 1;
+  });
+
+  const node = el('header', { class: 'top-band' }, [
+    el('div', { class: 'top-row' }, [
+      labelEl,
+      el('span', { class: 'dim', text: artName }),
+      coinsEl,
+    ]),
+    el('div', { class: 'top-row' }, [
+      el('label', {}, [a11y, el('span', { text: '응수 창 ×1.3 (쉬움)' })]),
+    ]),
+  ]);
+
+  const paint = () => {
+    labelEl.textContent = session.label;
+    coinsEl.textContent = `元 ${session.coins}`;
+  };
+  paint();
+  return { node, paint };
+}
+
 /** 속성 = 색 + 형태 중복 표현 (REQ-112). */
 export function attrMark(attrId, { size = '' } = {}) {
   const view = ATTR_VIEW[attrId];

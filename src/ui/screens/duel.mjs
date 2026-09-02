@@ -1,7 +1,7 @@
 // 사부 대련 (REQ-201·206~211·708·731~736) — 유저가 시퀀스를 치는 유일한 실전 화면과 그 예고.
 
 import { BALANCE, STYLES } from '../../balance.mjs';
-import { attrMark, clear, el, hpBar } from '../dom.mjs';
+import { attrMark, clear, composeScreen, el, hpBar, topBand } from '../dom.mjs';
 import { ATTR_VIEW, attrLabel, winAttrOf } from '../theme.mjs';
 import { SFX } from '../audio.mjs';
 import { finisherOf, foeStyleById, styleById } from '../../core.mjs';
@@ -11,7 +11,7 @@ import {
   ART_NAME, canEquip, challengerOfStage, duelAttemptOf, equip, equippedStyles,
   logEvent, rankOfStyle, rematchBonusOf,
 } from '../session.mjs';
-import { hideVerdict, showGradeVerdict } from '../verdict-overlay.mjs';
+import { createVerdictOverlay } from '../verdict-overlay.mjs';
 import { composeHooks, duelWiring, logDuelStart } from '../wiring.mjs';
 
 function telegraphView(view) {
@@ -77,7 +77,6 @@ export function renderDuelPreview(ctx) {
   const attempt = duelAttemptOf(session, challenger.id);
   const bonus = rematchBonusOf(session, challenger.id);
   ctx.pad.detach();
-  clear(root);
 
   // 슬롯을 먼저 고르고 후보를 고른다 — 두 번의 탭이 곧 「무엇을 빼고 무엇을 넣는가」다.
   let picked = session.slots.findIndex((id) => id === null);
@@ -124,7 +123,9 @@ export function renderDuelPreview(ctx) {
   }
   renderSlots();
 
-  root.append(el('section', { class: 'card' }, [
+  const top = topBand(session, ART_NAME);
+  ctx.ownTop(top.paint);
+  composeScreen(root, { top: top.node, body: el('section', { class: 'card' }, [
     el('h2', { text: `도전자 예고 — ${challenger.name} ${challenger.stage}차` }),
     el('p', { class: 'dim', text: attempt > 1
       ? `${attempt}번째 대면 — 상대가 성 +${bonus} 만큼 여물었고 재대련 승리에 재화는 없다.`
@@ -139,38 +140,46 @@ export function renderDuelPreview(ctx) {
       el('button', { class: 'primary', text: '대련 시작', onclick: () => ctx.go('duel', { stage: params.stage }) }),
       el('button', { class: 'small ghost', text: '도장으로', onclick: () => ctx.go('dojo') }),
     ]),
-  ]));
+  ]) });
 }
 
 export function startDuel(ctx) {
   const { session, root, params } = ctx;
   const challenger = challengerOfStage(params.stage);
   const { foeRank } = logDuelStart(session, challenger);
-  clear(root);
 
+  const verdict = createVerdictOverlay();
   const foeHpEl = el('div', {});
   const selfHpEl = el('div', {});
   const telegraphEl = el('div', { class: 'tg-slot' });
   const windowFill = el('i', {});
   const banner = el('div', { class: 'toast' });
 
-  root.append(el('section', { class: 'card arena' }, [
-    el('div', { class: 'head' }, [
-      el('b', { text: `${challenger.name} ${challenger.stage}차` }),
-      el('span', { class: 'hanja', text: challenger.hanja }),
-      el('button', { class: 'small ghost', text: '도장으로', onclick: () => ctx.go('dojo') }),
+  const top = topBand(session, ART_NAME);
+  ctx.ownTop(top.paint);
+  composeScreen(root, {
+    top: top.node,
+    body: el('section', { class: 'card arena' }, [
+      el('div', { class: 'head' }, [
+        el('b', { text: `${challenger.name} ${challenger.stage}차` }),
+        el('span', { class: 'hanja', text: challenger.hanja }),
+        el('button', { class: 'small ghost', text: '도장으로', onclick: () => ctx.go('dojo') }),
+      ]),
+      foeHpEl,
+      telegraphEl,
+      el('div', { class: 'arena-gap' }),
+      el('div', { class: 'window' }, [windowFill]),
+      el('div', { class: 'head' }, [
+        el('b', { text: '사부' }),
+        el('span', { class: 'dim', text: ART_NAME }),
+      ]),
+      selfHpEl,
+      banner,
+      // 시각 오버레이는 아레나 좌표계 안에 살고 이 화면과 함께 사라진다 (REQ-806).
+      verdict.node,
     ]),
-    foeHpEl,
-    telegraphEl,
-    el('div', { class: 'arena-gap' }),
-    el('div', { class: 'window' }, [windowFill]),
-    el('div', { class: 'head' }, [
-      el('b', { text: '사부' }),
-      el('span', { class: 'dim', text: ART_NAME }),
-    ]),
-    selfHpEl,
-    banner,
-  ]));
+    bottom: ctx.pad.node,
+  });
 
   // 결과 화면이 「어느 초식이 끝냈는가」를 말하려면 그 수의 발동을 여기서 붙잡아 두어야 한다 (REQ-708).
   let lastFire = null;
@@ -205,7 +214,7 @@ export function startDuel(ctx) {
     hooks: composeHooks(duelWiring(session, { input }), {
       onTelegraph(view) {
         clear(telegraphEl).appendChild(telegraphView(view));
-        hideVerdict();
+        verdict.hide();
         windowFill.style.width = '100%';
         renderHp(view);
         ctx.pad.render();
@@ -218,12 +227,12 @@ export function startDuel(ctx) {
         ctx.pad.render();
       },
       onVerdict(view, changes) {
-        const { verdict } = view;
+        const { verdict: resolved } = view;
         lastFire = view.fire ?? null;
         ctx.pad.render();
         renderHp(view);
-        showGradeVerdict(verdict.grade);
-        (verdict.grade === 'crush' ? SFX.crush : verdict.dmgIn > 0 ? SFX.hit : SFX.fire)();
+        verdict.showGrade(resolved.grade);
+        (resolved.grade === 'crush' ? SFX.crush : resolved.dmgIn > 0 ? SFX.hit : SFX.fire)();
 
         if (!changes) return;
         if (changes.rank) {
@@ -257,5 +266,5 @@ export function startDuel(ctx) {
     onFire: (fired) => { SFX.fire(); match.fire(fired); },
   });
   match.start();
-  return () => { match.stop(); hideVerdict(); ctx.pad.detach(); };
+  return () => { match.stop(); verdict.hide(); ctx.pad.detach(); };
 }
