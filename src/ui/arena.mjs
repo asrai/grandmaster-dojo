@@ -91,7 +91,8 @@ function wear({ glow }, pose) {
 
 /**
  * @param {object} [p]
- * @param {?number} [p.height] 무대 높이(px) — 생략하면 원장의 기본값이고, 접어 쓰는 화면만 준다.
+ * @param {?string} [p.height] 무대 높이 **토큰 이름** — 생략하면 원장의 기본값이고, 접어 쓰는
+ *   화면만 준다. 값이 아니라 이름을 받으므로 높이 수치는 여전히 원장 한 곳에만 있다 (REQ-870).
  * @param {{spot: string, id: string, pose: string}[]} [p.figures] 아레나에 서는 사람 —
  *   `id`·`pose` 는 파일 경로가 아니라 에셋 id·자세이고, 둘을 이은 이름이 곧 클래스다 —
  *   그 클래스에서 파일로 가는 표는 `index.html` 한 곳에만 있다 (REQ-931·932).
@@ -109,7 +110,7 @@ export function createArena({ height = null, figures = [], watcher = null, bout 
 
   const node = el('div', {
     class: 'scene',
-    style: height === null ? null : `--scene-h:${height}px`,
+    style: height === null ? null : `--scene-h:var(${height})`,
   }, [el('div', { class: 'layer sky' }), scenery, el('div', { class: 'layer mist' })]);
 
   // 역광이 없으면 먹 실루엣이 어두운 배경에서 사라진다 — 사람과 한 쌍으로만 존재한다 (REQ-821).

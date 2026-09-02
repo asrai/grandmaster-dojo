@@ -36,6 +36,8 @@ export const balanceDigest = () => ({
 /** 프로토의 비급은 1권뿐이라 무공 축의 모든 조회가 이 id 로 수렴한다. */
 export const ART_ID = ART_SETS[0].id;
 export const ART_NAME = ART_SETS[0].name;
+/** 무공의 한자 — 전수 인장이 한글 우측 세로열로 세운다 (REQ-863). */
+export const ART_HANJA = ART_SETS[0].hanja;
 export const DUEL_STAGES = CHALLENGERS.filter((c) => c.mode === 'duel')
   .slice().sort((a, b) => a.stage - b.stage);
 export const DISPATCH_CHALLENGER = CHALLENGERS.find((c) => c.mode === 'dispatch');
@@ -706,6 +708,16 @@ export function exportPayload(session, { exportedAt = new Date().toISOString() }
 }
 
 export const canTransmitNow = (session) => canTransmit(session.progress, ART_ID, session.disciple);
+
+/**
+ * 전수 화면 진입 실행 (#70 과 같은 축) — 무공이 건너가는 것은 한 진입에 한 번이고, 같은 진입을
+ * 다시 렌더해도 두 번 건너가지 않는다. 메모가 진입 파라미터에 사는 근거는 `settleResult` 와 같다.
+ */
+export function enterTransmit(session, params) {
+  if (params.transmitted) return;
+  params.transmitted = true;
+  runTransmit(session);
+}
 
 export function runTransmit(session) {
   session.disciple = transmit(session.progress, session.disciple, ART_ID);

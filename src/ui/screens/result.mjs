@@ -15,8 +15,8 @@ import {
   DISPATCH_CHALLENGER, challengerOfStage, duelAttemptOf, rematchBonusOf, settleResult,
 } from '../session.mjs';
 
-/** 결과 무대의 높이 (REQ-870·875) — S1 아레나(440)를 접은 값이고 나머지가 정산부다. */
-const STAGE_H = 360;
+/** 접어 쓰는 무대의 높이 토큰 (REQ-870·875) — 수치는 원장이 지고 화면은 그 이름만 안다. */
+const STAGE_H = '--result-scene-h';
 
 /**
  * 6단의 표시 순서 (REQ-872) — 판정표의 `order` 가 그 축이라 화면이 등급 목록을 따로 갖지 않는다.
