@@ -6,3 +6,8 @@
 .claude/settings.local.json
 
 *.log
+
+# 아트·오디오 마스터 (재생성 앵커) — 계약 산출물이 아니라 저장소에 넣지 않는다.
+# git 은 바이너리를 델타 압축하지 못해 한 번 들어가면 히스토리에서 못 뺀다.
+assets/art/_raw/
+assets/audio/*.wav
