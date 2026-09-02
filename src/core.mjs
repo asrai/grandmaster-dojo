@@ -69,9 +69,9 @@ export function assertCounterIntegrity(styles, universe = styles) {
   return true;
 }
 
-// ------------------------------------------------------------------ 한 수의 산술
+// ------------------------------------------------------------------ 한 초의 산술
 
-/** 응수 창 (REQ-201). `len` = 그 수에 노출된 초식 길이 — 실전은 상대 예고, 수련은 자기 초식. */
+/** 응수 창 (REQ-201). `len` = 그 초에 노출된 초식 길이 — 실전은 상대 예고, 수련은 자기 초식. */
 export function responseWindowMs(len, { selfOpen = false, accessibility = BALANCE.accessibilityWindow } = {}) {
   let ms = BALANCE.windowBaseMs + BALANCE.windowStepMs * (len - BALANCE.windowBaseLen);
   if (selfOpen) ms *= 1 - BALANCE.openingWindowPenalty;
@@ -113,6 +113,17 @@ export function rematchFoeRank(baseRank, priorWins) {
 }
 
 /**
+ * 첫 대면인가 (REQ-894) — 절초 공개 수위를 가르는 술어다 (REQ-732 개정: 첫 대면은 존재만,
+ * 재대련부터 이름 + 파해 대상). 대면 이력의 대리 지표는 **승수**이고 패배는 세지 않는다 —
+ * REQ-734 가 이미 누적하는 값이라 `seen` 같은 별도 플래그를 두지 않는다.
+ * @param {number} priorWins 그 도전자를 이미 이긴 횟수
+ */
+export function isFirstEncounter(priorWins) {
+  if (!Number.isInteger(priorWins) || priorWins < 0) throw new Error(`첫 대면 판별의 재대련 승수가 0 이상의 정수가 아니다: ${priorWins}`);
+  return priorWins === 0;
+}
+
+/**
  * 역파 피격 감쇠 계수 (REQ-771) — 내 초식이 상대보다 여문 만큼 덜 아프되 관통 하한 아래로는
  * 내려가지 않는다. 하한의 목적은 「절초는 무서워야 한다」 하나이고 난이도 손잡이가 아니다.
  */
@@ -131,7 +142,7 @@ function gradeOf({ selfStyle, foeStyle, foeOpen }) {
   if (!selfStyle) return 'struck';
   if (foeOpen) return 'crush';
   // 예고가 없는데 빈틈도 아니면 판정 근거가 없다 — 완파로 접으면 id 오타가 공짜 완파가 된다.
-  if (!foeStyle) throw new Error('상대 빈틈이 아닌 수에 상대 초식이 없다');
+  if (!foeStyle) throw new Error('상대 빈틈이 아닌 초에 상대 초식이 없다');
   if (selfStyle.counters === foeStyle.id) return 'crush';
   if (foeStyle.finisher && foeStyle.counters === selfStyle.id) return 'reversal';
   if (ATTRS[selfStyle.attr].beats === foeStyle.attr) return 'advantage';
@@ -140,7 +151,7 @@ function gradeOf({ selfStyle, foeStyle, foeOpen }) {
 }
 
 /**
- * 6단 판정 + 피해 정수 + 다음 수 빈틈 (REQ-202~204).
+ * 6단 판정 + 피해 정수 + 다음 초 빈틈 (REQ-202~204).
  * @param {object} p
  * @param {?object} p.selfStyle 창 안에 완주한 내 초식 (미완주 = null)
  * @param {?object} p.foeStyle  상대 예고 초식 (상대 빈틈이면 무의미)
@@ -148,7 +159,7 @@ function gradeOf({ selfStyle, foeStyle, foeOpen }) {
  * @param {number} p.foeRank    상대 성 — 내공의 출처이자 역파 감쇠의 기준이다 (REQ-722·771)
  * @param {number} [p.foePower] 상대 내공. 기본값이 `foeRank` 파생이라 명시하지 않는 한 갈리지 않는다
  * @param {number} [p.r]        발동 시점의 창 잔여 비율
- * @param {boolean} [p.foeOpen] 이 수가 상대 빈틈인가
+ * @param {boolean} [p.foeOpen] 이 초가 상대 빈틈인가
  */
 export function judge({
   selfStyle, foeStyle = null, selfRank, foeRank, foePower = powerOf(foeRank), r = 0, foeOpen = false,
@@ -181,22 +192,22 @@ export function judge({
     grade,
     dmgOut: Math.round(out),
     dmgIn: Math.round(incoming),
-    // 빈틈은 1수 지속·중첩 없음 — 빈틈 중의 완파 취급이 다시 빈틈을 열면 연환이 끝나지 않는다.
+    // 빈틈은 한 초만 지속·중첩 없음 — 빈틈 중의 완파 취급이 다시 빈틈을 열면 연환이 끝나지 않는다.
     opening: foeOpen ? null : rule.opening,
   };
 }
 
 /**
- * 대련 종료 판정 (REQ-201) — HP 소진, 아니면 수 상한에서 잔여 HP 비교.
+ * 대련 종료 판정 (REQ-201) — HP 소진, 아니면 초 상한에서 잔여 HP 비교.
  * 최대 HP 가 서로 달라도 비율이 아니라 절대값으로 비교한다 — 비율은 최대 HP 가 낮은
  * 도전자를 구조적으로 유리하게 만들어 REQ-506 이 지키려는 첫 파견 승리를 뒤집는다.
  * @returns {{over: boolean, win: ?boolean, by: ?('hp'|'exchanges')}}
  */
 export function resolveMatch({ selfHp, foeHp, exchanges, maxExchanges = BALANCE.maxExchanges }) {
-  // 교차 판정이라 양쪽이 같은 수에 소진될 수 있다 — 그 수를 낸 쪽의 승으로 본다.
+  // 교차 판정이라 양쪽이 같은 초에 소진될 수 있다 — 그 초를 낸 쪽의 승으로 본다.
   if (foeHp <= 0) return { over: true, win: true, by: 'hp' };
   if (selfHp <= 0) return { over: true, win: false, by: 'hp' };
-  // 동률은 도전자 쪽 판정승 — 수 상한까지 갔으면 앞선 쪽만 이긴다.
+  // 동률은 도전자 쪽 판정승 — 초 상한까지 갔으면 앞선 쪽만 이긴다.
   if (exchanges >= maxExchanges) return { over: true, win: selfHp > foeHp, by: 'exchanges' };
   return { over: false, win: null, by: null };
 }
@@ -240,7 +251,7 @@ export function accrueRank(state, { mode, max = BALANCE.rankMax }) {
 }
 
 /**
- * 결정타·완파가 여는 계단 (REQ-704) — 순차·비소급이고 한 수는 최대 1계단이다.
+ * 결정타·완파가 여는 계단 (REQ-704) — 순차·비소급이고 한 초는 최대 1계단이다.
  * 두 사건을 각각 적용하지 않고 한 번에 판정하는 것이 그 「최대 1계단」의 자리다: 10성의
  * 완파 결정타를 따로 흘리면 11성을 거쳐 12성까지 두 계단이 오른다.
  * @returns {{state: object, from: number, to: number, via: ?('finish'|'crush')}}
@@ -336,7 +347,7 @@ export function applyEffectiveSuccess(progress, styleId, { mode }) {
   return { progress: next, changes };
 }
 
-/** 결정타·완파의 계단 적용 (REQ-704) — 적립과 달리 그 수의 판정 결과가 곧 자격이다. */
+/** 결정타·완파의 계단 적용 (REQ-704) — 적립과 달리 그 초의 판정 결과가 곧 자격이다. */
 export function applyOutcome(progress, styleId, { finish = false, crush = false }) {
   const style = assertAccruable(progress, styleId);
   const { state, from, to, via } = promoteByOutcome(progress.styles[styleId], { finish, crush });
@@ -505,7 +516,7 @@ export function applyDiscipleTraining(disciple, setId, styleId, elapsedMs) {
  */
 export function selectDiscipleStyle({ styles, foeStyle = null, rankOf: rankFn = () => 0 }) {
   if (!styles.length) return null;
-  // 역파는 절초가 실제로 예고된 수에만 성립하므로, 다른 수의 배제는 이득 없이 완파만 버린다.
+  // 역파는 절초가 실제로 예고된 초에만 성립하므로, 다른 초의 배제는 이득 없이 완파만 버린다.
   const avoidId = foeStyle && foeStyle.finisher ? foeStyle.counters : null;
   const kept = styles.filter((s) => s.id !== avoidId);
   // 전부 배제되면 낼 초식이 없어지므로 역파를 감수한다.

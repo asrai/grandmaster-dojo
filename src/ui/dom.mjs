@@ -87,7 +87,7 @@ export function topBand(session, artName) {
   // 부분 갱신이면 `refreshTop()` 이 「띠가 지금 상태와 같아진다」를 보장하지 못한다 — 셋을 함께 그린다.
   const paint = () => {
     labelEl.textContent = session.label;
-    coinsEl.textContent = `元 ${session.coins}`;
+    coinsEl.textContent = `${session.coins} 냥`;
     a11y.checked = session.accessibility;
   };
   paint();

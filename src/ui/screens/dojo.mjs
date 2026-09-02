@@ -145,9 +145,10 @@ function bandActions(ctx) {
     {
       // 차수 잠금은 여기서 막지 않는다 — 부족 초식 표시가 예고 화면에 있어, 닫으면 그 안내에 닿을 수 없다.
       id: 'dispatch', text: '파견',
+      // 차수는 대련과 같은 「N차」로 부른다 — 스펙 식별자는 데이터·로그에만 남는다 (REQ-895·896).
       sub: canDispatch(session)
-        ? `${DISPATCH_CHALLENGER.name} B-${session.dispatchStage}`
-        : `B-${session.dispatchStage} 잠김 — 전 초식 ${missionLockRankOf(session)}성`,
+        ? `${DISPATCH_CHALLENGER.name} 임무 ${session.dispatchStage}차`
+        : `임무 ${session.dispatchStage}차 잠김 — 전 초식 ${missionLockRankOf(session)}성`,
       lockedSub: '전수 후 열린다',
       disabled: !session.transmitted,
       onclick: () => ctx.go('preview'),
@@ -321,7 +322,7 @@ function bandNode(ctx, actions, target) {
     // 평가자는 실제로 방치할 수 없으므로 1시간을 버튼 하나로 압축해 보여 준다 (REQ-604).
     el('button', {
       class: 'small ghost band-sim',
-      text: `1시간 수련 시뮬 — +${Math.round(BALANCE.simEfficiency * BALANCE.simTrainSeconds)} 元`,
+      text: `1시간 수련 시뮬 — +${Math.round(BALANCE.simEfficiency * BALANCE.simTrainSeconds)} 냥`,
       // 압축이 걸어 둔 제자 성까지 올리므로 상단 표시만으로는 카드의 배지·잠금이 낡은 채 남는다.
       onclick: () => { simulateTraining(ctx.session); ctx.go('dojo'); },
     }),

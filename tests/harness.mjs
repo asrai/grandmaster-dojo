@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs';
 import {
   ART_SETS, BALANCE, BALANCE_REV, CHALLENGERS, DISCIPLE, FOE_STYLES, STYLES,
-  validateBalance, valueDigest,
+  validateBalance, validateStyleContent, valueDigest,
 } from '../src/balance.mjs';
 import { LOG_SCHEMA, TIME_FIELD, createLogBuffer, validate } from '../src/log.mjs';
 import {
@@ -18,7 +18,7 @@ import {
   autoEquip, beatenChallengers, beginDuel, beginMission, canDiscipleTrain, canDispatch, canEquip,
   canTransmitNow, challengerOfStage, consumeTooltip, createSession, createTooltipState, currentMission,
   designateDiscipleTraining, discipleTrainProgress, duelAttemptOf, duelFoeRank, enterPhase, equip,
-  equippedStyles, exportPayload, isCheatFlagged, isRematch, learnStyle, logEvent,
+  equippedStyles, exportPayload, isCheatFlagged, isFirstEncounterOf, isRematch, learnStyle, logEvent,
   missionLockRankOf, missionShortfallOf, pickTooltip, recordDuelVerdict, recordEffectiveSuccess,
   runTransmit, setBotRunning, setCheatEnabled, settleDiscipleTraining, settleDispatch, settleDuel,
   simulateTraining, cheatSetStyleRank,
@@ -33,7 +33,8 @@ import {
   artById, artStyles, assertCounterIntegrity, assertPrefixFree, canEquipRank, canLearn, canTransmit,
   challengerById, createDisciple, createProgress, createRankState, discipleMinRank,
   discipleStyleRank, discipleStyles, discipleTrainMsPerRank, discipleTrainSteps, finisherOf,
-  foePowerOf, foeRankOf, foeStyleById, initiativeOf, isEffectiveSuccess, isMissionUnlocked,
+  foePowerOf, foeRankOf, foeStyleById, initiativeOf, isEffectiveSuccess, isFirstEncounter,
+  isMissionUnlocked,
   isOneTapRank, judge, ladderBandAt, learn, missionFoeRank, missionFoeSet, missionLockRank,
   missionShortfall, powerOf, promoteByOutcome, rematchFoeRank, resolveMatch, responseWindowMs,
   reversalDecayFactor, selectDiscipleStyle, setStyleRank, styleById, styleRank, trainAccrualCap,
@@ -783,11 +784,18 @@ suite('재대련 성 누적 (REQ-734)', () => {
 
   eq(isRematch(session, stage.id), false, '이기기 전에는 재대련이 아니다');
   eq(duelAttemptOf(session, stage.id), 1, '초회 대면은 1번째');
+  // 첫 대면 판별은 회차 0 에서 도출된다 (REQ-894) — 별도 `seen` 플래그가 세션에 없다는 것이 그 결정이다.
+  eq(isFirstEncounter(0), true, '재대련 회차 0 이 첫 대면이다');
+  eq(isFirstEncounter(1), false, '한 번이라도 이겼으면 첫 대면이 아니다');
+  throws(() => isFirstEncounter(-1), '음수 승수는 throw', '재대련 승수가 0 이상의 정수가 아니다');
+  eq(isFirstEncounterOf(session, stage.id), true, '이기기 전에는 첫 대면이다');
+  eq(Object.keys(session).some((k) => /seen/i.test(k)), false, '첫 대면용 새 플래그를 세션에 두지 않았다');
   deepEq(beatenChallengers(session), [], '이긴 도전자가 없으면 재대련 목록도 없다');
   deepEq(beginDuel(session, stage.id), { foeRank: foeRankOf(stage.id), attemptN: 1 }, '초회 대면은 무강화');
   eq(session.log.entries.filter((e) => e.event === 'rematch').length, 0, '초회 대면은 rematch 를 남기지 않는다');
 
   const first = winOnce();
+  eq(isFirstEncounterOf(session, stage.id), false, '한 번 이긴 뒤로는 첫 대면이 아니다 — 절초 공개가 여기서 열린다');
   eq(first.rematch, false, '첫 승리는 재대련이 아니다');
   eq(first.reward, BALANCE.reward.duelWin, '첫 승리에는 재화가 나온다');
   eq(session.coins, BALANCE.reward.duelWin, '재화가 실제로 적립된다');
@@ -823,6 +831,7 @@ suite('재대련 성 누적 (REQ-734)', () => {
   const loser = createSession({ now: () => 0 });
   settleDuel(loser, { win: false, stage: stage.stage });
   eq(isRematch(loser, stage.id), false, '패배 뒤 재도전은 재대련이 아니다');
+  eq(isFirstEncounterOf(loser, stage.id), true, '패배는 대면 이력을 남기지 않는다 — 절초는 여전히 소문이다');
   eq(duelFoeRank(loser, stage.id), foeRankOf(stage.id), '패배는 상대를 여물게 하지 않는다');
 });
 
@@ -2146,6 +2155,35 @@ suite('밸런스 데이터 스키마 (#45)', () => {
   throwsWith((r) => { r.bot.reactionMs = [650, 450]; }, 'bot.reactionMs: [650,450] 는 [최소, 최대] 순서가 뒤집혔다', 'bot 배열 역순');
   throwsWith((r) => { delete r.damageByLen['5']; }, 'damageByLen: 초식 길이 5 의 피해가 없다', 'damageByLen 이 초식 길이를 못 덮음');
   throwsWith((r) => { r.nonesuch = 1; }, 'nonesuch: 스키마에 없는 필드', '스키마 밖 필드');
+
+  // 창안자는 표시 전용이라 값이 비어도 아무것도 죽지 않는다 (REQ-891) — 그 무음을 로드 시점에
+  // 죽이는 것이 `validateStyleContent` 이고, 정본이 콘텐츠 테이블이라 문면의 출처도 그쪽이다.
+  // 입력을 인자로 받으므로 모듈 전역 STYLES 를 변형하지 않는다.
+  const styleClone = () => STYLES.map((st) => ({ ...st, founder: { ...st.founder } }));
+  const contentThrows = (mutate, needle, label) => {
+    const styles = styleClone();
+    mutate(styles[0]);
+    let message = null;
+    try {
+      validateStyleContent(styles);
+    } catch (err) {
+      message = err.message;
+    }
+    ok(message !== null, `${label} — throw 한다`);
+    ok(message !== null && message.startsWith('초식 콘텐츠 불량 — src/balance.mjs'),
+      `${label} — 콘텐츠 테이블 경로가 문면에 실린다`);
+    ok(message !== null && message.includes(needle), `${label} — 문면에 ${needle} 가 실린다 (실제: ${message})`);
+  };
+  contentThrows((st) => { st.founder = { name: '', hanja: '雲虛子' }; },
+    'STYLES.yuun-bo.founder.name: "" 는 비어 있지 않은 문자열이 아니다', '창안자 이름 공백');
+  contentThrows((st) => { delete st.founder.hanja; },
+    'STYLES.yuun-bo.founder.hanja: undefined 는 비어 있지 않은 문자열이 아니다', '창안자 한자 누락');
+  contentThrows((st) => { st.founder.nickname = '운객'; },
+    'STYLES.yuun-bo.founder.nickname: 창안자 스키마에 없는 필드', '창안자 스키마 밖 필드');
+  contentThrows((st) => { st.founder = null; },
+    'STYLES.yuun-bo.founder: null 는 창안자 객체가 아니다', '창안자 객체 아님');
+  ok(STYLES.every((st) => st.founder.name && st.founder.hanja), '기성 4종의 창안자 값이 전부 확정돼 있다');
+  ok(STYLES.every((st) => st.founder.name !== '운객'), '플레이스홀더 「운객」이 남아 있지 않다 (REQ-891)');
   throwsWith((r) => { delete r.challengerRank['A-1']; }, 'challengerRank: 키 "A-1" 누락', '도전자 성 키 누락');
   throwsWith((r) => { delete r.reward.dispatchWin; }, 'reward: 키 "dispatchWin" 누락', '보상 키 누락');
   throwsWith((r) => { delete r.hintDelayMs.duel; }, 'hintDelayMs: 키 "duel" 누락', '힌트 지연 키 누락');

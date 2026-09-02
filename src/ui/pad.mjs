@@ -40,7 +40,7 @@ export function createPad() {
   let botOwned = false;
   let fromBot = false;
 
-  /** 응수 창 밖에서는 패드가 자리를 지키되 입력을 받지 않는다 — 사라지면 엄지가 매 수 자리를 잃는다. */
+  /** 응수 창 밖에서는 패드가 자리를 지키되 입력을 받지 않는다 — 사라지면 엄지가 초마다 자리를 잃는다. */
   const accepting = () => Boolean(active) && (active.accepting ? active.accepting() : true);
   /** 봇이 도는 동안 사람 손이 섞이면 그 표본이 누구의 것인지 로그로 가를 수 없다 (REQ-603). */
   const locked = () => botOwned && !fromBot;
