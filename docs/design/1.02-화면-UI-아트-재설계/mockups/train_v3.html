@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>수련 v3 — 일대종사</title>
+<style>
+/* ── 서체 (S1 대련·S2 도장과 동일 계약) ── */
+@font-face{font-family:'Dojo';src:url('assets/fonts/NanumMyeongjo-Regular.ttf') format('truetype');
+  font-weight:400;font-display:block;
+  unicode-range:U+0020-024F,U+2000-206F,U+20A0-20BF,U+1100-11FF,U+3130-318F,U+AC00-D7AF,U+FF00-FFEF}
+@font-face{font-family:'Dojo';src:url('assets/fonts/NanumMyeongjo-ExtraBold.ttf') format('truetype');
+  font-weight:800;font-display:block;
+  unicode-range:U+0020-024F,U+2000-206F,U+20A0-20BF,U+1100-11FF,U+3130-318F,U+AC00-D7AF,U+FF00-FFEF}
+@font-face{font-family:'Dojo';src:url('assets/fonts/NotoSerifKR-hanja-400.woff2') format('woff2');
+  font-weight:400;font-display:block;unicode-range:U+3400-9FFF,U+F900-FAFF}
+@font-face{font-family:'Dojo';src:url('assets/fonts/NotoSerifKR-hanja-800.woff2') format('woff2');
+  font-weight:800;font-display:block;unicode-range:U+3400-9FFF,U+F900-FAFF}
+
+:root{
+  --ink-deep:#12100e; --ink-mid:#1e1a16; --paper:#e8dcc8;
+  --gold:#c9a227; --seal:#a8332a;
+  --swift:#5fb3e8; --force:#e05a4d; --still:#4fbf7f;
+  --silk:#cdbb9c;   /* C9 화선지 면 — 족자에서 처음 표면으로 쓰인다 */
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#3a3632;display:flex;flex-direction:column;align-items:center;
+  min-height:100vh;padding:24px 0;font-family:'Dojo',serif}
+.phone{position:relative;width:393px;height:852px;overflow:hidden;
+  background:var(--ink-deep);color:var(--paper);
+  box-shadow:0 18px 60px rgba(0,0,0,.55);display:flex;flex-direction:column}
+
+.hj{font-size:11px;font-weight:400;color:rgba(232,220,200,.34);letter-spacing:2px}
+
+/* ══ E1 상단 띠 — 실전과 같은 50px ══ */
+.topband{position:relative;flex:0 0 50px;display:flex;align-items:center;gap:10px;
+  padding:0 14px;background:#0a0908;border-bottom:1px solid rgba(232,220,200,.07);z-index:8}
+.leave{width:28px;height:28px;flex:0 0 28px;border:none;background:none;cursor:pointer;
+  color:rgba(232,220,200,.45);font-size:19px;line-height:1;padding:0;font-family:'Dojo',serif}
+.title{display:flex;align-items:baseline;gap:7px;flex:1;min-width:0}
+.title .cap{font-size:12px;color:rgba(232,220,200,.45);letter-spacing:1px}
+.title .kr{font-size:16px;font-weight:800;letter-spacing:.5px}
+.rank-badge{flex:0 0 auto;padding:2px 7px;font-size:13px;font-weight:800;color:var(--gold);
+  box-shadow:0 0 0 1px rgba(201,162,39,.45) inset}
+
+/* ══ E2 수련장 — 실전 아레나와 같은 440px ══ */
+.hall{position:relative;flex:0 0 440px;overflow:hidden}
+.layer{position:absolute;inset:0;pointer-events:none}
+.floor{background:radial-gradient(120% 74% at 50% 30%, #2a2219 0%, #1d1712 46%, #14100d 76%, var(--ink-deep) 100%)}
+.mist{background:linear-gradient(180deg,rgba(232,220,200,0) 40%,rgba(232,220,200,.07) 56%,rgba(232,220,200,0) 72%)}
+.vignette{background:radial-gradient(118% 82% at 50% 46%, rgba(0,0,0,0) 32%, rgba(0,0,0,.74) 100%)}
+.ground{position:absolute;left:0;right:0;bottom:0;height:110px;
+  background:linear-gradient(180deg,rgba(0,0,0,0),rgba(0,0,0,.5) 55%,rgba(0,0,0,.86))}
+
+/* E3 사부 실루엣 — 실전과 같은 역광 규칙 */
+.backlight{position:absolute;border-radius:50%;pointer-events:none;
+  left:50%;transform:translateX(-50%);bottom:24px;width:206px;height:222px;
+  background:radial-gradient(closest-side, rgba(214,196,164,.24), rgba(214,196,164,0) 72%)}
+.fig{position:absolute;left:50%;transform:translateX(-50%);bottom:22px;width:148px;pointer-events:none}
+.fig svg{display:block;width:100%;height:auto}
+.fig .body{fill:#0a0908;stroke:rgba(232,220,200,.16);stroke-width:1}
+
+/* ── E4 구결 족자 — 화면에서 유일하게 밝은 면 ── */
+.scroll{position:absolute;left:16px;right:16px;top:12px;z-index:5}
+.scroll .rod{height:10px;margin:0 -6px;background:linear-gradient(180deg,#3b3025,#171310 60%,#0b0908);
+  box-shadow:0 1px 0 rgba(232,220,200,.16) inset,0 3px 8px rgba(0,0,0,.5)}
+.scroll .silk{position:relative;padding:12px 46px 11px 14px;
+  background:linear-gradient(180deg,#d5c4a6,var(--silk));
+  box-shadow:0 8px 22px rgba(0,0,0,.55)}
+.scroll .line{display:flex;align-items:baseline;gap:11px;padding:3px 0;
+  font-size:15px;font-weight:800;color:#241c14;letter-spacing:-.2px}
+.scroll .line .dir{flex:0 0 17px;text-align:center;font-size:16px;color:#6b2a22}
+.scroll .line.next{opacity:.32}
+.scroll .stamp{position:absolute;right:12px;bottom:10px;width:26px;height:26px;
+  background:var(--seal);color:#f0d9c6;font-size:9px;font-weight:800;letter-spacing:0;
+  display:flex;align-items:center;justify-content:center;line-height:1.05;text-align:center;
+  box-shadow:0 1px 4px rgba(0,0,0,.4)}
+
+/* ── E5 수련 진척 — S2 도장의 계단 언어를 그대로 상속 ── */
+.progress{position:absolute;left:16px;bottom:22px;z-index:5;display:flex;align-items:center;gap:8px}
+.progress .steps{display:flex;gap:3px}
+.progress .st{width:22px;height:9px;background:rgba(0,0,0,.6);
+  box-shadow:0 0 0 1px rgba(232,220,200,.16) inset}
+.progress .st.on{background:linear-gradient(180deg,#e0bb3e,#9b7714);box-shadow:none}
+.progress .cap{font-size:11px;color:rgba(232,220,200,.55)}
+.progress .cap b{color:var(--gold);font-weight:800}
+
+/* E6 응수 창 — 실전과 같은 위치·형태 (아레나 바닥 전폭) */
+.window-bar{position:absolute;left:0;right:0;bottom:0;height:6px;z-index:7;background:rgba(0,0,0,.72)}
+.window-bar i{position:absolute;left:0;top:0;bottom:0;width:58%;
+  background:linear-gradient(90deg,var(--seal),var(--gold));box-shadow:0 0 14px rgba(201,162,39,.55)}
+
+/* E7 수련 판정 — 성공만 표시하는 1단 (#46), 자리·조판은 실전 판정과 동일 */
+.vscrim{position:absolute;inset:0;z-index:6;pointer-events:none;
+  background:radial-gradient(58% 34% at 50% 46%, rgba(0,0,0,.82), rgba(0,0,0,0) 72%)}
+.verdict{position:absolute;left:0;right:0;top:150px;z-index:7;text-align:center;pointer-events:none;
+  animation:vpop .5s cubic-bezier(.16,1.2,.3,1) both}
+@keyframes vpop{from{opacity:0;transform:scale(.62)}60%{opacity:1}to{opacity:1;transform:scale(1)}}
+.verdict .mark{display:block;font-size:22px;font-weight:800;letter-spacing:6px;text-indent:6px;
+  opacity:.55;margin-bottom:2px;color:var(--gold)}
+.verdict .word{display:block;font-size:82px;font-weight:800;line-height:.98;
+  letter-spacing:4px;text-indent:4px;color:var(--gold);
+  text-shadow:0 0 44px rgba(201,162,39,.6),0 5px 0 rgba(0,0,0,.55)}
+
+/* ══ 입력부 — 실전과 완전히 같은 362px·같은 좌표 ══ */
+.input{position:relative;flex:1 1 auto;padding:0 13px 12px;
+  background:linear-gradient(180deg,#0a0908,#161210 40%,#0f0d0b);
+  display:flex;flex-direction:column}
+.live-color{flex:0 0 3px;margin:0 -13px 11px;background:var(--swift);
+  box-shadow:0 0 18px 1px rgba(95,179,232,.55)}
+
+/* E9 후보 죽간 */
+.slips{display:flex;gap:9px;flex:0 0 auto}
+.slip{position:relative;flex:0 0 122px;height:130px;
+  background:linear-gradient(180deg,#241d16,#181310);
+  border:1px solid rgba(232,220,200,.13);
+  display:flex;flex-direction:column;align-items:center;padding:8px 3px 7px}
+.slip .head{display:flex;align-items:center;gap:5px;flex:0 0 auto}
+.slip .rk{font-size:11px;font-weight:800;color:var(--gold);letter-spacing:-.3px}
+.slip.out .rk{color:rgba(232,220,200,.45)}
+.slip .name{flex:1 1 auto;margin:5px 0 4px;
+  writing-mode:vertical-rl;text-orientation:upright;white-space:nowrap;
+  font-size:17px;font-weight:800;letter-spacing:2px;color:#efe2cc}
+.slip .hj{font-size:9px;letter-spacing:1px}
+.slip.out{opacity:.18;filter:grayscale(1) blur(.7px);transform:translateY(8px)}
+.slip.live{border-color:rgba(95,179,232,.45);box-shadow:0 0 14px rgba(95,179,232,.12) inset}
+.slip.only{border-color:var(--gold);background:linear-gradient(180deg,#31260f,#1d1610);
+  box-shadow:0 0 0 1px var(--gold) inset,0 0 26px rgba(201,162,39,.4);
+  transform:translateY(-3px) scale(1.05)}
+/* E9-3 — 수련에서만 남은 방향이 즉시 보인다 (REQ-712 hintDelay 0) */
+.slip .peek{position:absolute;left:0;right:0;bottom:-1px;height:17px;
+  display:flex;align-items:center;justify-content:center;gap:5px;
+  background:rgba(201,162,39,.13);font-size:12px;line-height:1;color:rgba(201,162,39,.85)}
+.slip.out .peek{display:none}
+
+/* E13 초식 해설 — 죽간이 비운 자리를 「이 초식이 무엇인가」로 채운다 */
+.detail{flex:1 1 auto;height:130px;padding:10px 11px;
+  background:linear-gradient(180deg,#1d1811,#151110);
+  border:1px solid rgba(232,220,200,.12);
+  display:flex;flex-direction:column;justify-content:center;gap:8px}
+.detail .ln{display:flex;align-items:baseline;gap:9px;min-width:0}
+.detail .k{flex:0 0 26px;font-size:10px;letter-spacing:2px;color:rgba(232,220,200,.36)}
+.detail .v{font-size:13px;font-weight:800;color:#efe2cc;letter-spacing:-.2px}
+.detail .v .sub{font-weight:400;font-size:11px;color:rgba(232,220,200,.45)}
+.detail .v .brk{color:var(--force)}
+.detail .mk{display:inline-block;vertical-align:-1px;margin-right:4px}
+
+/* E10 입력 트레일 */
+.trail{flex:0 0 38px;margin-top:11px;display:flex;align-items:center;justify-content:center;gap:16px}
+.trail span{font-size:28px;line-height:1;color:rgba(232,220,200,.14)}
+.trail span.done{color:var(--gold);text-shadow:0 0 16px rgba(201,162,39,.55)}
+.trail span.next{color:rgba(232,220,200,.34)}
+
+/* E11 키패드 — 실전과 같은 배치 (정중앙 + 되돌리기 우측 끝) */
+.pad{position:relative;flex:1 1 auto;display:flex;align-items:center;justify-content:center}
+.cross{display:grid;grid-template-columns:repeat(3,64px);grid-template-rows:repeat(2,58px);gap:7px}
+.key{border:1px solid rgba(232,220,200,.15);background:rgba(232,220,200,.045);
+  color:var(--paper);font-size:24px;line-height:1;cursor:pointer;font-family:'Dojo',serif;
+  display:flex;align-items:center;justify-content:center}
+.key.up{grid-column:2;grid-row:1}
+.key.left{grid-column:1;grid-row:2}
+.key.down{grid-column:2;grid-row:2}
+.key.right{grid-column:3;grid-row:2}
+.key.hintnext{border-color:rgba(201,162,39,.55);box-shadow:0 0 14px rgba(201,162,39,.18) inset}
+.reset{position:absolute;right:-5px;top:calc(50% + 3.5px);width:64px;height:58px;
+  border:1px solid rgba(232,220,200,.15);background:rgba(232,220,200,.045);cursor:pointer;
+  display:flex;align-items:center;justify-content:center}
+.reset img{width:26px;height:26px;opacity:.55}
+
+/* ── UI 요소 ID 주석 레이어 (/gamedev-ui v0.5 공용 스니펫) ── */
+.ui-annotate-toggle{position:fixed;top:14px;right:14px;z-index:9999;font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;font-size:13px;font-weight:700;color:#fff;background:#2563eb;border:none;border-radius:8px;padding:9px 14px;cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.3)}
+.ui-annotate-toggle:hover{background:#1d4ed8}
+.ui-annotate-overlay{position:absolute;inset:0;z-index:999;pointer-events:none;display:none}
+.ui-annotate-on .ui-annotate-overlay{display:block}
+.ui-annotate-box{position:absolute;border:1.5px solid #2563eb;border-radius:4px;box-shadow:0 0 0 1px rgba(255,255,255,.55)}
+.ui-annotate-chip{position:absolute;font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;font-size:11px;font-weight:800;line-height:1;color:#fff;background:#2563eb;border:1px solid rgba(255,255,255,.75);border-radius:4px;padding:3px 5px}
+.ui-annotate-box.sub{border-color:#60a5fa;border-width:1px;border-style:dashed}
+.ui-annotate-chip.sub{background:#60a5fa;font-size:9px;padding:2px 4px}
+.ui-annotate-legend{margin-top:16px;width:393px;font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;font-size:12px;color:#333;background:rgba(255,255,255,.72);border:1px solid #bbb;border-radius:10px;padding:10px 14px;display:none;column-count:2;column-gap:18px}
+.ui-annotate-on-page .ui-annotate-legend{display:block}
+.ui-annotate-legend div{break-inside:avoid;padding:2px 0}
+.ui-annotate-legend b{color:#2563eb}
+.ui-annotate-legend .sub b{color:#60a5fa}
+.ui-annotate-legend .sub{padding-left:12px}
+.ui-annotate-legend h4{column-span:all;font-size:11px;letter-spacing:1px;color:#888;margin:8px 0 4px;border-bottom:1px solid #ccc;padding-bottom:3px}
+.ui-annotate-legend h4:first-child{margin-top:0}
+.ui-annotate-swatch{display:inline-block;width:12px;height:12px;border-radius:3px;border:1px solid rgba(0,0,0,.2);vertical-align:-2px;margin-right:4px}
+.ui-annotate-legend code{font-size:11px;color:#666}
+body.ui-capture .ui-annotate-toggle,body.ui-capture .ui-annotate-legend{display:none!important}
+body.ui-capture{display:block;min-height:0;padding:0}
+body.ui-capture [data-artboard]{box-shadow:none}
+</style>
+</head>
+<body>
+
+<div class="phone" data-artboard id="phone">
+
+  <!-- ══ E1 상단 띠 ══ -->
+  <div class="topband" data-ui="E1:상단 띠">
+    <button class="leave" data-ui="E1-1:물러나기" aria-label="도장으로">←</button>
+    <div class="title">
+      <span class="cap">수련</span>
+      <span class="kr" data-ui="E1-2:초식명">유운보</span><span class="hj">流雲步</span>
+    </div>
+  </div>
+
+  <!-- ══ E2 수련장 ══ -->
+  <div class="hall" data-ui="E2:수련장">
+    <div class="layer floor" data-ui="E2-1:수련장 바닥 레이어"></div>
+    <div class="layer mist" data-ui="E2-2:안개 층"></div>
+    <div class="ground"></div>
+    <div class="backlight"></div>
+
+    <div class="fig" data-ui="E3:사부 실루엣">
+      <svg viewBox="0 0 170 230">
+        <path class="body" d="M62 132 L 8 168 L 4 161 L 58 125 Z"/>
+        <path class="body" d="M66 124 L 74 136 L 64 142 L 56 130 Z"/>
+        <circle class="body" cx="104" cy="38" r="15"/>
+        <path class="body" d="M99 20 C 101 8, 111 8, 112 20 Z"/>
+        <path class="body" d="M90 52 C 76 66, 70 100, 66 136 C 61 174, 54 200, 44 226
+                               L 104 226 L 110 186 L 120 226 L 160 226
+                               C 148 196, 140 160, 134 122 C 128 88, 120 64, 118 52 Z"/>
+        <path class="body" d="M88 62 C 80 82, 72 106, 64 126 L 76 134 C 86 112, 94 88, 100 68 Z"/>
+        <path class="body" d="M120 60 C 132 74, 138 92, 140 110 L 128 114 C 124 96, 118 78, 110 66 Z"/>
+      </svg>
+    </div>
+
+    <div class="layer vignette"></div>
+
+    <!-- E4 구결 족자 -->
+    <div class="scroll" data-ui="E4:구결 족자">
+      <div class="rod"></div>
+      <div class="silk">
+        <div class="line done" data-ui="E4-1:구결 구절"><i class="dir">↓</i><span>무거운 것이 내려오거든</span></div>
+        <div class="line done"><i class="dir">→</i><span>맞서지 말고 앞질러</span></div>
+        <div class="line next" id="verseNext"><i class="dir">↑</i><span>흘려라</span></div>
+        <span class="stamp hj" data-ui="E4-2:낙관" style="color:#f0d9c6">流雲</span>
+      </div>
+      <div class="rod"></div>
+    </div>
+
+    <!-- E5 수련 진척 -->
+    <div class="progress" data-ui="E5:수련 진척">
+      <span class="steps" data-ui="E5-1:회차 계단">
+        <i class="st on"></i><i class="st on"></i><i class="st"></i>
+      </span>
+      <span class="cap" data-ui="E5-2:다음 성 안내">다음 <b>5성</b>까지 1회 — 파운현월이 열린다</span>
+    </div>
+
+    <div class="window-bar" data-ui="E6:응수 창 게이지"><i id="winFill"></i></div>
+    <div id="verdictSlot"></div>
+  </div>
+
+  <!-- ══ 입력부 ══ -->
+  <div class="input">
+    <div class="live-color" data-ui="E8:진행형 후보 색"></div>
+
+    <div class="slips" data-ui="E9:후보 죽간">
+      <div class="slip live">
+        <span class="head">
+          <i class="gl sm swift" data-ui="E9-1:죽간 속성 기호"
+             style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:11px solid var(--swift)"></i>
+          <span class="rk" data-ui="E9-3:죽간 성">4성</span>
+        </span>
+        <span class="name" data-ui="E9-2:죽간 초식명">유운보</span>
+        <span class="hj">流雲步</span>
+      </div>
+
+      <div class="detail" data-ui="E13:초식 해설">
+        <div class="ln"><span class="k">창안</span>
+          <span class="v" data-ui="E13-1:창안">운객 <span class="sub">雲客 · 유운검법 제1초식</span></span></div>
+        <div class="ln"><span class="k">특성</span>
+          <span class="v" data-ui="E13-2:특성">
+            <i class="mk" style="display:inline-block;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:11px solid var(--swift)"></i>쾌
+            <span class="sub">· 3수 · 먼저 닿는다</span></span></div>
+        <div class="ln"><span class="k">파해</span>
+          <span class="v" data-ui="E13-3:파해 대상">
+            <i class="mk" style="width:12px;height:12px;border-radius:50%;background:var(--force)"></i><span class="brk">벽산도</span>
+            <span class="sub">劈山刀</span></span></div>
+      </div>
+    </div>
+
+    <div class="trail" data-ui="E10:입력 트레일">
+      <span class="done">↓</span><span class="done">→</span><span class="next">↑</span>
+    </div>
+
+    <div class="pad">
+      <div class="cross" data-ui="E11:방향 키패드">
+        <button class="key up hintnext" data-ui="E11-1:키캡">↑</button>
+        <button class="key left">←</button>
+        <button class="key down">↓</button>
+        <button class="key right">→</button>
+      </div>
+      <button class="reset" data-ui="E12:입력 되돌리기" aria-label="입력 되돌리기">
+        <img src="assets/reset.svg" alt="">
+      </button>
+    </div>
+  </div>
+
+</div>
+
+<div class="ui-annotate-legend" id="uiLegend"></div>
+
+<script type="application/json" id="uiStyleLedger">
+{
+  "colors": [
+    { "id": "C1", "name": "먹 심 (배경 바닥)", "value": "#12100e" },
+    { "id": "C2", "name": "먹 중 (패널)", "value": "#1e1a16" },
+    { "id": "C3", "name": "화선지 (본문 글자)", "value": "#e8dcc8" },
+    { "id": "C4", "name": "금 (달성·확정)", "value": "#c9a227" },
+    { "id": "C5", "name": "주사 (낙관)", "value": "#a8332a" },
+    { "id": "C6", "name": "쾌", "value": "#5fb3e8" },
+    { "id": "C7", "name": "강", "value": "#e05a4d" },
+    { "id": "C8", "name": "정", "value": "#4fbf7f" },
+    { "id": "C9", "name": "화선지 면 (족자 — S3 신설)", "value": "#cdbb9c" }
+  ],
+  "fonts": [
+    { "id": "F1", "family": "Dojo", "name": "나눔명조 (OFL)", "surface": "한글·라틴 — 전 표면 주력" },
+    { "id": "F2", "family": "Dojo", "name": "Noto Serif KR 한자 서브셋 (OFL, 21KB)", "surface": "한자 — 보조 병기 전용 (.hj)" }
+  ]
+}
+</script>
+
+<script>
+/* ?state=input|success — 입력 진행 중 / 수련 성공 (#46 비대칭: 실패는 무표시) */
+(function(){
+  var st = new URLSearchParams(location.search).get('state') || 'input';
+  if (st !== 'success') return;
+
+  var hall = document.querySelector('.hall');
+  var scrim = document.createElement('div');
+  scrim.className = 'vscrim';
+  hall.insertBefore(scrim, document.getElementById('verdictSlot'));
+
+  var v = document.createElement('div');
+  v.className = 'verdict';
+  v.setAttribute('data-ui', 'E7:수련 판정');
+  v.innerHTML = '<span class="mark" data-ui="E7-2:판정 한자">成功</span>' +
+                '<span class="word" data-ui="E7-1:판정 한글">성공</span>';
+  document.getElementById('verdictSlot').appendChild(v);
+
+  document.querySelector('.window-bar i').style.width = '0%';
+  document.querySelector('.slip').className = 'slip only';
+  document.querySelector('.trail').innerHTML =
+    '<span class="done">↓</span><span class="done">→</span><span class="done">↑</span>';
+  document.querySelector('.key.hintnext').classList.remove('hintnext');
+  document.getElementById('verseNext').className = 'line done';
+  document.querySelector('.progress .steps').innerHTML =
+    '<i class="st on"></i><i class="st on"></i><i class="st on"></i>';
+  document.querySelector('.progress .cap').innerHTML =
+    '<b>5성</b>이 되었다 — 파운현월이 열렸다';
+})();
+</script>
+
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var captureMode = params.has('capture');
+  var startOn = params.has('annotate');
+  if (captureMode) document.body.classList.add('ui-capture');
+
+  var board = document.querySelector('[data-artboard]');
+  var overlay = document.createElement('div');
+  overlay.className = 'ui-annotate-overlay';
+  board.appendChild(overlay);
+
+  function buildBadges() {
+    overlay.innerHTML = '';
+    var legend = document.getElementById('uiLegend');
+    legend.innerHTML = '';
+    var h = document.createElement('h4'); h.textContent = 'UI 요소'; legend.appendChild(h);
+    var boardRect = board.getBoundingClientRect();
+    document.querySelectorAll('[data-ui]').forEach(function (el) {
+      var parts = el.getAttribute('data-ui').split(':');
+      var id = parts[0], name = parts[1] || '';
+      var isSub = id.indexOf('-') > -1;
+      var r = el.getBoundingClientRect();
+      var top = r.top - boardRect.top, left = r.left - boardRect.left;
+      var box = document.createElement('div');
+      box.className = 'ui-annotate-box' + (isSub ? ' sub' : '');
+      box.style.cssText = 'top:'+top+'px;left:'+left+'px;width:'+r.width+'px;height:'+r.height+'px;';
+      overlay.appendChild(box);
+      var chip = document.createElement('div');
+      chip.className = 'ui-annotate-chip' + (isSub ? ' sub' : '');
+      chip.textContent = id; chip.title = name;
+      chip.style.cssText = 'top:'+Math.max(2,top-8)+'px;left:'+Math.max(2,left-6)+'px;';
+      overlay.appendChild(chip);
+      var row = document.createElement('div');
+      if (isSub) row.className = 'sub';
+      row.innerHTML = '<b>'+id+'</b> '+name;
+      legend.appendChild(row);
+    });
+    var ledgerEl = document.getElementById('uiStyleLedger');
+    if (ledgerEl) {
+      var ledger = JSON.parse(ledgerEl.textContent);
+      if (ledger.colors && ledger.colors.length) {
+        var hc = document.createElement('h4'); hc.textContent = '배경·색상'; legend.appendChild(hc);
+        ledger.colors.forEach(function (c) {
+          var row = document.createElement('div');
+          row.innerHTML = '<b>'+c.id+'</b> <span class="ui-annotate-swatch" style="background:'+c.value+'"></span>'+c.name+' <code>'+c.value+'</code>';
+          legend.appendChild(row);
+        });
+      }
+      if (ledger.fonts && ledger.fonts.length) {
+        var hf = document.createElement('h4'); hf.textContent = '폰트'; legend.appendChild(hf);
+        ledger.fonts.forEach(function (f) {
+          var row = document.createElement('div');
+          row.innerHTML = '<b>'+f.id+'</b> '+f.name+' — '+f.surface;
+          legend.appendChild(row);
+        });
+      }
+    }
+  }
+
+  var btn = document.createElement('button');
+  btn.className = 'ui-annotate-toggle';
+  function setState(on) {
+    document.body.classList.toggle('ui-annotate-on', on);
+    document.body.classList.toggle('ui-annotate-on-page', on);
+    btn.textContent = on ? '요소 번호 숨기기' : '요소 번호 표시';
+    btn.dataset.on = on ? '1' : '0';
+  }
+  btn.addEventListener('click', function () { setState(btn.dataset.on !== '1'); });
+  document.body.appendChild(btn);
+
+  window.addEventListener('load', function () { buildBadges(); setState(startOn); });
+})();
+</script>
+</body>
+</html>

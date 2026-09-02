@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>도전자 선택 v1 — 일대종사</title>
+<style>
+@font-face{font-family:'Dojo';src:url('assets/fonts/NanumMyeongjo-Regular.ttf') format('truetype');
+  font-weight:400;font-display:block;
+  unicode-range:U+0020-024F,U+2000-206F,U+20A0-20BF,U+1100-11FF,U+3130-318F,U+AC00-D7AF,U+FF00-FFEF}
+@font-face{font-family:'Dojo';src:url('assets/fonts/NanumMyeongjo-ExtraBold.ttf') format('truetype');
+  font-weight:800;font-display:block;
+  unicode-range:U+0020-024F,U+2000-206F,U+20A0-20BF,U+1100-11FF,U+3130-318F,U+AC00-D7AF,U+FF00-FFEF}
+@font-face{font-family:'Dojo';src:url('assets/fonts/NotoSerifKR-hanja-400.woff2') format('woff2');
+  font-weight:400;font-display:block;unicode-range:U+3400-9FFF,U+F900-FAFF}
+@font-face{font-family:'Dojo';src:url('assets/fonts/NotoSerifKR-hanja-800.woff2') format('woff2');
+  font-weight:800;font-display:block;unicode-range:U+3400-9FFF,U+F900-FAFF}
+
+:root{
+  --ink-deep:#12100e; --ink-mid:#1e1a16; --paper:#e8dcc8;
+  --gold:#c9a227; --seal:#a8332a;
+  --swift:#5fb3e8; --force:#e05a4d; --still:#4fbf7f;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#3a3632;display:flex;flex-direction:column;align-items:center;
+  min-height:100vh;padding:24px 0;font-family:'Dojo',serif}
+.phone{position:relative;width:393px;height:852px;overflow:hidden;
+  background:var(--ink-deep);color:var(--paper);
+  box-shadow:0 18px 60px rgba(0,0,0,.55);display:flex;flex-direction:column}
+.hj{font-size:11px;font-weight:400;color:rgba(232,220,200,.34);letter-spacing:2px}
+
+/* ══ E1 상단 띠 ══ */
+.topband{flex:0 0 50px;display:flex;align-items:center;gap:10px;padding:0 14px;
+  background:#0a0908;border-bottom:1px solid rgba(232,220,200,.07);z-index:8}
+.leave{width:28px;height:28px;flex:0 0 28px;border:none;background:none;cursor:pointer;
+  color:rgba(232,220,200,.45);font-size:19px;line-height:1;font-family:'Dojo',serif}
+.topband .kr{font-size:16px;font-weight:800;letter-spacing:2px}
+.spacer{flex:1}
+.coin{display:flex;align-items:baseline;gap:5px}
+.coin .n{font-size:16px;font-weight:800}
+.coin .u{font-size:11px;color:rgba(232,220,200,.45)}
+
+/* ══ E2 도전자 목록 ══ */
+.list{flex:0 0 auto;padding:11px 13px 0;display:flex;flex-direction:column;gap:7px}
+.foe{position:relative;display:flex;align-items:center;gap:11px;padding:12px 11px 12px 13px;
+  background:rgba(232,220,200,.028);border:1px solid rgba(232,220,200,.09);cursor:pointer}
+.foe.on{border-color:var(--gold);background:rgba(201,162,39,.09);
+  box-shadow:0 0 0 1px rgba(201,162,39,.4) inset}
+.foe.lock{opacity:.36}
+.seal{flex:0 0 38px;height:38px;display:flex;align-items:center;justify-content:center;
+  background:var(--seal);color:#f7ecdc;font-size:13px;font-weight:800;letter-spacing:0}
+.foe.lock .seal{background:rgba(232,220,200,.12);color:rgba(232,220,200,.5)}
+.foe .id{min-width:0;display:flex;flex-direction:column;gap:5px}
+.foe .nm{display:flex;align-items:baseline;gap:7px}
+.foe .nm b{font-size:16px;font-weight:800;letter-spacing:.2px;white-space:nowrap}
+.attrs{display:flex;gap:5px}
+.at{display:flex;align-items:center;gap:4px;padding:2px 7px;font-size:11px;
+  color:rgba(232,220,200,.6);box-shadow:0 0 0 1px rgba(232,220,200,.14) inset}
+.at.ult{color:var(--gold);box-shadow:0 0 0 1px rgba(201,162,39,.55) inset;
+  background:rgba(201,162,39,.1)}
+.gl{display:inline-block;flex:0 0 auto}
+.gl.swift{width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:9px solid var(--swift)}
+.gl.force{width:10px;height:10px;border-radius:50%;background:var(--force)}
+.gl.still{width:9px;height:9px;background:var(--still)}
+.state{margin-left:auto;text-align:right;white-space:nowrap}
+.state .t{display:block;font-size:12px;font-weight:800;color:rgba(232,220,200,.72)}
+.state .s{display:block;font-size:10px;color:rgba(232,220,200,.36);margin-top:2px}
+.state.beat .t{color:rgba(232,220,200,.5);font-weight:400}
+.state.now .t{color:var(--gold)}
+
+/* ══ 브리핑 ══ */
+.brief{flex:1 1 auto;overflow:hidden;margin-top:11px;padding:12px 13px 13px;
+  background:linear-gradient(180deg,#0a0908,#161210 40%,#0f0d0b);
+  border-top:1px solid rgba(232,220,200,.08);
+  display:flex;flex-direction:column;gap:10px}
+.brief .cap{font-size:10px;letter-spacing:3px;color:rgba(232,220,200,.32)}
+
+/* E3 상대 초식 브리핑 */
+.foe-styles{display:flex;gap:7px;margin-top:7px}
+.fs{flex:1;padding:12px 6px 11px;text-align:center;
+  background:rgba(232,220,200,.03);border-top:2px solid rgba(232,220,200,.14)}
+.fs.swift{border-top-color:var(--swift)}
+.fs.force{border-top-color:var(--force)}
+.fs.still{border-top-color:var(--still)}
+.fs.ult{border-top-color:var(--gold);background:rgba(201,162,39,.1);
+  box-shadow:0 0 0 1px rgba(201,162,39,.35) inset}
+.fs .n{display:block;font-size:14px;font-weight:800;letter-spacing:-.2px}
+.fs .h{display:block;font-size:9px;letter-spacing:1px;color:rgba(232,220,200,.34);margin-top:2px}
+.fs .tag{display:block;font-size:9px;letter-spacing:2px;color:var(--gold);margin-top:3px}
+
+/* E4 절초 파해 공개 — 답을 가르치는 유일한 자리 */
+.tell{display:block;padding:10px 12px;line-height:1.5;
+  background:rgba(201,162,39,.09);border-left:3px solid var(--gold);
+  font-size:12.5px;font-weight:800;color:var(--gold);letter-spacing:-.1px}
+.tell span{font-weight:400;color:rgba(232,220,200,.55)}
+.tell.none{background:rgba(232,220,200,.022);border-left-color:rgba(232,220,200,.16);
+  color:rgba(232,220,200,.4);font-weight:400}
+
+/* E5 내 슬롯 — 판단의 순간과 조작의 장소를 붙인다 (REQ-736) */
+.slots{display:flex;gap:7px;margin-top:7px}
+.sl{flex:1;position:relative;padding:13px 6px 12px;text-align:center;cursor:pointer;
+  background:rgba(232,220,200,.03);border:1px solid rgba(232,220,200,.1)}
+.sl::before{content:'';position:absolute;left:0;right:0;top:0;height:2px}
+.sl.swift::before{background:var(--swift)}
+.sl.force::before{background:var(--force)}
+.sl.still::before{background:var(--still)}
+.sl .n{display:block;font-size:14px;font-weight:800}
+.sl .h{display:block;font-size:9px;letter-spacing:1px;color:rgba(232,220,200,.34);margin-top:2px}
+.sl .r{display:block;font-size:12px;font-weight:800;color:var(--gold);margin-top:4px}
+.sl.hit{border-color:var(--gold);background:rgba(201,162,39,.12);
+  box-shadow:0 0 0 1px rgba(201,162,39,.45) inset}
+.sl.hit .tag{display:block;font-size:9px;letter-spacing:1px;color:var(--gold);margin-top:3px}
+.sl.empty{border-style:dashed;color:rgba(232,220,200,.3)}
+.sl.empty .n{color:rgba(232,220,200,.3);font-weight:400;font-size:12px}
+.warn{margin-top:9px;font-size:11px;color:#c4756c;letter-spacing:-.1px}
+
+/* E6 대련 시작 */
+.go{margin-top:auto;flex:0 0 56px;border:1px solid var(--gold);background:rgba(201,162,39,.15);
+  color:var(--gold);font-family:'Dojo',serif;font-size:17px;font-weight:800;letter-spacing:4px;
+  cursor:pointer}
+
+/* ── UI 요소 ID 주석 레이어 (/gamedev-ui v0.5 공용 스니펫) ── */
+.ui-annotate-toggle{position:fixed;top:14px;right:14px;z-index:9999;font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;font-size:13px;font-weight:700;color:#fff;background:#2563eb;border:none;border-radius:8px;padding:9px 14px;cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.3)}
+.ui-annotate-toggle:hover{background:#1d4ed8}
+.ui-annotate-overlay{position:absolute;inset:0;z-index:999;pointer-events:none;display:none}
+.ui-annotate-on .ui-annotate-overlay{display:block}
+.ui-annotate-box{position:absolute;border:1.5px solid #2563eb;border-radius:4px;box-shadow:0 0 0 1px rgba(255,255,255,.55)}
+.ui-annotate-chip{position:absolute;font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;font-size:11px;font-weight:800;line-height:1;color:#fff;background:#2563eb;border:1px solid rgba(255,255,255,.75);border-radius:4px;padding:3px 5px}
+.ui-annotate-box.sub{border-color:#60a5fa;border-width:1px;border-style:dashed}
+.ui-annotate-chip.sub{background:#60a5fa;font-size:9px;padding:2px 4px}
+.ui-annotate-legend{margin-top:16px;width:393px;font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;font-size:12px;color:#333;background:rgba(255,255,255,.72);border:1px solid #bbb;border-radius:10px;padding:10px 14px;display:none;column-count:2;column-gap:18px}
+.ui-annotate-on-page .ui-annotate-legend{display:block}
+.ui-annotate-legend div{break-inside:avoid;padding:2px 0}
+.ui-annotate-legend b{color:#2563eb}
+.ui-annotate-legend .sub b{color:#60a5fa}
+.ui-annotate-legend .sub{padding-left:12px}
+.ui-annotate-legend h4{column-span:all;font-size:11px;letter-spacing:1px;color:#888;margin:8px 0 4px;border-bottom:1px solid #ccc;padding-bottom:3px}
+.ui-annotate-legend h4:first-child{margin-top:0}
+.ui-annotate-swatch{display:inline-block;width:12px;height:12px;border-radius:3px;border:1px solid rgba(0,0,0,.2);vertical-align:-2px;margin-right:4px}
+.ui-annotate-legend code{font-size:11px;color:#666}
+body.ui-capture .ui-annotate-toggle,body.ui-capture .ui-annotate-legend{display:none!important}
+body.ui-capture{display:block;min-height:0;padding:0}
+body.ui-capture [data-artboard]{box-shadow:none}
+</style>
+</head>
+<body>
+
+<div class="phone" data-artboard id="phone">
+
+  <div class="topband" data-ui="E1:상단 띠">
+    <button class="leave" data-ui="E1-1:물러나기">←</button>
+    <span class="kr" data-ui="E1-2:화면 제목">대련</span>
+    <div class="spacer"></div>
+    <div class="coin" data-ui="E1-3:재화"><span class="n">740</span><span class="u">냥</span></div>
+  </div>
+
+  <!-- ══ E2 도전자 목록 ══ -->
+  <div class="list" data-ui="E2:도전자 목록">
+
+    <div class="foe" data-ui="E2-1:도전자 행">
+      <span class="seal" data-ui="E2-2:차수 낙관">A-1</span>
+      <span class="id">
+        <span class="nm" data-ui="E2-3:도전자 이름"><b>떠돌이 무인</b><span class="hj">流浪武人</span></span>
+        <span class="attrs" data-ui="E2-4:상대 속성"><span class="at"><i class="gl force"></i>강</span></span>
+      </span>
+      <span class="state beat" data-ui="E2-5:상태 배지">
+        <span class="t">재대련 3차</span><span class="s">재화 없음 · 성 +2</span>
+      </span>
+    </div>
+
+    <div class="foe">
+      <span class="seal">A-2</span>
+      <span class="id">
+        <span class="nm"><b>산적 두목</b><span class="hj">山賊頭目</span></span>
+        <span class="attrs"><span class="at"><i class="gl force"></i>강</span><span class="at"><i class="gl still"></i>정</span></span>
+      </span>
+      <span class="state beat"><span class="t">재대련 2차</span><span class="s">재화 없음 · 성 +1</span></span>
+    </div>
+
+    <div class="foe">
+      <span class="seal">A-3</span>
+      <span class="id">
+        <span class="nm"><b>표국 호위</b><span class="hj">鏢局護衛</span></span>
+        <span class="attrs"><span class="at"><i class="gl force"></i>강</span><span class="at"><i class="gl still"></i>정</span><span class="at"><i class="gl swift"></i>쾌</span></span>
+      </span>
+      <span class="state beat"><span class="t">재대련 1차</span><span class="s">재화 없음</span></span>
+    </div>
+
+    <div class="foe on" id="foeA4">
+      <span class="seal">A-4</span>
+      <span class="id">
+        <span class="nm"><b>월영문 계승자</b><span class="hj">月影門</span></span>
+        <span class="attrs">
+          <span class="at"><i class="gl force"></i>강</span>
+          <span class="at"><i class="gl swift"></i>쾌</span>
+          <span class="at ult">절초</span>
+        </span>
+      </span>
+      <span class="state now"><span class="t">첫 대면</span><span class="s">재화 +50</span></span>
+    </div>
+
+  </div>
+
+  <!-- ══ 브리핑 ══ -->
+  <div class="brief">
+
+    <div data-ui="E3:상대 초식 브리핑">
+      <span class="cap">상대 초식</span>
+      <div class="foe-styles">
+        <span class="fs force" data-ui="E3-1:상대 초식 카드">
+          <span class="n">벽산도</span><span class="h">劈山刀</span>
+        </span>
+        <span class="fs swift">
+          <span class="n">질풍각</span><span class="h">疾風脚</span>
+        </span>
+        <span class="fs ult" data-ui="E3-2:절초 표식">
+          <span class="n">월영자</span><span class="h">月影刺</span><span class="tag">절초</span>
+        </span>
+      </div>
+    </div>
+
+    <div class="tell" data-ui="E4:절초 파해 공개">
+      절초 월영자는 <span>파운현월로만 파해된다 — 다른 초식을 내면 역파를 맞는다</span>
+    </div>
+
+    <div data-ui="E5:내 슬롯">
+      <span class="cap">내 슬롯 — 탭하면 바꾼다</span>
+      <div class="slots">
+        <span class="sl swift" data-ui="E5-1:슬롯 칸">
+          <span class="n" data-ui="E5-2:슬롯 초식">유운보</span><span class="h">流雲步</span>
+          <span class="r" data-ui="E5-3:슬롯 성">12성</span>
+        </span>
+        <span class="sl force">
+          <span class="n">적운압정</span><span class="h">積雲壓頂</span><span class="r">12성</span>
+        </span>
+        <span class="sl still">
+          <span class="n">행운유수</span><span class="h">行雲流水</span><span class="r">12성</span>
+        </span>
+      </div>
+      <p class="warn" id="warn">파운현월이 빠져 있다 — 절초에 역파를 맞는다</p>
+    </div>
+
+    <button class="go" data-ui="E6:대련 시작">대련 시작</button>
+  </div>
+
+</div>
+
+<div class="ui-annotate-legend" id="uiLegend"></div>
+
+<script type="application/json" id="uiStyleLedger">
+{
+  "colors": [
+    { "id": "C1", "name": "먹 심 (배경 바닥)", "value": "#12100e" },
+    { "id": "C2", "name": "먹 중 (패널)", "value": "#1e1a16" },
+    { "id": "C3", "name": "화선지 (본문)", "value": "#e8dcc8" },
+    { "id": "C4", "name": "금 (선택 · 절초 · 성)", "value": "#c9a227" },
+    { "id": "C5", "name": "주사 (차수 낙관 · 이미 이긴 상대 · 경고)", "value": "#a8332a" },
+    { "id": "C6", "name": "쾌", "value": "#5fb3e8" },
+    { "id": "C7", "name": "강", "value": "#e05a4d" },
+    { "id": "C8", "name": "정", "value": "#4fbf7f" }
+  ],
+  "fonts": [
+    { "id": "F1", "family": "Dojo", "name": "나눔명조 (OFL)", "surface": "한글·라틴 — 전 표면 주력" },
+    { "id": "F2", "family": "Dojo", "name": "Noto Serif KR 한자 서브셋 (OFL, 21KB)", "surface": "한자 — 보조 병기 전용 (.hj)" }
+  ]
+}
+</script>
+
+<script>
+/* ?state=a4|swap|rematch */
+(function(){
+  var st = new URLSearchParams(location.search).get('state') || 'a4';
+
+  if (st === 'swap'){
+    /* 슬롯을 바꾼 뒤 — 파해가 들어와 경고가 사라진다 */
+    var sl = document.querySelectorAll('.sl')[2];
+    sl.className = 'sl swift hit';
+    sl.innerHTML = '<span class="n">파운현월</span><span class="h">破雲見月</span>' +
+                   '<span class="r">12성</span><span class="tag">절초 파해</span>';
+    var w = document.getElementById('warn');
+    w.style.color = 'var(--gold)';
+    w.textContent = '파운현월이 슬롯에 들어왔다 — 절초를 받아칠 수 있다';
+  }
+
+  if (st === 'rematch'){
+    document.getElementById('foeA4').className = 'foe';
+    var a1 = document.querySelectorAll('.foe')[0];
+    a1.className = 'foe on';
+    document.querySelector('.foe-styles').innerHTML =
+      '<span class="fs force"><span class="n">벽산도</span><span class="h">劈山刀</span></span>';
+    var t = document.querySelector('.tell');
+    t.className = 'tell none';
+    t.innerHTML = '절초 없음 <span>— 이 도전자는 답을 가르칠 것이 없다</span>';
+    document.getElementById('warn').style.color = 'rgba(232,220,200,.38)';
+    document.getElementById('warn').textContent =
+      '이미 이긴 상대다 — 성이 두 성 여물었고 재화는 나오지 않는다';
+    document.querySelector('.go').textContent = '재대련 시작';
+  }
+})();
+</script>
+
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var captureMode = params.has('capture');
+  var startOn = params.has('annotate');
+  if (captureMode) document.body.classList.add('ui-capture');
+
+  var board = document.querySelector('[data-artboard]');
+  var overlay = document.createElement('div');
+  overlay.className = 'ui-annotate-overlay';
+  board.appendChild(overlay);
+
+  function buildBadges() {
+    overlay.innerHTML = '';
+    var legend = document.getElementById('uiLegend');
+    legend.innerHTML = '';
+    var h = document.createElement('h4'); h.textContent = 'UI 요소'; legend.appendChild(h);
+    var boardRect = board.getBoundingClientRect();
+    document.querySelectorAll('[data-ui]').forEach(function (el) {
+      var parts = el.getAttribute('data-ui').split(':');
+      var id = parts[0], name = parts[1] || '';
+      var isSub = id.indexOf('-') > -1;
+      var r = el.getBoundingClientRect();
+      var top = r.top - boardRect.top, left = r.left - boardRect.left;
+      var box = document.createElement('div');
+      box.className = 'ui-annotate-box' + (isSub ? ' sub' : '');
+      box.style.cssText = 'top:'+top+'px;left:'+left+'px;width:'+r.width+'px;height:'+r.height+'px;';
+      overlay.appendChild(box);
+      var chip = document.createElement('div');
+      chip.className = 'ui-annotate-chip' + (isSub ? ' sub' : '');
+      chip.textContent = id; chip.title = name;
+      chip.style.cssText = 'top:'+Math.max(2,top-8)+'px;left:'+Math.max(2,left-6)+'px;';
+      overlay.appendChild(chip);
+      var row = document.createElement('div');
+      if (isSub) row.className = 'sub';
+      row.innerHTML = '<b>'+id+'</b> '+name;
+      legend.appendChild(row);
+    });
+    var ledgerEl = document.getElementById('uiStyleLedger');
+    if (ledgerEl) {
+      var ledger = JSON.parse(ledgerEl.textContent);
+      if (ledger.colors && ledger.colors.length) {
+        var hc = document.createElement('h4'); hc.textContent = '배경·색상'; legend.appendChild(hc);
+        ledger.colors.forEach(function (c) {
+          var row = document.createElement('div');
+          row.innerHTML = '<b>'+c.id+'</b> <span class="ui-annotate-swatch" style="background:'+c.value+'"></span>'+c.name+' <code>'+c.value+'</code>';
+          legend.appendChild(row);
+        });
+      }
+      if (ledger.fonts && ledger.fonts.length) {
+        var hf = document.createElement('h4'); hf.textContent = '폰트'; legend.appendChild(hf);
+        ledger.fonts.forEach(function (f) {
+          var row = document.createElement('div');
+          row.innerHTML = '<b>'+f.id+'</b> '+f.name+' — '+f.surface;
+          legend.appendChild(row);
+        });
+      }
+    }
+  }
+
+  var btn = document.createElement('button');
+  btn.className = 'ui-annotate-toggle';
+  function setState(on) {
+    document.body.classList.toggle('ui-annotate-on', on);
+    document.body.classList.toggle('ui-annotate-on-page', on);
+    btn.textContent = on ? '요소 번호 숨기기' : '요소 번호 표시';
+    btn.dataset.on = on ? '1' : '0';
+  }
+  btn.addEventListener('click', function () { setState(btn.dataset.on !== '1'); });
+  document.body.appendChild(btn);
+
+  window.addEventListener('load', function () { buildBadges(); setState(startOn); });
+})();
+</script>
+</body>
+</html>

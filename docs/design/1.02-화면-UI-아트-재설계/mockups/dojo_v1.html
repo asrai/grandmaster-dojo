@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>도장 v1 — 일대종사</title>
+<style>
+/* ── 서체 (S1 대련과 동일 계약) ── */
+@font-face{font-family:'Dojo';src:url('assets/fonts/NanumMyeongjo-Regular.ttf') format('truetype');
+  font-weight:400;font-display:block;
+  unicode-range:U+0020-024F,U+2000-206F,U+20A0-20BF,U+1100-11FF,U+3130-318F,U+AC00-D7AF,U+FF00-FFEF}
+@font-face{font-family:'Dojo';src:url('assets/fonts/NanumMyeongjo-ExtraBold.ttf') format('truetype');
+  font-weight:800;font-display:block;
+  unicode-range:U+0020-024F,U+2000-206F,U+20A0-20BF,U+1100-11FF,U+3130-318F,U+AC00-D7AF,U+FF00-FFEF}
+@font-face{font-family:'Dojo';src:url('assets/fonts/NotoSerifKR-hanja-400.woff2') format('woff2');
+  font-weight:400;font-display:block;unicode-range:U+3400-9FFF,U+F900-FAFF}
+@font-face{font-family:'Dojo';src:url('assets/fonts/NotoSerifKR-hanja-800.woff2') format('woff2');
+  font-weight:800;font-display:block;unicode-range:U+3400-9FFF,U+F900-FAFF}
+
+:root{
+  --ink-deep:#12100e; --ink-mid:#1e1a16; --paper:#e8dcc8;
+  --gold:#c9a227; --seal:#a8332a;
+  --swift:#5fb3e8; --force:#e05a4d; --still:#4fbf7f;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#3a3632;display:flex;flex-direction:column;align-items:center;
+  min-height:100vh;padding:24px 0;font-family:'Dojo',serif}
+.phone{position:relative;width:393px;height:852px;overflow:hidden;
+  background:var(--ink-deep);color:var(--paper);
+  box-shadow:0 18px 60px rgba(0,0,0,.55);display:flex;flex-direction:column}
+
+/* 한자는 어디서나 보조 (횡단 결정 D-2) */
+.hj{font-size:11px;font-weight:400;color:rgba(232,220,200,.32);letter-spacing:2px}
+
+/* ══ E1 상단 띠 ══ */
+.topband{flex:0 0 50px;display:flex;align-items:center;gap:9px;padding:0 14px;
+  background:#0a0908;border-bottom:1px solid rgba(232,220,200,.07);z-index:6}
+.rank{display:flex;align-items:baseline;gap:6px}
+.rank .stage{font-size:16px;font-weight:800;color:var(--gold);letter-spacing:.5px}
+.rank .art{font-size:12px;color:rgba(232,220,200,.5)}
+.spacer{flex:1}
+.coin{display:flex;align-items:baseline;gap:5px}
+.coin .n{font-size:17px;font-weight:800}
+.coin .u{font-size:11px;color:rgba(232,220,200,.45)}
+
+/* ══ E2 도장 정경 배너 ══ */
+.banner{position:relative;flex:0 0 136px;overflow:hidden;
+  border-bottom:1px solid rgba(232,220,200,.09)}
+.banner .layer{position:absolute;inset:0;pointer-events:none}
+.banner .sky{background:linear-gradient(180deg,#241d16 0%,#191410 58%,#100d0b 100%)}
+.banner .glow{background:radial-gradient(58% 76% at 50% 34%, rgba(214,196,164,.20), rgba(214,196,164,0) 70%)}
+.banner .vig{background:radial-gradient(110% 92% at 50% 40%, rgba(0,0,0,0) 42%, rgba(0,0,0,.7) 100%)}
+.bfig{position:absolute;bottom:0;pointer-events:none}
+.bfig svg{display:block;width:100%;height:auto}
+.bfig .body{fill:#070605;stroke:rgba(232,220,200,.15);stroke-width:1}
+.bfig.master{left:120px;width:90px}
+.bfig.pupil{left:204px;width:68px;opacity:.92}
+/* 제자 상태는 카드가 아니라 정경 안에 — 「도장에 제자가 서 있다」가 곧 상태 표시 */
+.pupil-tag{position:absolute;left:196px;bottom:9px;display:flex;align-items:baseline;gap:5px;
+  padding:2px 7px;background:rgba(10,9,8,.72);box-shadow:0 0 0 1px rgba(232,220,200,.16) inset}
+.pupil-tag .t{font-size:11px;color:rgba(232,220,200,.6)}
+.pupil-tag b{font-size:13px;font-weight:800;color:var(--gold)}
+.plaque{position:absolute;left:14px;top:12px;display:flex;flex-direction:column;gap:2px}
+.plaque .t{font-size:15px;font-weight:800;letter-spacing:2px}
+.plaque .s{font-size:10px;color:rgba(232,220,200,.42);letter-spacing:2px}
+
+/* ══ 스크롤 본문 ══ */
+.body-scroll{flex:1 1 auto;overflow:hidden;padding:12px 13px 0;display:flex;flex-direction:column;gap:11px}
+
+/* E3 무공 카드 */
+.art-card{background:linear-gradient(180deg,#1d1811,#151110);
+  border:1px solid rgba(232,220,200,.12);padding:12px 12px 9px}
+.art-head{display:flex;align-items:baseline;gap:8px;margin-bottom:9px}
+.art-head .kr{font-size:19px;font-weight:800;letter-spacing:.5px}
+.badge{flex:0 0 auto;padding:2px 8px;border-radius:2px;font-size:11px;font-weight:800;
+  background:var(--gold);color:#1a1408;letter-spacing:1px}
+.badge.locked{background:transparent;color:rgba(232,220,200,.4);
+  box-shadow:0 0 0 1px rgba(232,220,200,.22) inset}
+
+/* 게이지 공용 — 임계 눈금을 가진 진행 바 */
+.gauge{position:relative;flex:1;height:9px;background:rgba(0,0,0,.62);
+  box-shadow:0 0 0 1px rgba(232,220,200,.14) inset}
+.gauge i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,#8a6a16,var(--gold))}
+.gauge i.blue{background:linear-gradient(90deg,#2f6f9c,var(--swift))}
+.gauge .tick{position:absolute;top:-3px;bottom:-3px;width:1px;background:rgba(232,220,200,.5)}
+.gauge .tick.done{background:var(--gold)}
+.rank-row{display:flex;align-items:center;gap:9px}
+.rank-row .lbl{font-size:11px;color:rgba(232,220,200,.55);white-space:nowrap}
+.rank-row .lbl b{color:var(--gold);font-size:13px;font-weight:800}
+
+/* E4 초식 행 */
+.moves{margin-top:11px;display:flex;flex-direction:column;gap:7px}
+.move{position:relative;padding:9px 9px 8px 12px;background:rgba(232,220,200,.028);
+  border:1px solid rgba(232,220,200,.08)}
+.move::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px}
+.move.swift::before{background:var(--swift)}
+.move.force::before{background:var(--force)}
+.move.still::before{background:var(--still)}
+.move.lock{opacity:.42}
+.move-top{display:flex;align-items:center;gap:8px}
+.move-top .nm{font-size:16px;font-weight:800;letter-spacing:.3px}
+.slot{padding:1px 6px;font-size:10px;letter-spacing:1px;color:rgba(232,220,200,.62);
+  box-shadow:0 0 0 1px rgba(232,220,200,.2) inset}
+.btns{margin-left:auto;display:flex;gap:6px}
+.btn{min-width:54px;height:32px;padding:0 9px;border:1px solid rgba(232,220,200,.18);
+  background:rgba(232,220,200,.05);color:var(--paper);font-family:'Dojo',serif;
+  font-size:13px;font-weight:800;cursor:pointer}
+.btn.primary{border-color:var(--gold);background:rgba(201,162,39,.16);color:var(--gold)}
+.btn.ghost{opacity:.4}
+.move-bot{display:flex;align-items:center;gap:9px;margin-top:8px}
+.mastery{font-size:11px;color:rgba(232,220,200,.5);white-space:nowrap;text-align:right;width:92px}
+.mastery b{display:block;font-size:14px;font-weight:800;color:var(--paper);line-height:1.2}
+.mastery.max b{color:var(--gold)}
+.seq{display:flex;gap:13px;margin-top:9px;padding-left:1px}
+.seq span{font-size:19px;color:rgba(232,220,200,.42)}
+
+/* 속성 기호 */
+.gl{display:inline-block;flex:0 0 auto}
+.gl.swift{width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:12px solid var(--swift)}
+.gl.force{width:13px;height:13px;border-radius:50%;background:var(--force)}
+.gl.still{width:12px;height:12px;background:var(--still)}
+
+/* E5 제자 카드 */
+.pupil-card{background:linear-gradient(180deg,#1d1811,#151110);
+  border:1px solid rgba(232,220,200,.12);padding:11px 12px;display:flex;align-items:center;gap:11px}
+.pupil-card .ttl{font-size:15px;font-weight:800;letter-spacing:1px}
+.pupil-card .desc{font-size:11px;color:rgba(232,220,200,.45);line-height:1.5;margin-top:2px}
+.pupil-card .rank-pill{margin-left:auto;text-align:right}
+.pupil-card .rank-pill b{display:block;font-size:18px;font-weight:800;color:var(--gold)}
+.pupil-card .rank-pill span{font-size:10px;color:rgba(232,220,200,.42)}
+
+/* E6 유도 툴팁 */
+.hint{flex:0 0 auto;margin:0 13px 8px;padding:8px 11px;
+  background:rgba(201,162,39,.1);border-left:3px solid var(--gold);
+  font-size:12px;font-weight:800;color:var(--gold);letter-spacing:.3px}
+
+/* E7 하단 액션 바 */
+.actions{flex:0 0 auto;display:flex;gap:7px;padding:0 13px}
+.act{flex:1;height:72px;border:1px solid rgba(232,220,200,.14);background:rgba(232,220,200,.04);
+  color:var(--paper);font-family:'Dojo',serif;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}
+.act .t{font-size:18px;font-weight:800;letter-spacing:2px}
+.act .c{font-size:10px;color:rgba(232,220,200,.42);letter-spacing:.5px}
+.act.on{border-color:var(--gold);background:rgba(201,162,39,.14)}
+.act.on .t{color:var(--gold)}
+.act.off{opacity:.34}
+
+/* E8 수련 시뮬 */
+.sim{flex:0 0 auto;margin:9px 13px 12px;height:42px;border:1px solid rgba(232,220,200,.12);
+  background:transparent;color:rgba(232,220,200,.62);font-family:'Dojo',serif;
+  font-size:13px;letter-spacing:1px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px}
+.sim b{color:var(--gold);font-weight:800}
+
+/* ── UI 요소 ID 주석 레이어 (/gamedev-ui v0.5 공용 스니펫) ── */
+.ui-annotate-toggle{position:fixed;top:14px;right:14px;z-index:9999;font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;font-size:13px;font-weight:700;color:#fff;background:#2563eb;border:none;border-radius:8px;padding:9px 14px;cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.3)}
+.ui-annotate-toggle:hover{background:#1d4ed8}
+.ui-annotate-overlay{position:absolute;inset:0;z-index:999;pointer-events:none;display:none}
+.ui-annotate-on .ui-annotate-overlay{display:block}
+.ui-annotate-box{position:absolute;border:1.5px solid #2563eb;border-radius:4px;box-shadow:0 0 0 1px rgba(255,255,255,.55)}
+.ui-annotate-chip{position:absolute;font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;font-size:11px;font-weight:800;line-height:1;color:#fff;background:#2563eb;border:1px solid rgba(255,255,255,.75);border-radius:4px;padding:3px 5px}
+.ui-annotate-box.sub{border-color:#60a5fa;border-width:1px;border-style:dashed}
+.ui-annotate-chip.sub{background:#60a5fa;font-size:9px;padding:2px 4px}
+.ui-annotate-legend{margin-top:16px;width:393px;font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;font-size:12px;color:#333;background:rgba(255,255,255,.72);border:1px solid #bbb;border-radius:10px;padding:10px 14px;display:none;column-count:2;column-gap:18px}
+.ui-annotate-on-page .ui-annotate-legend{display:block}
+.ui-annotate-legend div{break-inside:avoid;padding:2px 0}
+.ui-annotate-legend b{color:#2563eb}
+.ui-annotate-legend .sub b{color:#60a5fa}
+.ui-annotate-legend .sub{padding-left:12px}
+.ui-annotate-legend h4{column-span:all;font-size:11px;letter-spacing:1px;color:#888;margin:8px 0 4px;border-bottom:1px solid #ccc;padding-bottom:3px}
+.ui-annotate-legend h4:first-child{margin-top:0}
+.ui-annotate-swatch{display:inline-block;width:12px;height:12px;border-radius:3px;border:1px solid rgba(0,0,0,.2);vertical-align:-2px;margin-right:4px}
+.ui-annotate-legend code{font-size:11px;color:#666}
+body.ui-capture .ui-annotate-toggle,body.ui-capture .ui-annotate-legend{display:none!important}
+body.ui-capture{display:block;min-height:0}
+body.ui-capture [data-artboard]{box-shadow:none}
+</style>
+</head>
+<body>
+
+<div class="phone" data-artboard id="phone">
+
+  <!-- ══ E1 ══ -->
+  <div class="topband" data-ui="E1:상단 띠">
+    <div class="rank" data-ui="E1-1:단계 · 무공 성">
+      <span class="stage" id="stageLbl">고수</span>
+      <span class="art" id="artLbl">유운검법 12성</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="coin" data-ui="E1-2:재화">
+      <span class="n" id="coinN">260</span><span class="u">냥</span>
+    </div>
+  </div>
+
+  <!-- ══ E2 도장 정경 ══ -->
+  <div class="banner" data-ui="E2:도장 정경">
+    <div class="layer sky"></div>
+    <svg class="layer" data-ui="E2-1:도장 내부 레이어" viewBox="0 0 393 148" preserveAspectRatio="none">
+      <!-- 처마 -->
+      <path d="M0 0 L393 0 L393 15 L0 15 Z" fill="#0b0907"/>
+      <path d="M-6 15 L399 15 L369 27 L24 27 Z" fill="#0f0c0a"/>
+      <!-- 좌우 기둥 -->
+      <rect x="8" y="24" width="15" height="124" fill="#0b0907"/>
+      <rect x="370" y="24" width="15" height="124" fill="#0b0907"/>
+      <!-- 뒤편 문살 (빛이 드는 창) -->
+      <g stroke="#1d1812" stroke-width="2" fill="none">
+        <rect x="146" y="34" width="102" height="66"/>
+        <path d="M180 34 V100 M214 34 V100 M146 56 H248 M146 78 H248"/>
+      </g>
+      <!-- 병기 거치대 -->
+      <g stroke="#0b0907" stroke-width="3" fill="none" stroke-linecap="round">
+        <path d="M42 96 H96 M46 96 V72 M92 96 V72"/>
+        <path d="M52 74 L60 44 M68 74 L74 42 M84 74 L88 46"/>
+      </g>
+      <!-- 족자 -->
+      <rect x="300" y="30" width="34" height="72" fill="#191410"/>
+      <rect x="298" y="28" width="38" height="5" fill="#0b0907"/>
+      <rect x="298" y="100" width="38" height="5" fill="#0b0907"/>
+      <!-- 바닥 -->
+      <path d="M0 122 H393" stroke="#0a0807" stroke-width="2"/>
+    </svg>
+    <div class="layer glow"></div>
+
+    <div class="bfig master" data-ui="E2-2:사부 실루엣">
+      <svg viewBox="0 0 96 130">
+        <circle class="body" cx="48" cy="21" r="10"/>
+        <path class="body" d="M44 9 C 45 1, 52 1, 53 9 Z"/>
+        <path class="body" d="M38 30 C 29 40, 26 66, 24 92 C 22 110, 18 120, 14 128
+                               L 46 128 L 50 106 L 56 128 L 86 128
+                               C 80 110, 76 84, 72 60 C 68 42, 62 34, 58 30 Z"/>
+        <path class="body" d="M40 38 C 32 52, 28 70, 26 86 L 34 88 C 38 72, 44 54, 50 42 Z"/>
+      </svg>
+    </div>
+    <div class="bfig pupil" data-ui="E2-3:제자 실루엣" id="pupilFig">
+      <svg viewBox="0 0 74 104">
+        <circle class="body" cx="37" cy="17" r="8"/>
+        <path class="body" d="M30 24 C 23 32, 21 52, 19 72 C 18 86, 15 96, 12 102
+                               L 35 102 L 38 84 L 43 102 L 66 102
+                               C 62 88, 59 66, 56 48 C 53 34, 48 27, 45 24 Z"/>
+      </svg>
+    </div>
+
+    <div class="layer vig"></div>
+    <div class="plaque" data-ui="E2-4:도장 현판">
+      <span class="t">도장</span><span class="s hj">道場</span>
+    </div>
+    <div class="pupil-tag" id="pupilTag" data-ui="E2-5:제자 상태">
+      <span class="t">제자</span><b>1성</b>
+    </div>
+  </div>
+
+  <!-- ══ 본문 ══ -->
+  <div class="body-scroll">
+
+    <!-- E3 무공 카드 -->
+    <div class="art-card" data-ui="E3:무공 카드">
+      <div class="art-head">
+        <span class="kr" data-ui="E3-1:무공명">유운검법</span>
+        <span class="hj">流雲劍法</span>
+        <div class="spacer"></div>
+        <span class="badge" id="initBadge" data-ui="E3-2:입문 배지">입문</span>
+      </div>
+      <div class="rank-row">
+        <span class="gauge" data-ui="E3-3:성 게이지">
+          <i id="rankFill" style="width:100%"></i>
+          <span class="tick done" style="left:83.3%"></span>
+        </span>
+        <span class="lbl" data-ui="E3-4:성 상태"><b id="rankN">12성</b> 완벽히 깨달음</span>
+      </div>
+
+      <div class="moves" data-ui="E4:초식 목록">
+        <div class="move swift" data-ui="E4-1:초식 행">
+          <div class="move-top">
+            <i class="gl swift" data-ui="E4-2:속성 기호"></i>
+            <span class="nm" data-ui="E4-3:초식명">유운보</span><span class="hj">流雲步</span>
+            <span class="slot" data-ui="E4-4:슬롯 배지">슬롯 1</span>
+            <div class="btns">
+              <button class="btn primary" data-ui="E4-7:수련 버튼">수련</button>
+              <button class="btn" data-ui="E4-8:장착·해제">해제</button>
+            </div>
+          </div>
+          <div class="move-bot">
+            <span class="gauge" data-ui="E4-5:숙련 게이지">
+              <i style="width:100%"></i><span class="tick done" style="left:30%"></span>
+            </span>
+            <span class="mastery max" data-ui="E4-6:숙련 단계">
+              <b>숙련 100%</b>자동응수 가능
+            </span>
+          </div>
+          <div class="seq" data-ui="E4-9:시퀀스 (펼침)">
+            <span>↓</span><span>→</span><span>↑</span>
+          </div>
+        </div>
+
+        <div class="move force">
+          <div class="move-top">
+            <i class="gl force"></i><span class="nm">적운압정</span><span class="hj">積雲壓頂</span>
+            <span class="slot">슬롯 2</span>
+            <div class="btns">
+              <button class="btn primary">수련</button><button class="btn">해제</button>
+            </div>
+          </div>
+          <div class="move-bot">
+            <span class="gauge"><i style="width:64%"></i><span class="tick done" style="left:30%"></span></span>
+            <span class="mastery"><b>숙련 64%</b>후보만 표시</span>
+          </div>
+        </div>
+
+        <div class="move still">
+          <div class="move-top">
+            <i class="gl still"></i><span class="nm">행운유수</span><span class="hj">行雲流水</span>
+            <span class="slot">슬롯 3</span>
+            <div class="btns">
+              <button class="btn primary">수련</button><button class="btn">해제</button>
+            </div>
+          </div>
+          <div class="move-bot">
+            <span class="gauge"><i style="width:41%"></i><span class="tick done" style="left:30%"></span></span>
+            <span class="mastery"><b>숙련 41%</b>후보만 표시</span>
+          </div>
+        </div>
+
+        <div class="move swift">
+          <div class="move-top">
+            <i class="gl swift"></i><span class="nm">파운현월</span><span class="hj">破雲見月</span>
+            <div class="btns">
+              <button class="btn primary">수련</button><button class="btn ghost">장착</button>
+            </div>
+          </div>
+          <div class="move-bot">
+            <span class="gauge"><i style="width:18%"></i><span class="tick" style="left:30%"></span></span>
+            <span class="mastery"><b>숙련 18%</b>힌트 표시</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- E6 유도 -->
+  <div class="hint" id="hint" data-ui="E6:유도 툴팁">지금 열렸다 — 제자를 파견한다</div>
+
+  <!-- E7 액션 바 -->
+  <div class="actions" data-ui="E7:하단 액션 바">
+    <button class="act" data-ui="E7-1:액션 버튼">
+      <span class="t">대련</span><span class="c" data-ui="E7-2:액션 캡션">떠돌이 무인 3차</span>
+    </button>
+    <button class="act" id="actTransmit">
+      <span class="t">전수</span><span class="c">전수 완료</span>
+    </button>
+    <button class="act on" id="actDispatch">
+      <span class="t">파견</span><span class="c">월영문 도전</span>
+    </button>
+  </div>
+
+  <!-- E8 수련 시뮬 -->
+  <button class="sim" data-ui="E8:수련 시뮬">1시간 수련 시뮬 <b>+360 냥</b></button>
+
+</div>
+
+<div class="ui-annotate-legend" id="uiLegend"></div>
+
+<script type="application/json" id="uiStyleLedger">
+{
+  "colors": [
+    { "id": "C1", "name": "먹 심 (배경 바닥)", "value": "#12100e" },
+    { "id": "C2", "name": "먹 중 (카드)", "value": "#1e1a16" },
+    { "id": "C3", "name": "화선지 (본문)", "value": "#e8dcc8" },
+    { "id": "C4", "name": "금 (사부·달성·강조)", "value": "#c9a227" },
+    { "id": "C5", "name": "주사 (낙관)", "value": "#a8332a" },
+    { "id": "C6", "name": "쾌", "value": "#5fb3e8" },
+    { "id": "C7", "name": "강", "value": "#e05a4d" },
+    { "id": "C8", "name": "정", "value": "#4fbf7f" }
+  ],
+  "fonts": [
+    { "id": "F1", "family": "Dojo", "name": "나눔명조 (OFL)", "surface": "한글·라틴 — 전 표면 주력" },
+    { "id": "F2", "family": "Dojo", "name": "Noto Serif KR 한자 서브셋 (OFL, 21KB)", "surface": "한자 — 보조 병기 전용 (.hj)" }
+  ]
+}
+</script>
+
+<script>
+/* ?state=initial|rank12 — 진입 직후 / 입문 완료 12성 */
+(function(){
+  var st = new URLSearchParams(location.search).get('state') || 'rank12';
+  if (st !== 'initial') return;
+
+  document.getElementById('stageLbl').textContent = '문하생';
+  document.getElementById('artLbl').textContent = '유운검법 입문 전';
+  document.getElementById('coinN').textContent = '0';
+  document.getElementById('pupilFig').style.display = 'none';
+
+  var b = document.getElementById('initBadge');
+  b.className = 'badge locked'; b.textContent = '1성 · 잠김';
+  document.getElementById('rankFill').style.width = '0%';
+  document.getElementById('rankN').textContent = '0/4';
+  document.querySelector('.rank-row .lbl').innerHTML =
+    '<b id="rankN">0/4</b> 전 초식 숙련 100% 로 열린다';
+
+  var moves = document.querySelectorAll('.move');
+  var data = [
+    { w:'0%',  m:'숙련 0%',  s:'힌트 표시', slot:null, btn:'장착', ghost:true,  lock:false },
+    { w:'0%',  m:'미해금',   s:'비급 필요', slot:null, btn:'배우기', ghost:true, lock:true },
+    { w:'0%',  m:'미해금',   s:'비급 필요', slot:null, btn:'배우기', ghost:true, lock:true },
+    { w:'0%',  m:'미해금',   s:'비급 필요', slot:null, btn:'배우기', ghost:true, lock:true }
+  ];
+  moves.forEach(function(el, i){
+    var d = data[i];
+    if (d.lock) el.classList.add('lock');
+    var slot = el.querySelector('.slot'); if (slot) slot.remove();
+    el.querySelector('.gauge i').style.width = d.w;
+    el.querySelector('.gauge .tick').className = 'tick';
+    el.querySelector('.mastery').className = 'mastery';
+    el.querySelector('.mastery').innerHTML = '<b>'+d.m+'</b>'+d.s;
+    var btns = el.querySelectorAll('.btn');
+    btns[0].textContent = i === 0 ? '수련' : '배우기';
+    if (i !== 0) btns[0].className = 'btn ghost';
+    if (btns[1]) btns[1].remove();
+    var seq = el.querySelector('.seq'); if (seq && i !== 0) seq.remove();
+  });
+
+  document.getElementById('pupilTag').style.display = 'none';
+
+  document.getElementById('hint').textContent = '여기서 시작 — 초식을 반복해 숙련을 올린다';
+
+  var acts = document.querySelectorAll('.act');
+  acts[0].className = 'act off'; acts[0].querySelector('.c').textContent = '장착 필요';
+  acts[1].className = 'act off'; acts[1].querySelector('.c').textContent = '12성 필요';
+  acts[2].className = 'act off'; acts[2].querySelector('.c').textContent = '전수 후 열린다';
+})();
+</script>
+
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var captureMode = params.has('capture');
+  var startOn = params.has('annotate');
+  if (captureMode) document.body.classList.add('ui-capture');
+
+  var board = document.querySelector('[data-artboard]');
+  var overlay = document.createElement('div');
+  overlay.className = 'ui-annotate-overlay';
+  board.appendChild(overlay);
+
+  function buildBadges() {
+    overlay.innerHTML = '';
+    var legend = document.getElementById('uiLegend');
+    legend.innerHTML = '';
+    var h = document.createElement('h4'); h.textContent = 'UI 요소'; legend.appendChild(h);
+    var boardRect = board.getBoundingClientRect();
+    document.querySelectorAll('[data-ui]').forEach(function (el) {
+      var parts = el.getAttribute('data-ui').split(':');
+      var id = parts[0], name = parts[1] || '';
+      var isSub = id.indexOf('-') > -1;
+      var r = el.getBoundingClientRect();
+      var top = r.top - boardRect.top, left = r.left - boardRect.left;
+      var box = document.createElement('div');
+      box.className = 'ui-annotate-box' + (isSub ? ' sub' : '');
+      box.style.cssText = 'top:'+top+'px;left:'+left+'px;width:'+r.width+'px;height:'+r.height+'px;';
+      overlay.appendChild(box);
+      var chip = document.createElement('div');
+      chip.className = 'ui-annotate-chip' + (isSub ? ' sub' : '');
+      chip.textContent = id; chip.title = name;
+      chip.style.cssText = 'top:'+Math.max(2,top-8)+'px;left:'+Math.max(2,left-6)+'px;';
+      overlay.appendChild(chip);
+      var row = document.createElement('div');
+      if (isSub) row.className = 'sub';
+      row.innerHTML = '<b>'+id+'</b> '+name;
+      legend.appendChild(row);
+    });
+    var ledgerEl = document.getElementById('uiStyleLedger');
+    if (ledgerEl) {
+      var ledger = JSON.parse(ledgerEl.textContent);
+      if (ledger.colors && ledger.colors.length) {
+        var hc = document.createElement('h4'); hc.textContent = '배경·색상'; legend.appendChild(hc);
+        ledger.colors.forEach(function (c) {
+          var row = document.createElement('div');
+          row.innerHTML = '<b>'+c.id+'</b> <span class="ui-annotate-swatch" style="background:'+c.value+'"></span>'+c.name+' <code>'+c.value+'</code>';
+          legend.appendChild(row);
+        });
+      }
+      if (ledger.fonts && ledger.fonts.length) {
+        var hf = document.createElement('h4'); hf.textContent = '폰트'; legend.appendChild(hf);
+        ledger.fonts.forEach(function (f) {
+          var row = document.createElement('div');
+          row.innerHTML = '<b>'+f.id+'</b> '+f.name+' — '+f.surface;
+          legend.appendChild(row);
+        });
+      }
+    }
+  }
+
+  var btn = document.createElement('button');
+  btn.className = 'ui-annotate-toggle';
+  function setState(on) {
+    document.body.classList.toggle('ui-annotate-on', on);
+    document.body.classList.toggle('ui-annotate-on-page', on);
+    btn.textContent = on ? '요소 번호 숨기기' : '요소 번호 표시';
+    btn.dataset.on = on ? '1' : '0';
+  }
+  btn.addEventListener('click', function () { setState(btn.dataset.on !== '1'); });
+  document.body.appendChild(btn);
+
+  window.addEventListener('load', function () { buildBadges(); setState(startOn); });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>대련 v3 — 일대종사</title>
+<style>
+/* ── 서체 ── */
+@font-face{
+  font-family:'Dojo'; src:url('assets/fonts/NanumMyeongjo-Regular.ttf') format('truetype');
+  font-weight:400; font-display:block;
+  unicode-range:U+0020-024F,U+2000-206F,U+20A0-20BF,U+1100-11FF,U+3130-318F,U+AC00-D7AF,U+FF00-FFEF;
+}
+@font-face{
+  font-family:'Dojo'; src:url('assets/fonts/NanumMyeongjo-ExtraBold.ttf') format('truetype');
+  font-weight:800; font-display:block;
+  unicode-range:U+0020-024F,U+2000-206F,U+20A0-20BF,U+1100-11FF,U+3130-318F,U+AC00-D7AF,U+FF00-FFEF;
+}
+@font-face{
+  font-family:'Dojo'; src:url('assets/fonts/NotoSerifKR-hanja-400.woff2') format('woff2');
+  font-weight:400; font-display:block; unicode-range:U+3400-9FFF,U+F900-FAFF;
+}
+@font-face{
+  font-family:'Dojo'; src:url('assets/fonts/NotoSerifKR-hanja-800.woff2') format('woff2');
+  font-weight:800; font-display:block; unicode-range:U+3400-9FFF,U+F900-FAFF;
+}
+
+:root{
+  --ink-deep:#12100e;   /* C1 */
+  --ink-mid:#1e1a16;    /* C2 */
+  --paper:#e8dcc8;      /* C3 */
+  --gold:#c9a227;       /* C4 */
+  --seal:#a8332a;       /* C5 */
+  --swift:#5fb3e8;      /* C6 쾌 */
+  --force:#e05a4d;      /* C7 강 */
+  --still:#4fbf7f;      /* C8 정 */
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#3a3632;display:flex;flex-direction:column;align-items:center;
+  min-height:100vh;padding:24px 0;font-family:'Dojo',serif}
+
+.phone{position:relative;width:393px;height:852px;overflow:hidden;
+  background:var(--ink-deep);color:var(--paper);
+  box-shadow:0 18px 60px rgba(0,0,0,.55);display:flex;flex-direction:column}
+.phone.shake-hard{animation:shakeHard .42s cubic-bezier(.36,.07,.19,.97) both}
+@keyframes shakeHard{
+  10%{transform:translate(-6px,3px)} 22%{transform:translate(5px,-4px)}
+  36%{transform:translate(-4px,-2px)} 52%{transform:translate(3px,3px)}
+  70%{transform:translate(-2px,1px)} 100%{transform:translate(0,0)}
+}
+
+/* 한자는 어디서나 보조 — 한글 옆/아래 작게 (v2 규약) */
+.hj{font-size:11px;font-weight:400;color:rgba(232,220,200,.34);letter-spacing:2px}
+
+/* ══ E1 상단 띠 ══ */
+.topband{position:relative;flex:0 0 50px;display:flex;align-items:center;gap:10px;
+  padding:0 14px;background:#0a0908;border-bottom:1px solid rgba(232,220,200,.07);z-index:8}
+.leave{width:28px;height:28px;flex:0 0 28px;border:none;background:none;cursor:pointer;
+  color:rgba(232,220,200,.45);font-size:19px;line-height:1;padding:0;font-family:'Dojo',serif}
+.foe-name{display:flex;align-items:baseline;gap:7px;flex:1;min-width:0}
+.foe-name .kr{font-size:16px;font-weight:800;letter-spacing:.5px}
+.seal{flex:0 0 auto;height:24px;padding:0 6px;border-radius:2px;background:var(--seal);
+  color:#f7ecdc;font-size:12px;font-weight:800;letter-spacing:0;
+  display:flex;align-items:center;justify-content:center}
+.exchange{display:flex;align-items:baseline;gap:1px;white-space:nowrap}
+.exchange .n{font-size:16px;font-weight:800;color:rgba(232,220,200,.8)}
+.exchange .u{font-size:13px;font-weight:800;color:rgba(232,220,200,.55)}
+
+/* ══ E2 아레나 ══ */
+.arena{position:relative;flex:0 0 440px;overflow:hidden}
+.layer{position:absolute;inset:0;pointer-events:none}
+.sky{background:radial-gradient(125% 78% at 50% 26%, #33291f 0%, #211b15 42%, #16120f 72%, var(--ink-deep) 100%)}
+.mountain{opacity:.9}
+.bamboo{opacity:.85}
+.mist{background:linear-gradient(180deg,rgba(232,220,200,0) 34%,rgba(232,220,200,.09) 50%,rgba(232,220,200,0) 66%)}
+.vignette{background:radial-gradient(118% 80% at 50% 44%, rgba(0,0,0,0) 34%, rgba(0,0,0,.72) 100%)}
+.ground{position:absolute;left:0;right:0;bottom:0;height:112px;
+  background:linear-gradient(180deg,rgba(0,0,0,0),rgba(0,0,0,.5) 55%,rgba(0,0,0,.86))}
+
+.backlight{position:absolute;border-radius:50%;pointer-events:none}
+.backlight.foe{left:22px;top:112px;width:170px;height:200px;
+  background:radial-gradient(closest-side, rgba(214,196,164,.30), rgba(214,196,164,0) 72%)}
+.backlight.master{right:2px;bottom:34px;width:220px;height:238px;
+  background:radial-gradient(closest-side, rgba(214,196,164,.22), rgba(214,196,164,0) 72%)}
+
+.fig{position:absolute;pointer-events:none}
+.fig svg{display:block;width:100%;height:auto}
+.fig.foe{left:34px;top:112px;width:126px}
+.fig.master{right:14px;bottom:30px;width:176px}
+.fig .body{fill:#0a0908;stroke:rgba(232,220,200,.16);stroke-width:1}
+.fig.flash .body{fill:#cbb9a0;stroke:#fff}
+
+/* E6/E7 기력 */
+.vital{position:absolute;display:flex;align-items:center;gap:8px;z-index:5}
+.vital .lbl{font-size:12px;font-weight:800;letter-spacing:1px;color:rgba(232,220,200,.6)}
+.vital .track{position:relative;flex:1;height:6px;background:rgba(0,0,0,.6);
+  box-shadow:0 0 0 1px rgba(232,220,200,.16) inset}
+.vital .fill{position:absolute;top:0;bottom:0;transition:width .3s}
+.vital.foe{left:14px;top:82px;width:196px}
+.vital.foe .fill{left:0;background:linear-gradient(90deg,#7a2b24,var(--force));width:100%}
+.vital.master{right:14px;bottom:18px;width:216px;flex-direction:row-reverse}
+.vital.master .fill{right:0;background:linear-gradient(270deg,#8a6a16,var(--gold));width:100%}
+
+/* E5 상대 예고 — 한글 주 / 한자 보조 */
+.telegraph{position:absolute;left:12px;right:12px;top:10px;height:62px;z-index:6;
+  display:flex;align-items:stretch;
+  background:linear-gradient(90deg,rgba(224,90,77,.14),rgba(10,9,8,.86) 42%);
+  border:1px solid rgba(224,90,77,.5);
+  box-shadow:0 0 22px rgba(224,90,77,.16),0 6px 18px rgba(0,0,0,.6);
+  animation:tele .8s ease-out both;transition:opacity .25s,filter .25s}
+@keyframes tele{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
+.telegraph .attr{flex:0 0 44px;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:3px;border-right:1px solid rgba(224,90,77,.32)}
+.telegraph .attr .an{font-size:11px;font-weight:800;color:var(--force);letter-spacing:0}
+.telegraph .id{flex:1;display:flex;flex-direction:column;justify-content:center;
+  padding:0 12px;min-width:0;gap:2px}
+.telegraph .id .kr{font-size:19px;font-weight:800;letter-spacing:.5px;color:#f4e8d3}
+.telegraph .id .sub{display:flex;align-items:baseline;gap:7px}
+.telegraph .id .sub .cnt{font-size:11px;color:rgba(232,220,200,.42)}
+.telegraph .win{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:3px;padding:0 13px;
+  border-left:1px solid rgba(232,220,200,.14);background:rgba(95,179,232,.07)}
+.telegraph .win .cap{font-size:9px;letter-spacing:2px;color:rgba(232,220,200,.45)}
+.telegraph .win .val{display:flex;align-items:center;gap:5px}
+.telegraph .win b{color:var(--swift);font-size:17px;font-weight:800}
+
+/* 속성 기호 — 색 + 형태 이중 부호화 */
+.gl{display:inline-block;flex:0 0 auto}
+.gl.swift{width:0;height:0;border-left:9px solid transparent;border-right:9px solid transparent;border-bottom:16px solid var(--swift)}
+.gl.force{width:17px;height:17px;border-radius:50%;background:var(--force)}
+.gl.still{width:15px;height:15px;background:var(--still)}
+.gl.sm.swift{border-left-width:6px;border-right-width:6px;border-bottom-width:11px}
+.gl.sm.force{width:12px;height:12px}
+.gl.sm.still{width:11px;height:11px}
+
+/* E8 응수 창 */
+.window-bar{position:absolute;left:0;right:0;bottom:0;height:6px;z-index:7;background:rgba(0,0,0,.72)}
+.window-bar i{position:absolute;left:0;top:0;bottom:0;width:62%;
+  background:linear-gradient(90deg,var(--seal),var(--gold));box-shadow:0 0 14px rgba(201,162,39,.55)}
+
+/* E9 판정 — 한글이 주, 한자는 그 위 낙관처럼 작게 */
+.vscrim{position:absolute;inset:0;z-index:6;pointer-events:none;
+  background:radial-gradient(58% 34% at 50% 46%, rgba(0,0,0,.8), rgba(0,0,0,0) 72%)}
+.verdict{position:absolute;left:0;right:0;z-index:7;text-align:center;pointer-events:none;
+  animation:vpop .5s cubic-bezier(.16,1.2,.3,1) both}
+@keyframes vpop{from{opacity:0;transform:scale(.62)}60%{opacity:1}to{opacity:1;transform:scale(1)}}
+.verdict .mark{display:block;font-size:26px;font-weight:800;letter-spacing:6px;text-indent:6px;
+  opacity:.55;margin-bottom:2px}
+.verdict .word{display:block;font-weight:800;line-height:.98;letter-spacing:4px;text-indent:4px}
+/* 위치 = 승패 축 (위=적이 맞음 / 가운데=상쇄 / 아래=내가 맞음) */
+.verdict.crush{top:120px}
+.verdict.crush .word{font-size:96px;color:var(--gold);text-shadow:0 0 46px rgba(201,162,39,.6),0 5px 0 rgba(0,0,0,.55)}
+.verdict.crush .mark{color:var(--gold)}
+.verdict.adv{top:160px}
+.verdict.adv .word{font-size:66px;color:var(--swift);text-shadow:0 0 30px rgba(95,179,232,.5)}
+.verdict.adv .mark{color:var(--swift);font-size:20px}
+.verdict.clash{top:196px}
+.verdict.clash .word{font-size:54px;color:rgba(232,220,200,.82)}
+.verdict.clash .mark{color:rgba(232,220,200,.5);font-size:18px}
+.verdict.dis{top:230px}
+.verdict.dis .word{font-size:66px;color:#b4564c}
+.verdict.dis .mark{color:#b4564c;font-size:20px}
+.verdict.rev{top:214px}
+.verdict.rev .word{font-size:96px;color:var(--force);text-shadow:0 0 46px rgba(224,90,77,.55),0 5px 0 rgba(0,0,0,.55)}
+.verdict.rev .mark{color:var(--force)}
+.verdict.hit{top:252px}
+.verdict.hit .word{font-size:80px;color:#8e3a33}
+.verdict.hit .mark{color:#8e3a33;font-size:22px}
+.hurt{position:absolute;inset:0;z-index:6;pointer-events:none;
+  background:radial-gradient(100% 60% at 50% 100%, rgba(224,90,77,.36), rgba(224,90,77,0) 62%)}
+
+/* ══ 입력부 ══ */
+.input{position:relative;flex:1 1 auto;padding:0 13px 12px;
+  background:linear-gradient(180deg,#0a0908,#161210 40%,#0f0d0b);
+  display:flex;flex-direction:column}
+.live-color{flex:0 0 3px;margin:0 -13px 11px;background:var(--swift);
+  box-shadow:0 0 18px 1px rgba(95,179,232,.55);transition:background .18s}
+
+/* E11 후보 죽간 — 한글 세로쓰기 주, 한자 하단 보조 */
+.slips{display:flex;gap:7px;flex:0 0 auto}
+.slip{position:relative;flex:1 1 0;height:130px;
+  background:linear-gradient(180deg,#241d16,#181310);
+  border:1px solid rgba(232,220,200,.13);
+  display:flex;flex-direction:column;align-items:center;padding:8px 3px 7px;
+  transition:opacity .18s,filter .18s,transform .18s}
+.slip .head{display:flex;align-items:center;gap:5px;flex:0 0 auto}
+.slip .rk{font-size:11px;font-weight:800;color:var(--gold);letter-spacing:-.3px}
+.slip.out .rk{color:rgba(232,220,200,.45)}
+.slip .name{flex:1 1 auto;margin:5px 0 4px;
+  writing-mode:vertical-rl;text-orientation:upright;white-space:nowrap;
+  font-size:17px;font-weight:800;letter-spacing:2px;color:#efe2cc}
+.slip .hj{font-size:9px;letter-spacing:1px}
+.slip.out{opacity:.18;filter:grayscale(1) blur(.7px);transform:translateY(8px)}
+.slip.live{border-color:rgba(95,179,232,.45);box-shadow:0 0 14px rgba(95,179,232,.12) inset}
+.slip.only{border-color:var(--gold);background:linear-gradient(180deg,#31260f,#1d1610);
+  box-shadow:0 0 0 1px var(--gold) inset,0 0 26px rgba(201,162,39,.4);
+  transform:translateY(-3px) scale(1.05)}
+
+/* E12 입력 트레일 */
+.trail{flex:0 0 38px;margin-top:11px;display:flex;align-items:center;justify-content:center;gap:16px}
+.trail span{font-size:28px;line-height:1;color:rgba(232,220,200,.14)}
+.trail span.done{color:var(--gold);text-shadow:0 0 16px rgba(201,162,39,.55)}
+.trail span.next{color:rgba(232,220,200,.34)}
+
+/* E13 키패드 */
+/* 키패드는 화면 정중앙, 리셋은 우측 구석 — 오른쪽 화살표와 같은 행·같은 크기 */
+.pad{position:relative;flex:1 1 auto;display:flex;align-items:center;justify-content:center}
+.cross{display:grid;grid-template-columns:repeat(3,64px);grid-template-rows:repeat(2,58px);gap:7px}
+.key{border:1px solid rgba(232,220,200,.15);background:rgba(232,220,200,.045);
+  color:var(--paper);font-size:24px;line-height:1;cursor:pointer;font-family:'Dojo',serif;
+  display:flex;align-items:center;justify-content:center}
+.key:active{background:rgba(201,162,39,.22);border-color:var(--gold)}
+.key.up{grid-column:2;grid-row:1}
+.key.left{grid-column:1;grid-row:2}
+.key.down{grid-column:2;grid-row:2}
+.key.right{grid-column:3;grid-row:2}
+.reset{position:absolute;right:-5px;top:calc(50% + 3.5px);width:64px;height:58px;
+  border:1px solid rgba(232,220,200,.15);background:rgba(232,220,200,.045);cursor:pointer;
+  display:flex;align-items:center;justify-content:center}
+.reset img{width:26px;height:26px;opacity:.55}
+.reset:active{background:rgba(201,162,39,.22);border-color:var(--gold)}
+.reset:active img{opacity:1}
+
+/* ── UI 요소 ID 주석 레이어 (/gamedev-ui v0.5 공용 스니펫) ── */
+.ui-annotate-toggle{position:fixed;top:14px;right:14px;z-index:9999;font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;font-size:13px;font-weight:700;color:#fff;background:#2563eb;border:none;border-radius:8px;padding:9px 14px;cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.3)}
+.ui-annotate-toggle:hover{background:#1d4ed8}
+.ui-annotate-overlay{position:absolute;inset:0;z-index:999;pointer-events:none;display:none}
+.ui-annotate-on .ui-annotate-overlay{display:block}
+.ui-annotate-box{position:absolute;border:1.5px solid #2563eb;border-radius:4px;box-shadow:0 0 0 1px rgba(255,255,255,.55)}
+.ui-annotate-chip{position:absolute;font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;font-size:11px;font-weight:800;line-height:1;color:#fff;background:#2563eb;border:1px solid rgba(255,255,255,.75);border-radius:4px;padding:3px 5px}
+.ui-annotate-box.sub{border-color:#60a5fa;border-width:1px;border-style:dashed}
+.ui-annotate-chip.sub{background:#60a5fa;font-size:9px;padding:2px 4px}
+.ui-annotate-legend{margin-top:16px;width:393px;font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;font-size:12px;color:#333;background:rgba(255,255,255,.72);border:1px solid #bbb;border-radius:10px;padding:10px 14px;display:none;column-count:2;column-gap:18px}
+.ui-annotate-on-page .ui-annotate-legend{display:block}
+.ui-annotate-legend div{break-inside:avoid;padding:2px 0}
+.ui-annotate-legend b{color:#2563eb}
+.ui-annotate-legend .sub b{color:#60a5fa}
+.ui-annotate-legend .sub{padding-left:12px}
+.ui-annotate-legend h4{column-span:all;font-size:11px;letter-spacing:1px;color:#888;margin:8px 0 4px;border-bottom:1px solid #ccc;padding-bottom:3px}
+.ui-annotate-legend h4:first-child{margin-top:0}
+.ui-annotate-swatch{display:inline-block;width:12px;height:12px;border-radius:3px;border:1px solid rgba(0,0,0,.2);vertical-align:-2px;margin-right:4px}
+.ui-annotate-legend code{font-size:11px;color:#666}
+body.ui-capture .ui-annotate-toggle,body.ui-capture .ui-annotate-legend{display:none!important}
+body.ui-capture{display:block;min-height:0;padding:0}
+body.ui-capture [data-artboard]{box-shadow:none}
+</style>
+</head>
+<body>
+
+<div class="phone" data-artboard id="phone">
+
+  <!-- ══ E1 ══ -->
+  <div class="topband" data-ui="E1:상단 띠 — 도전자 표찰">
+    <button class="leave" data-ui="E1-1:물러나기">←</button>
+    <div class="foe-name" data-ui="E1-2:도전자 이름">
+      <span class="kr">떠돌이 무인</span><span class="hj">流浪武人</span>
+    </div>
+    <div class="seal" data-ui="E1-3:차수 낙관">1차</div>
+    <div class="exchange" data-ui="E1-4:수 카운터">
+      <span class="n">3</span><span class="u">수째</span>
+    </div>
+  </div>
+
+  <!-- ══ E2 ══ -->
+  <div class="arena" data-ui="E2:아레나">
+    <div class="layer sky"></div>
+
+    <svg class="layer mountain" data-ui="E2-1:원경 산 레이어" viewBox="0 0 393 440" preserveAspectRatio="none">
+      <path d="M-10 250 C 40 196, 74 218, 112 178 C 150 138, 178 172, 214 150
+               C 252 126, 286 164, 322 140 C 352 120, 380 148, 403 132 L 403 440 L -10 440 Z"
+            fill="#2a231b"/>
+      <path d="M-10 300 C 46 266, 92 284, 138 256 C 190 224, 232 258, 278 238
+               C 322 218, 362 246, 403 228 L 403 440 L -10 440 Z"
+            fill="#1c1712"/>
+    </svg>
+
+    <svg class="layer bamboo" data-ui="E2-2:중경 대나무 레이어" viewBox="0 0 393 440" preserveAspectRatio="none">
+      <g stroke="#100d0a" stroke-width="8" fill="none" stroke-linecap="round">
+        <path d="M26 440 C 22 330, 32 240, 20 132"/>
+        <path d="M74 440 C 80 346, 68 258, 80 158"/>
+        <path d="M340 440 C 346 338, 334 252, 348 150"/>
+        <path d="M380 440 C 374 348, 386 264, 372 172"/>
+      </g>
+      <g stroke="#100d0a" stroke-width="4" fill="none" stroke-linecap="round">
+        <path d="M22 218 C 44 206, 60 214, 76 202"/>
+        <path d="M78 286 C 56 274, 40 282, 22 272"/>
+        <path d="M344 232 C 322 220, 306 228, 290 216"/>
+        <path d="M376 308 C 354 298, 338 306, 320 296"/>
+      </g>
+    </svg>
+
+    <div class="layer mist" data-ui="E2-3:안개 층"></div>
+
+    <div class="backlight foe"></div>
+    <div class="backlight master"></div>
+
+    <div class="fig foe" data-ui="E3:도전자 실루엣">
+      <svg viewBox="0 0 130 210">
+        <path class="body" d="M96 40 L124 12 L129 18 L101 48 L96 46 Z"/>
+        <path class="body" d="M90 46 L100 36 L106 42 L96 52 Z"/>
+        <circle class="body" cx="58" cy="34" r="14"/>
+        <path class="body" d="M42 30 C 46 16, 70 14, 76 28 C 68 22, 50 22, 42 30 Z"/>
+        <path class="body" d="M45 47 C 32 60, 26 92, 22 124 C 18 154, 20 178, 16 204
+                               L 54 204 L 60 168 L 70 204 L 108 204
+                               C 100 176, 96 150, 92 122 C 88 92, 82 60, 71 47 Z"/>
+        <path class="body" d="M70 54 C 82 52, 92 44, 98 40 L 103 50 C 94 56, 82 64, 72 66 Z"/>
+      </svg>
+    </div>
+
+    <div class="fig master" data-ui="E4:사부 실루엣">
+      <svg viewBox="0 0 170 230">
+        <path class="body" d="M62 132 L 8 168 L 4 161 L 58 125 Z"/>
+        <path class="body" d="M66 124 L 74 136 L 64 142 L 56 130 Z"/>
+        <circle class="body" cx="104" cy="38" r="15"/>
+        <path class="body" d="M99 20 C 101 8, 111 8, 112 20 Z"/>
+        <path class="body" d="M90 52 C 76 66, 70 100, 66 136 C 61 174, 54 200, 44 226
+                               L 104 226 L 110 186 L 120 226 L 160 226
+                               C 148 196, 140 160, 134 122 C 128 88, 120 64, 118 52 Z"/>
+        <path class="body" d="M88 62 C 80 82, 72 106, 64 126 L 76 134 C 86 112, 94 88, 100 68 Z"/>
+        <path class="body" d="M120 60 C 132 74, 138 92, 140 110 L 128 114 C 124 96, 118 78, 110 66 Z"/>
+      </svg>
+    </div>
+
+    <div class="layer vignette"></div>
+    <div class="ground"></div>
+
+    <div class="vital foe" data-ui="E6:도전자 기력">
+      <span class="lbl">적</span><span class="track"><i class="fill" id="foeHp"></i></span>
+    </div>
+    <div class="vital master" data-ui="E7:사부 기력">
+      <span class="lbl">사부</span><span class="track"><i class="fill" id="myHp"></i></span>
+    </div>
+
+    <div class="telegraph" id="telegraph" data-ui="E5:상대 예고">
+      <div class="attr" data-ui="E5-1:상대 속성">
+        <i class="gl force"></i><span class="an">강</span>
+      </div>
+      <div class="id" data-ui="E5-2:상대 초식명">
+        <span class="kr">벽산도</span>
+        <span class="sub"><span class="hj">劈山刀</span><span class="cnt">3수 초식</span></span>
+      </div>
+      <div class="win" data-ui="E5-3:이기는 색">
+        <span class="cap">이기는 색</span>
+        <span class="val"><i class="gl sm swift"></i><b>쾌</b></span>
+      </div>
+    </div>
+
+    <div id="verdictSlot"></div>
+
+    <div class="window-bar" data-ui="E8:응수 창 게이지"><i id="winFill"></i></div>
+  </div>
+
+  <!-- ══ 입력부 ══ -->
+  <div class="input">
+    <div class="live-color" id="liveColor" data-ui="E10:진행형 후보 색"></div>
+
+    <div class="slips" data-ui="E11:후보 죽간">
+      <div class="slip live" id="s1">
+        <span class="head">
+          <i class="gl sm swift" data-ui="E11-1:죽간 속성 기호"></i>
+          <span class="rk" data-ui="E11-3:죽간 성">9성</span>
+        </span>
+        <span class="name" data-ui="E11-2:죽간 초식명">유운보</span>
+        <span class="hj">流雲步</span>
+      </div>
+      <div class="slip out" id="s2">
+        <span class="head"><i class="gl sm force"></i><span class="rk">7성</span></span>
+        <span class="name">적운압정</span><span class="hj">積雲壓頂</span>
+      </div>
+      <div class="slip out" id="s3">
+        <span class="head"><i class="gl sm still"></i><span class="rk">6성</span></span>
+        <span class="name">행운유수</span><span class="hj">行雲流水</span>
+      </div>
+      <div class="slip live" id="s4">
+        <span class="head"><i class="gl sm swift"></i><span class="rk">3성</span></span>
+        <span class="name">파운현월</span><span class="hj">破雲見月</span>
+      </div>
+    </div>
+
+    <div class="trail" id="trail" data-ui="E12:입력 트레일">
+      <span class="done">↓</span><span class="done">→</span><span class="next">↑</span>
+    </div>
+
+    <div class="pad">
+      <div class="cross" data-ui="E13:방향 키패드">
+        <button class="key up" data-ui="E13-1:키캡">↑</button>
+        <button class="key left">←</button>
+        <button class="key down">↓</button>
+        <button class="key right">→</button>
+      </div>
+      <button class="reset" data-ui="E14:입력 되돌리기" aria-label="입력 되돌리기">
+        <img src="assets/reset.svg" alt="">
+      </button>
+    </div>
+  </div>
+
+</div>
+
+<div class="ui-annotate-legend" id="uiLegend"></div>
+
+<script type="application/json" id="uiStyleLedger">
+{
+  "colors": [
+    { "id": "C1", "name": "먹 심 (배경 바닥)", "value": "#12100e" },
+    { "id": "C2", "name": "먹 중 (패널)", "value": "#1e1a16" },
+    { "id": "C3", "name": "화선지 (본문)", "value": "#e8dcc8" },
+    { "id": "C4", "name": "금 (사부·완파·확정)", "value": "#c9a227" },
+    { "id": "C5", "name": "주사 (낙관)", "value": "#a8332a" },
+    { "id": "C6", "name": "쾌", "value": "#5fb3e8" },
+    { "id": "C7", "name": "강", "value": "#e05a4d" },
+    { "id": "C8", "name": "정", "value": "#4fbf7f" }
+  ],
+  "fonts": [
+    { "id": "F1", "family": "Dojo", "name": "나눔명조 (OFL)", "surface": "한글·라틴 — 전 표면 주력" },
+    { "id": "F2", "family": "Dojo", "name": "Noto Serif KR 한자 서브셋 (OFL, 21KB)", "surface": "한자 — 보조 병기 전용 (.hj)" }
+  ]
+}
+</script>
+
+<script>
+/* 상태 전환 (?state=telegraph|input|crush|advantage|clash|disadvantage|reversal|hit) */
+(function(){
+  var st = new URLSearchParams(location.search).get('state') || 'input';
+  var phone=document.getElementById('phone'), slot=document.getElementById('verdictSlot'),
+      tele=document.getElementById('telegraph'), trail=document.getElementById('trail'),
+      win=document.getElementById('winFill'), live=document.getElementById('liveColor'),
+      foeHp=document.getElementById('foeHp'), myHp=document.getElementById('myHp');
+
+  function verdict(cls,word,mark){
+    slot.innerHTML='<div class="vscrim"></div>'
+      +'<div class="verdict '+cls+'" data-ui="E9:판정 오버레이">'
+      +'<span class="mark" data-ui="E9-2:판정 한자 (보조)">'+mark+'</span>'
+      +'<span class="word" data-ui="E9-1:판정 한글">'+word+'</span></div>';
+    tele.style.opacity='.18'; tele.style.filter='saturate(.3)';
+  }
+  function hurt(){ slot.insertAdjacentHTML('beforeend','<div class="hurt"></div>'); }
+
+  if(st==='telegraph'){
+    win.style.width='100%';
+    trail.innerHTML='<span>·</span><span>·</span><span>·</span>';
+    live.style.background='rgba(232,220,200,.13)'; live.style.boxShadow='none';
+    ['s1','s2','s3','s4'].forEach(function(id){document.getElementById(id).className='slip live';});
+  }
+  if(st==='input'){ win.style.width='62%'; }
+
+  if(st==='crush'){
+    win.style.width='38%'; foeHp.style.width='0%';
+    document.querySelector('.fig.foe').classList.add('flash');
+    document.getElementById('s1').className='slip only';
+    document.getElementById('s4').className='slip out';
+    trail.innerHTML='<span class="done">↓</span><span class="done">→</span><span class="done">↑</span>';
+    live.style.background='var(--gold)'; live.style.boxShadow='0 0 22px 2px rgba(201,162,39,.6)';
+    verdict('crush','완파','破'); phone.classList.add('shake-hard');
+  }
+  if(st==='reversal'){
+    win.style.width='18%'; myHp.style.width='46%';
+    document.querySelector('.fig.master').classList.add('flash');
+    verdict('rev','역파','逆'); hurt(); phone.classList.add('shake-hard');
+  }
+  if(st==='advantage'){ win.style.width='44%'; foeHp.style.width='62%'; verdict('adv','우세','優'); }
+  if(st==='clash'){ win.style.width='40%'; verdict('clash','상쇄','衝'); }
+  if(st==='disadvantage'){ win.style.width='36%'; myHp.style.width='74%'; verdict('dis','열세','劣'); }
+  if(st==='hit'){ win.style.width='0%'; myHp.style.width='58%'; verdict('hit','피격','擊'); hurt(); }
+})();
+</script>
+
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var captureMode = params.has('capture');
+  var startOn = params.has('annotate');
+  if (captureMode) document.body.classList.add('ui-capture');
+
+  var board = document.querySelector('[data-artboard]');
+  var overlay = document.createElement('div');
+  overlay.className = 'ui-annotate-overlay';
+  board.appendChild(overlay);
+
+  function buildBadges() {
+    overlay.innerHTML = '';
+    var legend = document.getElementById('uiLegend');
+    legend.innerHTML = '';
+    var h = document.createElement('h4'); h.textContent = 'UI 요소'; legend.appendChild(h);
+    var boardRect = board.getBoundingClientRect();
+    document.querySelectorAll('[data-ui]').forEach(function (el) {
+      var parts = el.getAttribute('data-ui').split(':');
+      var id = parts[0], name = parts[1] || '';
+      var isSub = id.indexOf('-') > -1;
+      var r = el.getBoundingClientRect();
+      var top = r.top - boardRect.top, left = r.left - boardRect.left;
+      var box = document.createElement('div');
+      box.className = 'ui-annotate-box' + (isSub ? ' sub' : '');
+      box.style.cssText = 'top:'+top+'px;left:'+left+'px;width:'+r.width+'px;height:'+r.height+'px;';
+      overlay.appendChild(box);
+      var chip = document.createElement('div');
+      chip.className = 'ui-annotate-chip' + (isSub ? ' sub' : '');
+      chip.textContent = id; chip.title = name;
+      chip.style.cssText = 'top:'+Math.max(2,top-8)+'px;left:'+Math.max(2,left-6)+'px;';
+      overlay.appendChild(chip);
+      var row = document.createElement('div');
+      if (isSub) row.className = 'sub';
+      row.innerHTML = '<b>'+id+'</b> '+name;
+      legend.appendChild(row);
+    });
+    var ledgerEl = document.getElementById('uiStyleLedger');
+    if (ledgerEl) {
+      var ledger = JSON.parse(ledgerEl.textContent);
+      if (ledger.colors && ledger.colors.length) {
+        var hc = document.createElement('h4'); hc.textContent = '배경·색상'; legend.appendChild(hc);
+        ledger.colors.forEach(function (c) {
+          var row = document.createElement('div');
+          row.innerHTML = '<b>'+c.id+'</b> <span class="ui-annotate-swatch" style="background:'+c.value+'"></span>'+c.name+' <code>'+c.value+'</code>';
+          legend.appendChild(row);
+        });
+      }
+      if (ledger.fonts && ledger.fonts.length) {
+        var hf = document.createElement('h4'); hf.textContent = '폰트'; legend.appendChild(hf);
+        ledger.fonts.forEach(function (f) {
+          var row = document.createElement('div');
+          row.innerHTML = '<b>'+f.id+'</b> '+f.name+' — '+f.surface;
+          legend.appendChild(row);
+        });
+      }
+    }
+  }
+
+  var btn = document.createElement('button');
+  btn.className = 'ui-annotate-toggle';
+  function setState(on) {
+    document.body.classList.toggle('ui-annotate-on', on);
+    document.body.classList.toggle('ui-annotate-on-page', on);
+    btn.textContent = on ? '요소 번호 숨기기' : '요소 번호 표시';
+    btn.dataset.on = on ? '1' : '0';
+  }
+  btn.addEventListener('click', function () { setState(btn.dataset.on !== '1'); });
+  document.body.appendChild(btn);
+
+  window.addEventListener('load', function () { buildBadges(); setState(startOn); });
+})();
+</script>
+</body>
+</html>
