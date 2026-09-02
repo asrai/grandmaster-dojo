@@ -36,7 +36,7 @@ export function trainWiring(session, { styleId, input }) {
   const style = styleById(styleId);
   beginTrainVisit(session, styleId);
   return {
-    /** 창 길이는 열 때마다 다시 잰다 — 상시 노출된 접근성 토글이 그 시도부터 반영된다. */
+    /** 창 길이는 열 때마다 다시 잰다 — 무대 밖에서 바꾼 접근성 설정이 다음 시도부터 반영된다. */
     onArm() {
       input.arm();
       return responseWindowMs(style.seq.length, { accessibility: session.accessibility });

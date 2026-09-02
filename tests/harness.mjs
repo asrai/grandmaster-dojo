@@ -26,7 +26,7 @@ import {
 import {
   composeHooks, dispatchWiring, duelWiring, trainWiring,
 } from '../src/ui/wiring.mjs';
-import { ATTR_VIEW, EXTREME_GRADES, GRADE_VIEW, TRAIN_DONE_VIEW } from '../src/ui/theme.mjs';
+import { ATTR_VIEW, EXTREME_GRADES, GRADE_VIEW, REASON_VIEW, TRAIN_DONE_VIEW } from '../src/ui/theme.mjs';
 import { TABLET, tabletStates } from '../src/ui/tablet-state.mjs';
 import { BOT_UNREACHABLE, KILL, killVerdicts, readout } from './kill-readout.mjs';
 import {
@@ -41,7 +41,7 @@ import {
   isOneTapRank, judge, ladderBandAt, learn, missionFoeRank, missionFoeSet, missionLockRank,
   missionShortfall, powerOf, promoteByOutcome, rematchFoeRank, resolveMatch, responseWindowMs,
   reversalDecayFactor, selectDiscipleStyle, setStyleRank, styleById, styleRank, trainAccrualCap,
-  trainHitsToNext, transmit,
+  trainHitsToNext, trainVisitSpan, transmit,
 } from '../src/core.mjs';
 
 /** 성 축 재설계가 폐기한 BALANCE 키 (#64) — 잔존 참조 1개가 판정 수식을 조용히 오염시킨다. */
@@ -479,6 +479,11 @@ suite('성 계단 사다리 (REQ-702)', () => {
   eq(trainHitsToNext({ rank: 1, pts: 0 }), 3, '1성에서 다음 계단까지 수련 3회');
   eq(trainHitsToNext({ rank: 1, pts: LADDER.gain.train }), 2, '한 번 채우면 2회 남는다');
   eq(trainHitsToNext({ rank: LOW.maxRank, pts: 0 }), null, '수련 무효 구간에는 남은 횟수가 없다');
+
+  // 화면이 3 을 상수로 갖지 않는다 — 칸 수가 계단 비용에서 파생돼야 비용 튜닝이 계단을 따라온다 (REQ-845).
+  deepEq(trainVisitSpan({ rank: 1, pts: 0 }), { done: 0, total: 3 }, '갓 오른 성의 수련 계단은 3칸 전부 빈다');
+  deepEq(trainVisitSpan({ rank: 1, pts: LADDER.gain.train }), { done: 1, total: 3 }, '한 번 채우면 한 칸이 찬다');
+  eq(trainVisitSpan({ rank: LOW.maxRank, pts: 0 }), null, '수련 무효 구간에는 계단 자체가 없다');
 
   throws(() => accrue(createRankState(), 'nope'), '알 수 없는 적립 모드는 throw', '알 수 없는 적립 모드');
 });
@@ -1014,6 +1019,29 @@ suite('제자 자동 선택 (REQ-403·853)', () => {
   eq(behind.reason, SELECT_REASON.ADVANTAGE, '선택이 바뀌지 않았으므로 회피가 아니다');
 
   deepEq([...new Set(Object.values(SELECT_REASON))].length, 3, '이유 계열은 3종이고 값이 겹치지 않는다');
+  // 화면 문구가 계열마다 있어야 한다 — 없으면 그 초의 판단이 빈칸으로 뜬다 (theme.mjs 부팅 단정의 짝).
+  for (const reason of Object.values(SELECT_REASON)) {
+    ok(typeof REASON_VIEW[reason] === 'string' && REASON_VIEW[reason].length > 0,
+      `${reason} 에 화면 문구가 있다`);
+  }
+
+  // 제자의 손이 내보내는 형태 — 지시받은 초에는 판단이 없으므로 이유가 비고 그 사실이 `byUser` 로 선다.
+  const handSession = createSession({ now: () => 0 });
+  handSession.disciple = transmit(masteredProgress, createDisciple(), ART_ID);
+  const handStyles = discipleStyles(handSession.disciple, ART_ID);
+  const shots = [];
+  const hand = createDiscipleHand({ session: handSession, styles: handStyles, fire: (f) => shots.push(f) });
+  const atFire = { ratio: 1 - BALANCE.discipleFireRatio - 0.01, telegraphed: foeStyleById('alpha') };
+  hand.arm();
+  const auto = hand.tick(atFire);
+  eq(auto.byUser, false, '지시가 없으면 제자가 판단한다');
+  ok(Object.values(SELECT_REASON).includes(auto.reason), '자동 선택에는 이유 계열이 실린다');
+  hand.arm();
+  const told = hand.tick(atFire, styleById('haeng-un'));
+  eq(told.style.id, 'haeng-un', '지시는 그 초의 선택을 대체한다');
+  eq(told.byUser, true, '지시받은 초는 byUser 다');
+  eq(told.reason, null, '판단하지 않은 초에는 이유가 없다 — 화면이 그것으로 문구를 가른다');
+  eq(shots.length, 2, '두 초 모두 실제로 발동했다');
 });
 
 // ----------------------- 9. 케이스 8 — B 밸런스 게이트 시뮬 (REQ-402·403·506)

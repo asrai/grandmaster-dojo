@@ -158,7 +158,6 @@ export function startTrain(ctx) {
         wiring.onFire();
         verdict.show(TRAIN_DONE_VIEW);
         showProgress();
-        ctx.refreshTop();
         rearm = setTimeout(arm, BALANCE.resolveMs);
       },
     });

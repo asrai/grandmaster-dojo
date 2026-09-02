@@ -184,6 +184,8 @@ export function startDispatch(ctx) {
       el('b', { text: judged.style.name }),
       attrMark(judged.style.attr),
     );
+    // 관전의 콘텐츠가 판단 그 자체라, 시각 층에만 두면 비시각 사용자에게는 관전이 통째로 빈다.
+    verdict.announce(`${text} — ${judged.style.name}`);
     judgePrev.textContent = prevText ? `지난 초 · ${prevText}` : '';
     prevText = text;
   }
@@ -193,24 +195,24 @@ export function startDispatch(ctx) {
     const hintId = view.telegraphed
       ? styles.find((s) => s.counters === view.telegraphed.id)?.id ?? null
       : null;
-    tablets.render(styles.map((style) => ({
+    tablets.render(styles.map((style) => {
+      // 유도는 지시 전까지의 예고라, 지시받았거나 이미 낸 초에는 멈춘다 (REQ-855).
+      const beckons = !fired && style !== instructed && style.id === hintId;
+      return {
       style,
       // 도장에서 키운 값이 싸우는 화면에서 읽혀야 수련의 보상이 닫힌다 (REQ-856).
       rank: discipleStyleRank(session.disciple, ART_ID, style.id),
-      mods: [
-        style === instructed ? 'picked' : '',
-        // 유도는 지시 전까지의 예고라, 지시받았거나 이미 낸 초에는 멈춘다 (REQ-855).
-        !fired && style !== instructed && style.id === hintId ? 'beckon' : '',
-      ].filter(Boolean).join(' '),
-      // 지시 여부를 외곽선 색만으로 두면 색각 이상에서 구분되지 않는다.
-      tags: style === instructed ? ['지시'] : [],
+      mods: [style === instructed ? 'picked' : '', beckons ? 'beckon' : ''].filter(Boolean).join(' '),
+      // 지시도 유도도 색·맥동만으로 두면 색각 이상과 낭독 양쪽에서 사라진다.
+      tags: [style === instructed ? '지시' : null, beckons ? '파해' : null].filter(Boolean),
       onTap: () => {
         if (fired) return;
         instructed = style;
         paintColor(style);
         renderTablets(view);
       },
-    })));
+      };
+    }));
   }
 
   const renderHp = (view) => {
