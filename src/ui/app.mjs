@@ -5,6 +5,7 @@ import { BALANCE } from '../balance.mjs';
 import { createBot } from '../bot.mjs';
 import { $ } from './dom.mjs';
 import { initAudio, resumeAudio } from './audio.mjs';
+import { createFrameBudget } from './frame-budget.mjs';
 import { SCREEN } from './theme.mjs';
 import { mountCheatPanel } from './cheat.mjs';
 import { createPad } from './pad.mjs';
@@ -46,6 +47,15 @@ const ctx = {
 };
 let teardown = null;
 let phase = null;
+/**
+ * 프레임 예산 원장 (REQ-914·915) — 화면 하나 단위로 모으고 떠날 때 낸다. 화면을 섞으면
+ * 「어느 화면이 비싼가」가 평균에 묻히므로 전이마다 비운다.
+ */
+const budget = createFrameBudget();
+/** 그 화면의 무대·판정 노드 — 프레임마다 DOM 을 뒤지지 않도록 전이 때 한 번만 잡는다. */
+let sceneNode = null;
+let overlayNode = null;
+let lastFrameAt = 0;
 // 상단 띠의 주인이 화면이라 갱신 주체도 그 화면이다 — 띠가 없는 화면에서는 갱신할 것도 없다 (REQ-801).
 let paintTop = () => {};
 
@@ -60,6 +70,8 @@ function refreshTop() {
 
 /** 화면 전환의 유일한 경로 — 이전 화면의 루프·리스너·입력 회수가 여기 한 곳에 묶인다. */
 function go(nextPhase, params = {}) {
+  // 화면을 떠나기 전에 낸다 — teardown 뒤에는 그 화면의 노드도 표본의 주인도 남지 않는다.
+  if (nextPhase !== phase) flushFrameBudget();
   if (teardown) teardown();
   teardown = null;
   paintTop = () => {};
@@ -71,8 +83,52 @@ function go(nextPhase, params = {}) {
   phase = nextPhase;
   enterPhase(session, phase);
   teardown = route(ctx) ?? null;
+  sceneNode = ctx.root.querySelector('.scene');
+  overlayNode = ctx.root.querySelector('.verdict-overlay');
   announceScreen(nextPhase);
   releaseVerdictLive();
+}
+
+/**
+ * 이 프레임이 무엇을 그리고 있었나 (REQ-915) — 측정 대상은 「흔들림 + 96px 글로우 + 스크림이
+ * 겹치는 프레임」이라, 판정이 재생 중인 프레임을 다른 것과 섞지 않는 것이 이 구분의 전부다.
+ */
+function sceneOfFrame() {
+  if (overlayNode?.classList.contains('on')) return 'verdict';
+  if (sceneNode && !sceneNode.classList.contains('flat')) return 'parallax';
+  return 'idle';
+}
+
+/** 떠나는 화면의 프레임 예산을 장면별로 낸다 — 표본이 모자란 장면은 말하지 않는다. */
+function flushFrameBudget() {
+  if (phase === null) return;
+  for (const scene of budget.scenes()) {
+    logEvent(session, 'frame_budget', {
+      screen: SCREEN[phase].id,
+      scene,
+      p95_ms: Math.round(budget.p95(scene) * 10) / 10,
+      dropped: budget.dropped(scene),
+    });
+  }
+  budget.reset();
+}
+
+/**
+ * 프레임 시계 (REQ-914·915) — 게임 루프와 별개로 도는 관측자다. 패럴랙스를 끄는 판정도 여기서
+ * 하는 것은, 끌지 말지의 근거가 바로 이 표본이기 때문이다. 임계 50fps 는 실기 측정 전 잠정값이다.
+ */
+function watchFrames(at) {
+  window.requestAnimationFrame(watchFrames);
+  const delta = at - lastFrameAt;
+  lastFrameAt = at;
+  budget.sample(sceneOfFrame(), delta);
+  if (!sceneNode) return;
+  const fps = budget.fps('parallax');
+  // 표본이 모자라면 켜 둔 채로 둔다 — 시작하자마자 끄면 무엇을 잰 것인지가 없다.
+  // 한 번 끄면 그 화면에서는 다시 켜지지 않는다: 끈 뒤의 프레임은 패럴랙스 표본이 아니라
+  // 되켜도 되는지의 근거가 없고, 껐다 켰다 하는 무대가 느린 무대보다 나쁘다. 판정은 화면
+  // 전이에서 표본과 함께 처음부터 다시 선다.
+  if (fps !== null) sceneNode.classList.toggle('flat', fps < BALANCE.parallaxMinFps);
 }
 
 /** 직전에 낭독한 화면 — 도장은 조작마다 자기를 다시 그리므로, 그 재렌더는 전환이 아니다. */
@@ -127,8 +183,9 @@ if (preroll >= BALANCE.resolveMs) {
 
 /** 로그 내보내기 (REQ-602) — 위반 목록을 함께 실어, 결손 로그가 조용히 판독에 쓰이지 않게 한다. */
 function exportLog() {
-  // 화면 체류는 이탈에서 찍히므로, 그대로 내보내면 지금 보고 있는 화면이 통째로 빠진다.
+  // 체류·프레임 예산은 둘 다 이탈에서 찍히므로, 그대로 내보내면 지금 보고 있는 화면이 통째로 빠진다.
   flushScreenView(session);
+  flushFrameBudget();
   const payload = exportPayload(session);
   if (payload.log_violations.length) {
     window.alert(`로그 스키마 위반 ${payload.log_violations.length}건이 함께 실린다`
@@ -219,3 +276,5 @@ window.__dojo = { session, go, BALANCE, bot, exportLog };
 
 logSessionMeta(session, { testerRole: 'self', device: DEVICE });
 go('dojo');
+lastFrameAt = performance.now();
+window.requestAnimationFrame(watchFrames);

@@ -91,6 +91,8 @@ const CONTENT_SOURCE = 'src/balance.mjs';
  * JSON 은 주석을 실을 수 없으므로 값 옆에 있던 사유는 이 표와 아래 검증기가 대신 진다:
  * `winColorHintExchanges` 는 프로토 상시(∞) 지만 Infinity 가 JSON 왕복에서 null 이 되므로
  * 유한 상한을 쓰고, `bot.misHitRate` 는 spec 미지정분이라 없으면 선행 게이트가 공허해진다.
+ * `parallaxMinFps` 는 시각 토큰이 아니라 **코드가 분기하는 수**라 여기 산다 — 매 프레임 원장을
+ * 읽으면 그 조회가 곧 재려던 비용이 되고, 값 자체도 REQ-915 실기 측정이 갱신할 자리다.
  * 토큰은 `NUM_RULES` 의 키(스칼라) · `map:<규칙>`(값이 전부 그 규칙인 map) · 전용 검사기 이름이다.
  */
 const SHAPE = {
@@ -106,6 +108,7 @@ const SHAPE = {
   discipleStartRank: 'int1+', discipleRankMax: 'int1+', discipleFireRatio: 'ratio',
   discipleTrain: 'map:int1+', mission: 'map:int+', killReadout: 'map:int1+',
   winColorHintExchanges: 'int1+', simEfficiency: 'pos', simTrainSeconds: 'int1+', buttonHitPx: 'int1+',
+  parallaxMinFps: 'int1+',
   reward: 'map:int+', bot: 'bot', hp: 'map:int1+', challengerRank: 'map:int1+',
   rematch: 'map:int+', reversalDecay: 'reversalDecay', audio: 'audio',
 };

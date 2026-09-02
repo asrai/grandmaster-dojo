@@ -121,6 +121,12 @@
   --scene-ridge-near: color-mix(in srgb, var(--c1) 96%, var(--c3));
   --scene-bamboo: color-mix(in srgb, var(--c1) 84%, var(--shadow));
   --scene-ground-h: 112px;
+  /* 미세 패럴랙스의 진폭 (REQ-914) — 원경이 덜 움직이는 것이 곧 깊이다. 두 값 모두 정경 SVG 가
+     좌우로 10px 씩 물고 나가는 여유(viewBox -10~403) 안이라, 흔들려도 가장자리가 드러나지 않는다.
+     끄는 스위치는 `.scene.flat` 하나이고 그 판정은 프레임률이 진다. */
+  --px-ridge: 2px;
+  --px-bamboo: 6px;
+  --px-drift: 17s;
   --backlight: color-mix(in srgb, var(--c9) 30%, transparent);
   /* 역광이 닿지 않는 실루엣의 윤곽선 (REQ-875) — 빛이 아니라 선이 형태를 지는 자리다. */
   --paper-rim: color-mix(in srgb, var(--c3) 34%, transparent);
@@ -542,6 +548,23 @@ button.ghost { background: transparent; }
 .scene .bamboo g { fill: none; stroke: var(--scene-bamboo); stroke-linecap: round; }
 .scene .bamboo .stalk { stroke-width: 8; }
 .scene .bamboo .leaf { stroke-width: 4; }
+/* 미세 패럴랙스 (REQ-914) — 합성 프로퍼티만 흔들어 레이아웃·페인트가 다시 돌지 않는다.
+   50fps 미만에서는 `app.mjs` 가 `.flat` 을 붙여 그 합성 비용마저 없앤다. */
+.scene .ridge { animation: drift-ridge calc(var(--px-drift) * 1.6) ease-in-out infinite alternate; }
+.scene .bamboo { animation: drift-bamboo var(--px-drift) ease-in-out infinite alternate; }
+@keyframes drift-ridge {
+  from { transform: translate3d(calc(-1 * var(--px-ridge)), 0, 0) }
+  to { transform: translate3d(var(--px-ridge), 0, 0) }
+}
+@keyframes drift-bamboo {
+  from { transform: translate3d(var(--px-bamboo), 0, 0) }
+  to { transform: translate3d(calc(-1 * var(--px-bamboo)), 0, 0) }
+}
+.scene.flat .ridge, .scene.flat .bamboo { animation: none; transform: none; }
+/* 움직임에 민감한 사용자에게는 프레임률과 무관하게 처음부터 없다. */
+@media (prefers-reduced-motion: reduce) {
+  .scene .ridge, .scene .bamboo { animation: none; transform: none; }
+}
 .scene .backlight.far { left: var(--glow-far-x); top: var(--glow-far-y); width: var(--glow-far-w); height: var(--glow-far-h); }
 .scene .backlight.near { right: var(--glow-near-x); bottom: var(--glow-near-y); width: var(--glow-near-w); height: var(--glow-near-h); }
 .scene .fig.far { left: var(--fig-far-x); top: var(--fig-far-y); width: var(--fig-far-w); }
@@ -819,11 +842,14 @@ button.ghost { background: transparent; }
 .slip.picked { outline: 2px solid var(--gold); }
 /* 파해 유도 (REQ-855) — 금은 달성·확정의 색이고 유도는 그 예고라, 굳은 금테(`.picked` = 지시)와
    맥동으로 갈린다. 속성색을 쓰면 그 죽간의 속성 표시와 겹쳐 유도로 읽히지 않는다. */
-.slip.beckon { animation: beckon var(--beckon-dur) ease-in-out infinite; }
-@keyframes beckon {
-  0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--c4) 35%, transparent) inset }
-  50% { box-shadow: 0 0 0 2px var(--gold) inset, 0 0 24px color-mix(in srgb, var(--c4) 50%, transparent) }
+/* 맥동은 그 초 내내 도는 애니메이션이라 `box-shadow` 를 흔들면 매 프레임 페인트가 다시 돈다.
+   테두리를 지는 의사요소를 하나 두고 그 **불투명도만** 흔들면 합성만으로 끝난다 (REQ-913). */
+.slip.beckon::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  box-shadow: 0 0 0 2px var(--gold) inset, 0 0 24px color-mix(in srgb, var(--c4) 50%, transparent);
+  animation: beckon var(--beckon-dur) ease-in-out infinite;
 }
+@keyframes beckon { 0%, 100% { opacity: .3 } 50% { opacity: 1 } }
 /* 1매 = 확정이라 그 순간이 화면에서 가장 큰 사건이 되게 한다 (REQ-824·826). */
 .slip.only {
   border-color: var(--gold); transform: translateY(-3px) scale(1.05);
@@ -931,18 +957,31 @@ button.ghost { background: transparent; }
 }
 .handoff b { color: var(--c6); font-weight: 800; }
 
-/* 판정은 흐름 밖에서 뜬다 — 자리를 차지하면 문구 등장마다 아래 형제가 밀린다 (#40). */
+/* 판정은 흐름 밖에서 뜬다 — 자리를 차지하면 문구 등장마다 아래 형제가 밀린다 (#40).
+   오버레이·스크림·낙관은 화면과 함께 **1회 생성**되고 그 뒤로는 `.on` 하나로만 켜진다
+   (REQ-913) — 판정마다 노드를 새로 만들면 그 생성·레이아웃이 판정 프레임에 겹친다. */
 .verdict-overlay { position: absolute; inset: 0; z-index: 8; pointer-events: none; }
+/* 판정 스크림 (REQ-913·915) — 낙관 뒤를 눌러 글자를 무대에서 떼어낸다. 저사양 프레임 예산의
+   측정 대상이 「흔들림 + 96px 글로우 + 스크림」이 겹치는 프레임이라, 이것이 그 세 번째 항이다. */
+.vscrim {
+  position: absolute; inset: 0; opacity: 0;
+  background: radial-gradient(58% 34% at 50% 46%,
+    color-mix(in srgb, var(--shadow) 80%, transparent), transparent 72%);
+}
+.verdict-overlay.on .vscrim { animation: verdict-scrim var(--vd-dur, .5s) ease-out forwards; }
+@keyframes verdict-scrim { 0% { opacity: 0 } 20% { opacity: 1 } 70% { opacity: 1 } 100% { opacity: 0 } }
 /* 위치가 승패 축이다 (REQ-814) — 오버레이 중심이 상쇄이고, 등급마다 그만큼 위·아래로 민다. */
 .verdict-pop {
   position: absolute; left: 0; right: 0; top: 50%; padding: 0 12px; text-align: center;
   transform: translateY(calc(-50% + var(--vd-shift, 0px)));
   text-shadow: 0 2px 16px var(--shadow), 0 0 32px var(--shadow);
-  animation: verdict-pop var(--vd-dur, .5s) ease-out forwards;
+  /* 상주 노드라 평시에는 그리지 않는다 — 재생은 `.on` 이 붙는 동안만 있다. */
+  opacity: 0;
 }
+.verdict-overlay.on .verdict-pop { animation: verdict-pop var(--vd-dur, .5s) ease-out forwards; }
 /* 히트스톱 — 충격 순간 문자가 늦게 뜨는 것이 그 정지다. 늦은 만큼 재생을 줄여 총 길이가
    `--vd-dur` 를 넘지 않게 한다: 넘기면 판정이 다음 예고 위로 흘러든다 (spec § build-Plan 결정 사항). */
-.verdict-pop.punched {
+.verdict-overlay.on .verdict-pop.punched {
   animation-delay: var(--juice-hitstop);
   animation-duration: calc(var(--vd-dur, .5s) - var(--juice-hitstop));
 }
@@ -951,6 +990,9 @@ button.ghost { background: transparent; }
   display: block; font-size: var(--vd-mark-size); font-weight: 800;
   letter-spacing: 6px; text-indent: 6px; color: inherit; opacity: .55;
 }
+/* 낙관이 없는 판정도 있다 (#46) — 상주 노드라 지우는 대신 감추므로, `display:block` 이
+   기본 `[hidden]` 규칙을 이기지 않게 여기서 되돌린다. */
+.verdict-pop .hj[hidden] { display: none; }
 .verdict-label {
   display: block; font-size: var(--vd-size, var(--vd-size-clash)); font-weight: 800;
   line-height: .98; letter-spacing: 4px; text-indent: 4px;
