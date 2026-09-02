@@ -64,6 +64,16 @@ function stripJsComments(src) {
 }
 
 const stripCssComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, ' ');
+
+/** JS 이스케이프로 적힌 문자도 화면에는 글리프로 나온다 — CSS 이스케이프와 같은 축이다. */
+function decodeJsEscapes(js) {
+  const cps = [];
+  for (const m of js.matchAll(/\\u\{([0-9a-fA-F]{1,6})\}|\\u([0-9a-fA-F]{4})|\\x([0-9a-fA-F]{2})/g)) {
+    const cp = Number.parseInt(m[1] ?? m[2] ?? m[3], 16);
+    if (cp > 0x20 && cp <= 0x10ffff) cps.push(String.fromCodePoint(cp));
+  }
+  return cps.join('');
+}
 const stripHtmlComments = (src) => src.replace(/<!--[\s\S]*?-->/g, ' ');
 
 /** CSS `content` 의 `\25B6` 는 소스에 ASCII 로 적히지만 화면에는 글리프로 나온다. */
@@ -88,7 +98,10 @@ function renderableTextFromHtml(html) {
     if (m[1].toLowerCase() === 'style') {
       const css = stripCssComments(m[2]);
       parts.push(css, decodeCssEscapes(css));
-    } else parts.push(stripJsComments(m[2]));
+    } else {
+      const js = stripJsComments(m[2]);
+      parts.push(js, decodeJsEscapes(js));
+    }
     last = m.index + m[0].length;
   }
   parts.push(body.slice(last));
@@ -115,14 +128,19 @@ function sourceFiles() {
   return files;
 }
 
+// 기본 무시 문자(ZWSP·방향 표시 등)는 폰트가 글리프를 갖지 않아도 정상 렌더된다 — 유니코드가
+// 정의하는 성질이라 배제 목록이 아니다.
+const RENDERS = (ch) => ch.codePointAt(0) > 0x20 && !/\p{Default_Ignorable_Code_Point}/u.test(ch);
+
 function collectUsedChars(files) {
   const used = new Set();
   for (const rel of files) {
     const raw = readFileSync(join(ROOT, rel), 'utf8');
-    const text = rel === ENTRY_HTML ? renderableTextFromHtml(raw)
-      : rel.endsWith('.mjs') ? stripJsComments(raw)
-        : raw;
-    for (const ch of text) if (ch.codePointAt(0) > 0x20) used.add(ch);
+    let text;
+    if (rel === ENTRY_HTML) text = renderableTextFromHtml(raw);
+    else if (rel.endsWith('.mjs')) { const js = stripJsComments(raw); text = js + decodeJsEscapes(js); }
+    else text = raw;
+    for (const ch of text) if (RENDERS(ch)) used.add(ch);
   }
   if (used.size === 0) throw new Error('수집한 글자가 0건이다 — 통과가 아니라 수집기 고장이다');
   return used;
