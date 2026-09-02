@@ -1220,7 +1220,8 @@ button.ghost { background: transparent; }
     <button id="exportBtn" class="ghost">로그 내보내기</button>
     <button id="botBtn" class="ghost">봇 v2 실행</button>
     <button id="cheatBtn" class="ghost" aria-pressed="false" aria-controls="cheat">개발자 치트</button>
-    <label><input id="a11y-window" type="checkbox"><span>응수 창 ×1.3 (쉬움)</span></label>
+    <!-- 폼 상태 복원이 새로고침 뒤 표시를 켜 두면 세션 값과 갈린다 — 그 값은 kill 판독 모집단을 가른다. -->
+    <label><input id="a11y-window" type="checkbox" autocomplete="off"><span>응수 창 ×1.3 (쉬움)</span></label>
     <section id="cheat" class="cheat" hidden aria-label="개발자 치트"></section>
   </div>
 

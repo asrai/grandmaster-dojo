@@ -2441,13 +2441,14 @@ suite('크롬 원장은 한 토큰 한 값 (#133)', () => {
   const rootAt = html.match(/^:root \{[\s\S]*?\n\}/m);
   ok(rootAt, ':root 블록을 실제로 떼어냈다');
   const rootBlock = rootAt?.[0] ?? '';
-  // 양성 대조 — 모집단이 0 으로 접히면 이 계수가 먼저 무너진다. 셋은 44 라는 **값**을 쓰는
-  // 토큰 전량이고, 그중 히트 축은 `--hit-min` 하나다.
-  eq((rootBlock.match(HIT44) ?? []).length, 3, ':root 안 44px 리터럴 — 경계 인식 검색이 실재 히트를 센다');
-  // 그 경계가 실제로 무는지 — `--watch-y` 는 44px 리터럴이 아닌데 부분 문자열로는 걸린다.
-  ok(/--watch-y:\s*-144px/.test(rootBlock), '-144px 토큰이 :root 에 실재한다');
-  eq((rootBlock.match(/44px/g) ?? []).length, 4,
-    ':root 안 부분 문자열 히트는 4건 — 경계 인식이 그중 -144px 하나를 뺀다');
+  // 양성 대조 — 모집단이 0 으로 접히면 아래 둘이 먼저 무너진다. 절대 계수를 박지 않는 것은
+  // 무관한 토큰(판정 시프트·낙관 좌표)이 44 를 쓰기 시작하면 핀이 래칫 카운터로 퇴화해서다.
+  ok((rootBlock.match(HIT44) ?? []).length >= 1, ':root 의 44px 리터럴을 경계 인식 검색이 실제로 문다');
+  ok(/--hit-min:\s*44px/.test(rootBlock), '히트 축 44 의 정본은 --hit-min 이다');
+  // 경계가 실제로 걸러내는지 — `--watch-y: -144px` 는 44px 리터럴이 아닌데 부분 문자열로는 걸린다.
+  ok(/--watch-y:\s*-144px/.test(rootBlock), '부분 문자열로만 걸리는 토큰이 :root 에 실재한다');
+  ok((rootBlock.match(/44px/g) ?? []).length > (rootBlock.match(HIT44) ?? []).length,
+    '경계 인식이 그 부분 문자열 히트를 실제로 걸러낸다');
 
   // 추출이 빗나갔을 때 예외로 죽으면 아래 단정이 통째로 건너뛰어진다 — 계수로 red 를 낸다.
   const outside = rootAt ? html.slice(0, rootAt.index) + html.slice(rootAt.index + rootBlock.length) : '';
@@ -2460,6 +2461,16 @@ suite('크롬 원장은 한 토큰 한 값 (#133)', () => {
     ok(block, `${sel} 규칙 블록을 실제로 떼어냈다`);
     ok(/var\(--hit-min\)/.test(block ?? ''), `${sel} 의 히트 축이 --hit-min 이다`);
   }
+
+  // 두 원장이 만나는 자리 — 실효 히트는 `min(buttonHitPx, --band-h)` 이고 REQ-910 하한은
+  // `--hit-min` 이다. 어느 한쪽만 내려도 확장 상자가 조용히 44 밑으로 잘리므로 셋을 함께 문다.
+  const px = (name) => Number(rootBlock.match(new RegExp(`${name}:\\s*(\\d+)px`))?.[1]);
+  const hitMin = px('--hit-min'); const bandH = px('--band-h');
+  ok(Number.isFinite(hitMin) && Number.isFinite(bandH),
+    `원장에서 두 값을 실제로 읽었다 — --hit-min ${hitMin} · --band-h ${bandH}`);
+  ok(hitMin <= bandH, `띠가 확장 상자를 하한 밑으로 자르지 않는다 — ${hitMin} <= ${bandH}`);
+  ok(hitMin <= BALANCE.buttonHitPx,
+    `주입 히트 크기가 하한을 밑돌지 않는다 — ${hitMin} <= ${BALANCE.buttonHitPx}`);
 });
 
 // 원장 축과 스위트를 가르는 것은 격리다 — 한쪽 추출이 무너져도 다른 축의 단정이 함께 침묵하지 않는다.

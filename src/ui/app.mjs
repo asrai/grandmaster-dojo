@@ -74,11 +74,15 @@ function refreshTop() {
  * 재렌더가 지금 밟고 선 자리 (#133) — 조립이 노드를 파기하기 전에만 읽을 수 있다. 순번은
  * `focusables` 목록의 첨자라 채집과 복원이 같은 정의를 본다. 목록 밖(본문·`<main>`)이면
  * 되돌릴 자리가 없다는 뜻이라 `null` 이고, 그때는 조립이 본문에 포커스를 둔다.
+ * 전환은 이 채집을 타지 않는다 — 새 화면의 본문으로 옮기는 것이 그쪽의 계약이다 (#102).
  */
 function captureFocusHint() {
+  const active = document.activeElement;
+  // 스테이지 밖(도구 띠)에 있던 포커스는 조립이 소유한 적이 없다 — 끌어오면 남의 자리를 뺏는다.
+  if (active && active !== document.body && !ctx.root.contains(active)) return { keep: true };
   const seats = focusables(ctx.root);
-  const at = seats.indexOf(document.activeElement);
-  return at < 0 ? null : { id: document.activeElement.id, ordinal: at };
+  const at = seats.indexOf(active);
+  return at < 0 ? null : { id: active.id, ordinal: at };
 }
 
 /** 화면 전환의 유일한 경로 — 이전 화면의 루프·리스너·입력 회수가 여기 한 곳에 묶인다. */

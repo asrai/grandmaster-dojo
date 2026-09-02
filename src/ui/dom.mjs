@@ -84,11 +84,14 @@ export function composeScreen(ctx, {
   // 전환 직후 포커스가 body 로 떨어지면 키보드·낭독기 사용자는 새 화면의 첫 요소까지 Tab 을
   // 다시 짚어야 한다. 조립의 소유가 이 함수라 화면마다 반복되는 자리가 생기지 않는다 (#102).
   // 재렌더는 누른 노드를 파기할 뿐 화면을 떠난 것이 아니므로 그 자리를 되찾는다: id 가 살아
-  // 있으면 그 노드, 없으면 같은 순번의 이웃, 둘 다 없으면 본문이다 (#133).
-  const seats = hint ? focusables(root) : [];
-  const seat = hint && ((hint.id && seats.find((node) => node.id === hint.id)) || seats[hint.ordinal]);
+  // 있으면 그 노드, 없으면 같은 순번의 이웃, 둘 다 없으면 본문이다. 애초에 스테이지 밖에 있던
+  // 포커스는 조립의 소유가 아니라 그대로 둔다 (#133).
   // 스크롤을 막는 것은 본문이 스크롤 상자여서 — 포커스가 그것을 맨 위로 당기면 안 된다.
-  (seat || main).focus({ preventScroll: true });
+  if (!hint?.keep) {
+    const seats = hint ? focusables(root) : [];
+    const seat = hint && ((hint.id && seats.find((node) => node.id === hint.id)) || seats[hint.ordinal]);
+    (seat || main).focus({ preventScroll: true });
+  }
   return main;
 }
 
