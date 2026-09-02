@@ -1,12 +1,15 @@
 // 사부 대련 (REQ-201·206~211·708·731~736) — 유저가 시퀀스를 치는 유일한 실전 화면과 그 예고.
+// 화면은 상단 띠 50 / 아레나 440 / 입력부 362 의 3단 고정이고, 나머지 4화면이 그 좌표를
+// 상속하므로 아레나는 `arena.mjs` 가, 하단부는 `pad.mjs` 가 각자 소유한다 (REQ-820·850).
 
 import { BALANCE, STYLES } from '../../balance.mjs';
-import { clear, composeScreen, el, hpBar, topBand } from '../dom.mjs';
+import { clear, composeScreen, el, topBand } from '../dom.mjs';
 import { attrLabel, winAttrOf } from '../theme.mjs';
 import { attrMark, attrTone } from '../components/attr-mark.mjs';
 import { hanja } from '../components/hanja.mjs';
 import { SFX } from '../audio.mjs';
 import { finisherOf, foeStyleById, styleById } from '../../core.mjs';
+import { SPOT, createArena } from '../arena.mjs';
 import { PHASE, createMatch } from '../match.mjs';
 import { createSequenceInput } from '../sequence-input.mjs';
 import {
@@ -16,23 +19,65 @@ import {
 import { createVerdictOverlay } from '../verdict-overlay.mjs';
 import { composeHooks, duelWiring, logDuelStart } from '../wiring.mjs';
 
+/**
+ * 상대 예고 (REQ-822) — 아레나 최상단 가로 스트립이다. 중앙은 판정 오버레이의 자리라 예고가
+ * 점유하지 않고, 「이기는 색」이 그 옆에 붙어 슬롯 판단이 한 눈에 닫힌다 (REQ-206).
+ */
 function telegraphView(view) {
-  if (view.foeOpen) return el('div', { class: 'telegraph open', text: '빈틈! — 아무 초식이나 완주하면 완파' });
+  if (view.foeOpen) return el('div', { class: 'tele open', text: '빈틈! — 아무 초식이나 완주하면 완파' });
   const foe = view.telegraphed;
   const win = winAttrOf(foe.attr);
-  return el('div', { class: 'telegraph', style: `--attr:${attrTone(foe.attr)}` }, [
-    el('div', { class: 'tg-foe' }, [
+  return el('div', { class: 'tele', style: `--attr:${attrTone(foe.attr)}` }, [
+    el('div', { class: 'tele-attr' }, [
       attrMark(foe.attr, { size: 'big' }),
-      el('b', { text: foe.name }),
-      hanja(foe.hanja),
-      el('span', { class: 'dim', text: `${attrLabel(foe.attr)} · ${foe.len}수` }),
+      el('span', { class: 'an', text: attrLabel(foe.attr) }),
     ]),
-    el('div', { class: 'tg-win', style: `--attr:${attrTone(win)}` }, [
-      el('span', { class: 'dim', text: '이기는 색' }),
-      attrMark(win, { size: 'big' }),
-      el('b', { text: attrLabel(win) }),
+    el('div', { class: 'tele-id' }, [
+      el('b', { class: 'kr', text: foe.name }),
+      el('span', { class: 'sub' }, [hanja(foe.hanja), el('span', { class: 'dim', text: `${foe.len}수 초식` })]),
+    ]),
+    el('div', { class: 'tele-win', style: `--attr:${attrTone(win)}` }, [
+      el('span', { class: 'cap', text: '이기는 색' }),
+      el('span', { class: 'val' }, [attrMark(win), el('b', { text: attrLabel(win) })]),
     ]),
   ]);
+}
+
+/**
+ * 기력 (REQ-850) — 누가 누구인지를 색 그라디언트에만 맡기지 않고 라벨로 못박는다 (REQ-856).
+ * @param {string} label 낭독·시각 공용 이름
+ * @param {string} side `foe`(좌상) · `self`(우하) — 실루엣이 선 자리와 같은 축이다
+ */
+function vital(label, side) {
+  const fill = el('i', { class: 'fill' });
+  const node = el('div', { class: `vital ${side}` }, [
+    el('span', { class: 'lbl', text: label }),
+    el('span', { class: 'track' }, [fill]),
+  ]);
+  return {
+    node,
+    set(hp, max) { fill.style.width = `${Math.max(0, Math.min(1, hp / max)) * 100}%`; },
+  };
+}
+
+/**
+ * 도전자 표찰 (REQ-820·893·897) — 대련 중 상황은 「누구와 몇 초째인가」뿐이라 띠가 그 둘만
+ * 진다. 재화·접근성 토글은 대련 밖(도장·예고)의 자리다.
+ * @param {object} challenger
+ * @param {() => number} exchangeOf 끝난 초의 수 — 표시는 진행 중인 초라 그보다 하나 크다
+ * @param {Function} onLeave 물러나기 — 띠를 쓰는 화면의 좌측 첫 자리다 (REQ-897)
+ */
+function foeBand(challenger, exchangeOf, onLeave) {
+  const countEl = el('b', { class: 'exch-n' });
+  const node = el('header', { class: 'foe-band' }, [
+    el('button', { class: 'leave', text: '←', 'aria-label': '물러나기', onclick: onLeave }),
+    el('div', { class: 'foe-name' }, [el('b', { text: challenger.name }), hanja(challenger.hanja)]),
+    el('span', { class: 'seal', text: `${challenger.stage}차` }),
+    el('span', { class: 'exch' }, [countEl, el('span', { class: 'exch-u', text: '초째' })]),
+  ]);
+  const paint = () => { countEl.textContent = String(exchangeOf() + 1); };
+  paint();
+  return { node, paint };
 }
 
 /**
@@ -164,38 +209,45 @@ export function renderDuelPreview(ctx) {
 }
 
 export function startDuel(ctx) {
-  const { session, root, params } = ctx;
+  const { session, params } = ctx;
   const challenger = challengerOfStage(params.stage);
   const { foeRank } = logDuelStart(session, challenger);
 
-  const verdict = createVerdictOverlay();
-  const foeHpEl = el('div', {});
-  const selfHpEl = el('div', {});
-  const telegraphEl = el('div', { class: 'tg-slot' });
-  const windowFill = el('i', {});
+  // 확정 연출이 한 프레임도 안 보이는 초를 위해 판정이 죽간의 금테를 기다린다 (REQ-826).
+  const verdict = createVerdictOverlay({ heldSince: () => ctx.pad.onlyShownAt() });
+  // 대각 대치 — 도전자가 원경에, 사부가 근경에 선다. 이 배치를 S4 는 사람만, S6 은 자세까지
+  // 바꿔 그대로 물려받는다 (REQ-821·850·875).
+  const arena = createArena({
+    figures: [
+      { spot: SPOT.FAR, id: 'sil_challenger', pose: 'stance' },
+      { spot: SPOT.NEAR, id: 'sil_master', pose: 'stance' },
+    ],
+  });
+  const teleEl = el('div', { class: 'tele-slot' });
+  const gaugeFill = el('i', {});
+  const foeVital = vital('적', 'foe');
+  const selfVital = vital('사부', 'self');
   const banner = el('div', { class: 'toast' });
+  let exchanges = 0;
+  const band = foeBand(challenger, () => exchanges, () => ctx.go('dojo'));
+
+  arena.node.append(
+    foeVital.node,
+    selfVital.node,
+    teleEl,
+    banner,
+    // 시각 오버레이는 아레나 좌표계 안에 살고 이 화면과 함께 사라진다 (REQ-806).
+    verdict.node,
+    // 시간 압박은 아레나에 속한 정보라 실루엣을 보는 동안 주변시로 읽힌다 — 숫자 초는 없다 (REQ-823).
+    el('div', { class: 'gauge' }, [gaugeFill]),
+  );
 
   composeScreen(ctx, {
-    top: topBand(session, ART_NAME, { onLeave: () => ctx.go('dojo') }),
-    body: el('section', { class: 'card arena' }, [
-      el('div', { class: 'head' }, [
-        el('b', { text: `${challenger.name} ${challenger.stage}차` }),
-        hanja(challenger.hanja),
-      ]),
-      foeHpEl,
-      telegraphEl,
-      el('div', { class: 'arena-gap' }),
-      el('div', { class: 'window' }, [windowFill]),
-      el('div', { class: 'head' }, [
-        el('b', { text: '사부' }),
-        el('span', { class: 'dim', text: ART_NAME }),
-      ]),
-      selfHpEl,
-      banner,
-      // 시각 오버레이는 아레나 좌표계 안에 살고 이 화면과 함께 사라진다 (REQ-806).
-      verdict.node,
-    ]),
+    top: band,
+    body: arena.node,
     bottom: ctx.pad.node,
+    // 아레나는 풀블리드 레이어라 여백이 붙으면 3단 고정이 어긋난다 (REQ-802·820).
+    padded: false,
   });
 
   // 결과 화면이 「어느 초식이 끝냈는가」를 말하려면 그 초의 발동을 여기서 붙잡아 두어야 한다 (REQ-708).
@@ -217,8 +269,8 @@ export function startDuel(ctx) {
   });
 
   const renderHp = (view) => {
-    clear(foeHpEl).appendChild(hpBar(view.foeHp, view.foeHpMax));
-    clear(selfHpEl).appendChild(hpBar(view.selfHp, view.selfHpMax));
+    foeVital.set(view.foeHp, view.foeHpMax);
+    selfVital.set(view.selfHp, view.selfHpMax);
   };
 
   const match = createMatch({
@@ -230,17 +282,19 @@ export function startDuel(ctx) {
     accessibility: () => session.accessibility,
     hooks: composeHooks(duelWiring(session, { input }), {
       onTelegraph(view) {
-        clear(telegraphEl).appendChild(telegraphView(view));
+        clear(teleEl).appendChild(telegraphView(view));
         verdict.hide();
-        windowFill.style.width = '100%';
+        gaugeFill.style.width = '100%';
         renderHp(view);
         ctx.pad.render();
+        exchanges = view.exchange;
+        ctx.refreshTop();
       },
       onWindow() {
         ctx.pad.render();
       },
       onTick(view) {
-        windowFill.style.width = `${view.ratio * 100}%`;
+        gaugeFill.style.width = `${view.ratio * 100}%`;
         ctx.pad.render();
       },
       onVerdict(view, changes) {
@@ -248,8 +302,12 @@ export function startDuel(ctx) {
         lastFire = view.fire ?? null;
         ctx.pad.render();
         renderHp(view);
-        verdict.showGrade(resolved.grade);
-        (resolved.grade === 'crush' ? SFX.crush : resolved.dmgIn > 0 ? SFX.hit : SFX.fire)();
+        // 소리는 흔들림·글자와 한 덩어리로 읽혀야 해서 판정이 실제로 뜨는 순간에 맡긴다 —
+        // 확정 연출을 기다리는 초에는 그만큼 함께 늦는다 (REQ-826).
+        verdict.showGrade(resolved.grade, {
+          onShow: () => (resolved.grade === 'crush' ? SFX.crush
+            : resolved.dmgIn > 0 ? SFX.hit : SFX.fire)(),
+        });
 
         if (!changes) return;
         if (changes.rank) {
@@ -263,7 +321,6 @@ export function startDuel(ctx) {
         } else if (changes.unlock) {
           toast('새 초식을 배울 수 있다 — 도장에서');
         }
-        ctx.refreshTop();
       },
       onEnd(view) {
         ctx.go('result', {

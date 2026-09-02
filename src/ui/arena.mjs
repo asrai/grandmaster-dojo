@@ -38,7 +38,8 @@ const SCENERY = `
  * @param {object} [p]
  * @param {?number} [p.height] 무대 높이(px) — 생략하면 원장의 기본값이고, 접어 쓰는 화면만 준다.
  * @param {{spot: string, id: string, pose: string}[]} [p.figures] 아레나에 서는 사람 —
- *   `id`·`pose` 는 파일 경로가 아니라 에셋 id 이고, 경로 표는 `index.html` 한 곳에 있다 (REQ-932).
+ *   `id`·`pose` 는 파일 경로가 아니라 에셋 id·자세이고, 둘을 이은 이름이 곧 클래스다 —
+ *   그 클래스에서 파일로 가는 표는 `index.html` 한 곳에만 있다 (REQ-931·932).
  * @returns {{node: HTMLElement, setFigure: (spot: string, fig: {id: string, pose: string}) => void}}
  */
 export function createArena({ height = null, figures = [] } = {}) {
@@ -53,7 +54,7 @@ export function createArena({ height = null, figures = [] } = {}) {
   // 역광이 없으면 먹 실루엣이 어두운 배경에서 사라진다 — 사람과 한 쌍으로만 존재한다 (REQ-821).
   const placed = new Map(figures.map(({ spot, id, pose }) => {
     node.appendChild(el('div', { class: `backlight ${spot}`, 'aria-hidden': 'true' }));
-    const fig = el('div', { class: `fig ${spot} sil-${id}-${pose}`, 'aria-hidden': 'true' });
+    const fig = el('div', { class: `fig ${spot} ${id}_${pose}`, 'aria-hidden': 'true' });
     node.appendChild(fig);
     return [spot, fig];
   }));
@@ -68,7 +69,7 @@ export function createArena({ height = null, figures = [] } = {}) {
       const fig = placed.get(spot);
       // 세우지 않은 자리에 자세를 주면 조용히 아무것도 바뀌지 않으므로 그 자리에서 터뜨린다.
       if (!fig) throw new Error(`아레나에 없는 자리: ${spot}`);
-      fig.className = `fig ${spot} sil-${id}-${pose}`;
+      fig.className = `fig ${spot} ${id}_${pose}`;
     },
   };
 }

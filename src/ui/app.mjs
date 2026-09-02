@@ -78,11 +78,19 @@ if (!$('shell')) throw new Error('흔들림 래퍼 #shell 이 스테이지에 �
 // 히트 영역 최소치도 BALANCE 값이라, CSS 가 그 값을 변수로 받아 간다 (REQ-101).
 document.documentElement.style.setProperty('--hit', `${BALANCE.buttonHitPx}px`);
 
-// 두 원장이 만나는 유일한 결합 — 히트스톱이 판정 재생 길이를 먹고 남기지 않으면 완파·역파가
-// 에러 없이 화면에서 사라진다. 밸런스 쪽에서 재생 길이만 줄여도 깨지므로 부팅 때 문다 (REQ-815).
-const hitstop = getComputedStyle(document.documentElement).getPropertyValue('--juice-hitstop').trim();
-if (!/^\d+(\.\d+)?ms$/.test(hitstop) || parseFloat(hitstop) >= BALANCE.resolveMs) {
-  throw new Error(`히트스톱 ${hitstop || '<미정의>'} 가 판정 재생 ${BALANCE.resolveMs}ms 를 남기지 않는다`);
+/** 원장의 연출 시간 하나 — 값을 못 읽으면 아래 예산 검사가 0 으로 통과하므로 형식부터 문다. */
+function ledgerMs(name) {
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  if (!/^\d+(\.\d+)?ms$/.test(raw)) throw new Error(`${name} 이 ms 값이 아니다 — ${raw || '<미정의>'}`);
+  return parseFloat(raw);
+}
+
+// 두 원장이 만나는 유일한 결합 — 판정 재생 앞에서 히트스톱과 확정 연출 대기가 함께 예산을 먹고,
+// 남는 것이 없으면 완파·역파가 에러 없이 화면에서 사라진다. 밸런스 쪽에서 재생 길이만 줄여도
+// 깨지므로 부팅 때 문다 (REQ-815·826).
+const preroll = ledgerMs('--juice-hitstop') + ledgerMs('--only-hold');
+if (preroll >= BALANCE.resolveMs) {
+  throw new Error(`판정 앞 대기 ${preroll}ms 가 판정 재생 ${BALANCE.resolveMs}ms 를 남기지 않는다`);
 }
 
 /** 로그 내보내기 (REQ-602) — 위반 목록을 함께 실어, 결손 로그가 조용히 판독에 쓰이지 않게 한다. */

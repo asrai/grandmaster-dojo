@@ -84,6 +84,49 @@
   /* juice — 극단 2등급(완파·역파)에만 배정된 축 (REQ-815). 히트스톱 80ms 는 실측 전 초기값이다. */
   --juice-hitstop: 80ms;
   --juice-shake: 420ms;
+  /* 확정 연출의 최소 표시 시간 (REQ-826) — 마지막 키가 「후보 1개 도달」과 「시퀀스 완주」를 겸하는
+     초에만 물린다. 120ms 는 실측 전 초기값이고, 히트스톱과 함께 판정 재생 앞의 예산을 이룬다 —
+     둘의 합이 재생을 남기는지는 app.mjs 부팅 단정이 문다. */
+  --only-hold: 120ms;
+  --slip-exit: 180ms;  /* 탈락 죽간이 흐려지며 가라앉는 시간 (REQ-825) */
+
+  /* 3단 고정 (REQ-820) — 시안 실측 초기값이며 S3 수련이 같은 좌표를 상속한다 (REQ-840). */
+  --band-h: 50px;
+  --scene-h: 440px;
+  --input-h: 362px;
+
+  /* 아레나 (REQ-821) — S4 파견이 그대로, S6 결과가 높이만 접어 물려받는다 (REQ-850·875). */
+  --scene-sky: radial-gradient(125% 78% at 50% 26%,
+    color-mix(in srgb, var(--c1) 86%, var(--c3)) 0%,
+    color-mix(in srgb, var(--c1) 94%, var(--c3)) 42%,
+    color-mix(in srgb, var(--c1) 98%, var(--c3)) 72%, var(--c1) 100%);
+  --scene-ridge-far: color-mix(in srgb, var(--c1) 90%, var(--c3));
+  --scene-ridge-near: color-mix(in srgb, var(--c1) 96%, var(--c3));
+  --scene-bamboo: color-mix(in srgb, var(--c1) 84%, var(--shadow));
+  --scene-ground-h: 112px;
+  --backlight: color-mix(in srgb, var(--c9) 30%, transparent);
+  /* 사람이 서는 두 자리 — 대각 대치가 성립하는 좌표다 (REQ-821). */
+  --fig-far-x: 34px;
+  --fig-far-y: 112px;
+  --fig-far-w: 126px;
+  --fig-near-x: 14px;
+  --fig-near-y: 30px;
+  --fig-near-w: 176px;
+
+  /* 죽간 (REQ-824·827) — 매수가 곧 폭이라 「좁혀진다」의 계단이 이 네 값이다. */
+  --slip-w1: 172px;
+  --slip-w2: 132px;
+  --slip-w3: 104px;
+  --slip-w4: 84px;
+  --slip-h: 130px;
+  --slip-gap: 7px;
+
+  /* 키패드 (REQ-828·829) — 키 간격 대 되돌리기까지의 간격이 3배라 별개 그룹으로 읽힌다. */
+  --key-w: 64px;
+  --key-h: 58px;
+  --key-gap: 7px;
+  --key-sep: 21px;
+  --trail-size: 28px;
 
   /* 성(成) 계단 (REQ-817) */
   --stair-h: 13px;
@@ -153,11 +196,11 @@ body {
 .top-row > * { overflow: hidden; text-overflow: ellipsis; }
 /* 물러나기는 띠를 쓰는 화면의 좌측 첫 자리에 고정된다 (REQ-897) — 시각 크기는 두고 히트 영역만
    최소치까지 넓혀, 조판을 흔들지 않으면서 손가락에 닿는다. */
-.top-band .leave {
+.leave {
   position: relative; flex: none; width: 28px; height: 28px; padding: 0;
   border: 0; background: none; color: var(--dim); font-size: 19px; line-height: 1;
 }
-.top-band .leave::after {
+.leave::after {
   content: ''; position: absolute; left: 50%; top: 50%;
   width: var(--hit); height: var(--hit); transform: translate(-50%, -50%);
 }
@@ -321,6 +364,119 @@ button.ghost { background: transparent; }
 .window { height: 6px; background: var(--sunken); border-radius: 3px; overflow: hidden; margin: 8px 0; }
 .window i { display: block; height: 100%; background: var(--c6); }
 
+/* ══ 아레나 (REQ-821) ══ S1 대련이 세우고 S3 수련·S4 파견·S6 결과가 물려받는 무대 — 상속이 곧
+   서사라 화면마다 바뀌는 것은 무대 높이·사람이 서는 자리·그 사람의 자세뿐이다 (REQ-850·875). */
+.scene { position: relative; flex: none; height: var(--scene-h); overflow: hidden; }
+.scene .layer, .scene .scenery { position: absolute; inset: 0; pointer-events: none; }
+.scene .sky { background: var(--scene-sky); }
+.scene .ridge, .scene .bamboo { position: absolute; inset: 0; width: 100%; height: 100%; }
+.scene .ridge .far { fill: var(--scene-ridge-far); }
+.scene .ridge .near { fill: var(--scene-ridge-near); }
+.scene .bamboo g { fill: none; stroke: var(--scene-bamboo); stroke-linecap: round; }
+.scene .bamboo .stalk { stroke-width: 8; }
+.scene .bamboo .leaf { stroke-width: 4; }
+.scene .mist {
+  background: linear-gradient(180deg, transparent 34%,
+    color-mix(in srgb, var(--c3) 9%, transparent) 50%, transparent 66%);
+}
+.scene .vignette {
+  background: radial-gradient(118% 80% at 50% 44%, transparent 34%,
+    color-mix(in srgb, var(--shadow) 72%, transparent) 100%);
+}
+.scene .ground {
+  position: absolute; left: 0; right: 0; bottom: 0; height: var(--scene-ground-h); pointer-events: none;
+  background: linear-gradient(180deg, transparent,
+    color-mix(in srgb, var(--shadow) 50%, transparent) 55%,
+    color-mix(in srgb, var(--shadow) 86%, transparent));
+}
+/* 역광 — 이것이 없으면 먹 실루엣이 어두운 배경에서 사라진다 (REQ-821). */
+.scene .backlight {
+  position: absolute; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(closest-side, var(--backlight), transparent 72%);
+}
+.scene .backlight.far { left: calc(var(--fig-far-x) - 12px); top: var(--fig-far-y); width: calc(var(--fig-far-w) + 44px); height: 200px; }
+.scene .backlight.near { right: calc(var(--fig-near-x) - 12px); bottom: var(--fig-near-y); width: calc(var(--fig-near-w) + 44px); height: 238px; }
+/* 실루엣은 납품된 투명 PNG 다 (REQ-932) — 코드는 에셋 id·자세만 알고, 그 이름에서 파일로 가는
+   표는 여기 한 곳뿐이라 후속 아트 개선이 파일 스왑으로 닫힌다 (REQ-931). */
+.scene .fig {
+  position: absolute; pointer-events: none; aspect-ratio: 512 / 1024;
+  background: center bottom / contain no-repeat;
+}
+.scene .fig.far { left: var(--fig-far-x); top: var(--fig-far-y); width: var(--fig-far-w); }
+.scene .fig.near { right: var(--fig-near-x); bottom: var(--fig-near-y); width: var(--fig-near-w); }
+.scene .fig.sil_master_stance { background-image: url('assets/art/silhouettes/sil_master_stance.png'); }
+.scene .fig.sil_challenger_stance { background-image: url('assets/art/silhouettes/sil_challenger_stance.png'); }
+
+/* 기력 (REQ-850) — 누가 누구인지를 색 그라디언트에만 맡기지 않는다 (REQ-856). */
+.scene .vital { position: absolute; z-index: 5; display: flex; align-items: center; gap: 8px; }
+.scene .vital .lbl { font-size: 12px; font-weight: 800; letter-spacing: 1px; color: var(--dim); }
+.scene .vital .track {
+  position: relative; flex: 1; height: 6px; overflow: hidden;
+  background: var(--sunken); box-shadow: 0 0 0 1px var(--line) inset;
+}
+.scene .vital .fill { position: absolute; top: 0; bottom: 0; width: 100%; transition: width .25s; }
+.scene .vital.foe { left: 14px; top: 82px; width: 196px; }
+.scene .vital.foe .fill { left: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--c7) 55%, var(--c1)), var(--c7)); }
+.scene .vital.self { right: 14px; bottom: 18px; width: 216px; flex-direction: row-reverse; }
+.scene .vital.self .fill { right: 0; background: linear-gradient(270deg, color-mix(in srgb, var(--c4) 55%, var(--c1)), var(--c4)); }
+
+/* 상대 예고 (REQ-822) — 아레나 최상단 가로 스트립. 중앙은 판정 오버레이의 자리라 비워 둔다. */
+.scene .tele-slot { position: absolute; left: 12px; right: 12px; top: 10px; z-index: 6; }
+.tele {
+  display: flex; align-items: stretch; height: 62px; overflow: hidden;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--attr) 14%, transparent),
+    color-mix(in srgb, var(--c1) 86%, transparent) 42%);
+  border: 1px solid color-mix(in srgb, var(--attr) 50%, transparent);
+  box-shadow: 0 0 22px color-mix(in srgb, var(--attr) 16%, transparent), 0 6px 18px var(--sunken);
+  animation: tele-in .8s ease-out both;
+}
+@keyframes tele-in { from { opacity: 0; transform: translateY(-10px) } to { opacity: 1; transform: none } }
+.tele.open { border-color: var(--gold); color: var(--gold); align-items: center; justify-content: center; font-weight: 700; }
+.tele-attr {
+  flex: 0 0 44px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; border-right: 1px solid color-mix(in srgb, var(--attr) 32%, transparent);
+}
+.tele-attr .an { font-size: 11px; font-weight: 800; color: var(--attr); }
+.tele-id { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 0 12px; }
+.tele-id .kr { font-size: 19px; font-weight: 800; letter-spacing: .5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tele-id .sub { display: flex; align-items: baseline; gap: 7px; }
+.tele-win {
+  flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; padding: 0 13px; border-left: 1px solid var(--line);
+  background: color-mix(in srgb, var(--attr) 7%, transparent);
+}
+.tele-win .cap { font-size: 9px; letter-spacing: 2px; color: var(--dim); }
+.tele-win .val { display: flex; align-items: center; gap: 5px; color: var(--attr); }
+.tele-win b { font-size: 17px; font-weight: 800; }
+
+/* 응수 창 (REQ-823) — 아레나 하단 가장자리 전폭 게이지. 시간 압박은 아레나에 속한 정보라
+   실루엣을 보는 동안 주변시로 읽혀야 하고, 숫자 초로는 표기하지 않는다(초(招)↔초(秒) 충돌). */
+.scene .gauge { position: absolute; left: 0; right: 0; bottom: 0; z-index: 7; height: 6px; background: var(--sunken); }
+.scene .gauge i {
+  display: block; height: 100%; background: linear-gradient(90deg, var(--c5), var(--c4));
+  box-shadow: 0 0 14px color-mix(in srgb, var(--c4) 55%, transparent);
+}
+/* 성장 고지는 판정 자리를 비켜 응수 창 바로 위에 앉는다 — 중앙에 두면 판정과 겹쳐 읽힌다. */
+.scene .toast { position: absolute; left: 12px; right: 12px; bottom: 40px; z-index: 6; }
+
+/* 도전자 표찰 (REQ-820·893·897) — 대련 중 상황은 「누구와 몇 초째인가」뿐이다. */
+.foe-band {
+  flex: none; height: var(--band-h); display: flex; align-items: center; gap: 10px;
+  padding: 0 14px; border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--c1) 70%, var(--shadow));
+}
+.foe-name { display: flex; align-items: baseline; gap: 7px; flex: 1; min-width: 0; }
+.foe-name b { font-size: 16px; font-weight: 800; letter-spacing: .5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 차수 낙관 — 낙관은 주사(C5)의 자리다 (REQ-811). */
+.foe-band .seal {
+  flex: none; height: 24px; padding: 0 6px; border-radius: 2px;
+  background: var(--c5); color: var(--c3); font-size: 12px; font-weight: 800;
+  display: flex; align-items: center;
+}
+.exch { display: flex; align-items: baseline; gap: 1px; white-space: nowrap; }
+.exch-n { font-size: 16px; font-weight: 800; color: color-mix(in srgb, var(--c3) 80%, transparent); }
+.exch-u { font-size: 13px; font-weight: 800; color: var(--dim); }
+
 .icons { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
 .cand {
   display: flex; gap: 6px; align-items: center; padding: 8px 10px; min-height: 44px;
@@ -352,13 +508,52 @@ button.ghost { background: transparent; }
 .result-ledger { padding: 12px; display: flex; flex-direction: column; gap: 12px; }
 .result-ledger ul { margin: 0; padding-left: 18px; }
 
-/* 죽간 줄 — 매수가 줄어드는 것 자체가 「좁혀졌다」의 표현이라 1매는 크게 그린다 (REQ-824). */
-.tablets { display: flex; flex-wrap: wrap; gap: 6px; min-height: 46px; }
-/* 죽간은 매수가 줄 때 커지는 것이지 좁아지는 것이 아니다 — 눌리면 이름이 두 줄로 접히고,
-   넘치는 매는 가로로 흘리는 대신 다음 줄로 내린다 (응수 창은 시간 제한이라 스크롤이 조작을 늦춘다). */
-.tablets .cand { flex: 0 0 auto; white-space: nowrap; }
-.tablets.solo .cand { font-size: 17px; padding: 10px 16px; }
-.tablets.solo .cand-name { font-size: 16px; }
+/* 죽간 줄 (REQ-824) — 매수가 곧 폭이고, 그 계단이 「후보가 좁혀진다」의 표현이다. */
+.tablets {
+  flex: none; display: flex; justify-content: center; align-items: stretch;
+  gap: var(--slip-gap); height: var(--slip-h);
+}
+.slip {
+  position: relative; flex: none; width: var(--slip-w4); height: 100%;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 8px 3px 7px; border: 1px solid var(--line); color: var(--fg);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--c2) 88%, var(--c4)), var(--c2));
+  transition: width .18s, transform .18s, box-shadow .18s, border-color .18s;
+}
+.tablets[data-n="1"] .slip { width: var(--slip-w1); }
+.tablets[data-n="2"] .slip { width: var(--slip-w2); }
+.tablets[data-n="3"] .slip { width: var(--slip-w3); }
+.slip-head { flex: none; display: flex; align-items: center; gap: 5px; }
+/* 탈락한 매의 성은 회색으로 죽고 살아있는 후보의 성만 금색으로 남는다 (REQ-827). */
+.slip-rank { font-size: 11px; font-weight: 800; color: var(--gold); }
+.slip.out .slip-rank { color: var(--dim); }
+.slip-body { flex: 1; min-height: 0; display: flex; justify-content: center; gap: 2px; overflow: hidden; }
+/* 한글이 주 표기이고 한자는 그 우측 세로열이라, 매 하나에 둘이 나란히 선다 (REQ-813·827). */
+.slip-name {
+  writing-mode: vertical-rl; text-orientation: upright; white-space: nowrap;
+  font-size: 17px; font-weight: 800; letter-spacing: 2px;
+}
+.slip .hj.stacked { font-size: 9px; }
+/* 꼬리표가 있고 없고에 따라 본문 높이가 달라지면 매수가 바뀔 때마다 이름이 위아래로 튄다. */
+.slip-tags { flex: none; display: flex; gap: 3px; min-height: 14px; }
+.slip.top { border-color: color-mix(in srgb, var(--attr) 45%, transparent); }
+.slip.picked { outline: 2px solid var(--gold); }
+.slip.flash { animation: flash .6s ease-in-out 1; }
+/* 1매 = 확정이라 그 순간이 화면에서 가장 큰 사건이 되게 한다 (REQ-824·826). */
+.slip.only {
+  border-color: var(--gold); transform: translateY(-3px) scale(1.05);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--c4) 22%, var(--c1)), var(--c2));
+  box-shadow: 0 0 0 1px var(--gold) inset, 0 0 26px color-mix(in srgb, var(--c4) 40%, transparent);
+}
+.slip.only .slip-name { font-size: 20px; }
+/* 등장·탈락 (REQ-825) — 탈락한 매를 즉시 지우면 필터링 과정이 화면에서 사라진다. */
+.slip.enter { animation: slip-in var(--slip-exit) ease-out both; }
+.slip.out { pointer-events: none; animation: slip-out var(--slip-exit) ease-in forwards; }
+@keyframes slip-in { from { opacity: 0; transform: translateY(-6px) } to { opacity: 1; transform: none } }
+@keyframes slip-out {
+  from { opacity: .45; filter: grayscale(1); transform: translateY(0) }
+  to { opacity: 0; filter: grayscale(1) blur(1px); transform: translateY(10px) }
+}
 
 .toast { min-height: 20px; text-align: center; color: var(--gold); opacity: 0; transition: opacity .2s; }
 .toast.show { opacity: 1; }
@@ -405,33 +600,48 @@ button.ghost { background: transparent; }
   100% { opacity: 0; transform: translateY(calc(-50% + var(--vd-shift, 0px))) scale(1); visibility: hidden }
 }
 
-.pad { border-top: 1px solid var(--line); padding: 8px 12px; background: var(--panel); height: calc(var(--hit) * 2 + 160px); }
+/* 입력부 (REQ-820) — 3단의 마지막 칸이고, 그 안에서 색 띠·죽간·트레일·키패드가 위에서 아래로 선다. */
+.pad {
+  flex: none; height: var(--input-h); border-top: 1px solid var(--line);
+  padding: 0 13px 12px; display: flex; flex-direction: column;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--c1) 70%, var(--shadow)), var(--panel) 40%, var(--c1));
+}
 .pad.idle { opacity: .4; }
-.pad.idle .dpad button { pointer-events: none; }
+.pad.idle .cross button { pointer-events: none; }
 /* 봇 점유 중 사람 입력은 무시되므로, 눌러도 되는 것처럼 보이지 않게 한다. */
 .pad.bot { box-shadow: inset 0 2px 0 var(--gold); }
-.pad.bot .dpad button, .pad.bot .tablets { pointer-events: none; opacity: .6; }
-/* 패드는 진입부터 이탈까지 높이가 고정이라 죽간이 한 줄을 넘으면 십자 키패드가 잘린다 — 여기서만 가로로 흘린다. */
-.pad .tablets { flex-wrap: nowrap; overflow-x: auto; }
-.pad-color { display: flex; gap: 6px; align-items: center; min-height: 28px; font-size: 16px; font-weight: 700; }
-.pad-color.none { color: var(--dim); }
-.pad-name { color: var(--dim); font-size: 12px; font-weight: 400; }
-.pad-seq { min-height: 30px; }
-.dpad {
-  display: grid; grid-template-columns: repeat(3, var(--hit)) 1fr;
-  grid-template-rows: repeat(2, var(--hit)); gap: 6px; align-items: center; margin-top: 6px;
+.pad.bot .cross button, .pad.bot .tablets { pointer-events: none; opacity: .6; }
+/* 진행형 후보 색 — 입력부 상단 전폭 발광 띠 (REQ-828). JS 는 `color` 하나만 주고 발광은 그 파생이다. */
+.pad-color {
+  flex: none; height: 3px; margin: 0 -13px 11px;
+  background: currentColor; box-shadow: 0 0 18px 1px currentColor; transition: color .18s;
 }
-.dpad button { width: 100%; height: 100%; min-height: var(--hit); font-size: 22px; }
-.dpad [data-dir="U"] { grid-area: 1 / 2; }
-.dpad [data-dir="L"] { grid-area: 2 / 1; }
-.dpad [data-dir="D"] { grid-area: 2 / 2; }
-.dpad [data-dir="R"] { grid-area: 2 / 3; }
-.dpad .pad-reset {
-  grid-area: 1 / 4 / 3 / 5; font-size: 14px;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+.pad-color.none { color: var(--line); box-shadow: none; }
+/* 입력 트레일 (REQ-828) — 「몇 번째 글자를 받고 있는가」가 화면에서 가장 중요한 피드백이다. */
+.pad-trail { flex: none; height: 38px; margin-top: 11px; display: flex; align-items: center; justify-content: center; }
+.pad-trail .arrows { gap: 16px; margin: 0; }
+.pad-trail .arrows i { font-size: var(--trail-size); width: auto; }
+/* 키패드는 화면 정중앙 (REQ-829) — 되돌리기는 이 십자 밖에 선다. */
+.keys { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; }
+.cross {
+  display: grid; grid-template-columns: repeat(3, var(--key-w));
+  grid-template-rows: repeat(2, var(--key-h)); gap: var(--key-gap);
 }
-.dpad .pad-reset.urge { --attr: var(--gold); border-color: var(--gold); color: var(--gold); animation: flash .8s ease-in-out infinite; }
-.dpad button.down { background: color-mix(in srgb, var(--c3) 14%, var(--c2)); transform: scale(.96); }
+.cross .key { width: 100%; height: 100%; min-width: var(--hit); min-height: var(--hit); padding: 0; font-size: 22px; }
+.cross [data-dir="U"] { grid-area: 1 / 2; }
+.cross [data-dir="L"] { grid-area: 2 / 1; }
+.cross [data-dir="D"] { grid-area: 2 / 2; }
+.cross [data-dir="R"] { grid-area: 2 / 3; }
+/* 되돌리기는 오른쪽 화살표와 같은 행·같은 크기이고, 키 간격의 3배만큼 떨어져 별개 그룹으로
+   읽힌다 — 오조작 비용이 정반대인 두 조작을 한 flex 행에 묶지 않는다 (REQ-829). */
+.undo {
+  position: absolute; top: calc(50% + var(--key-gap) / 2);
+  left: calc(50% + (var(--key-w) * 3 + var(--key-gap) * 2) / 2 + var(--key-sep));
+  width: var(--key-w); height: var(--key-h); min-width: var(--hit); min-height: var(--hit);
+  padding: 0; display: flex; align-items: center; justify-content: center;
+}
+.undo.urge { border-color: var(--gold); color: var(--gold); animation: flash .8s ease-in-out infinite; }
+.cross button.down, .undo:active { background: color-mix(in srgb, var(--c3) 14%, var(--c2)); transform: scale(.96); }
 .shake { animation: shake .2s linear 1; }
 @keyframes shake {
   0%, 100% { transform: translateX(0) } 25% { transform: translateX(-5px) }
