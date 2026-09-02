@@ -42,8 +42,14 @@ export const foeStyleCards = (entry) => el('div', { class: 'foe-styles' }, revea
   foe.finisher ? el('span', { class: 'tag', text: '절초' }) : null,
 ])));
 
-/** 절초 공개 한 줄 — 어느 층인지만 고르고, 그 층에서 무엇을 말하는지는 `REVEAL_VIEW` 가 안다. */
+/**
+ * 절초 공개 한 줄 — 어느 층인지만 고르고, 그 층에서 무엇을 말하는지는 `REVEAL_VIEW` 가 안다.
+ * 첫 대면의 `NONE` 만 침묵한다: 「절초가 없다」도 겪어 봐야 아는 사실이라, 첫 대면 안내와 나란히
+ * 세우면 한 화면이 「모른다」와 「없다고 안다」를 함께 말한다 (REQ-882).
+ * @returns {?HTMLElement} 침묵하는 자리는 첫 대면 안내가 이미 채운다
+ */
 export function revealNotice(entry) {
+  if (entry.tier === REVEAL_TIER.NONE && entry.firstEncounter) return null;
   const view = REVEAL_VIEW[entry.tier];
   const parts = counterPairOf(entry) ?? {};
   return el('p', { class: `tell ${view.cls}`.trim() }, [

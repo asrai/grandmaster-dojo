@@ -35,7 +35,8 @@ import { BOT_UNREACHABLE, KILL, killVerdicts, readout } from './kill-readout.mjs
 import {
   REVEAL_TIER, SELECT_REASON,
   accrueDiscipleStyle, accrueRank, applyDiscipleTraining, applyEffectiveSuccess, applyOutcome,
-  artById, artStyles, assertAttrCoverage, assertCounterIntegrity, assertGugyeol, assertPrefixFree,
+  artById, artStyles, assertAttrCoverage, assertChallengerStyles, assertCounterIntegrity,
+  assertGugyeol, assertPrefixFree,
   canEquipRank, canLearn, canTransmit,
   challengerById, createDisciple, createProgress, createRankState, discipleMinRank,
   discipleStyleRank, discipleStyles, discipleTrainMsPerRank, discipleTrainSteps, finisherOf,
@@ -906,6 +907,19 @@ suite('절초 공개 3층 전이 (REQ-882·883·884·894)', () => {
 
   const fresh = createSession({ now: () => 0 });
   eq(challengerRoster(fresh).length, 1, '첫 진입에는 해금된 도전자가 하나뿐이다');
+
+  // 브리핑은 초식과 파해 대상을 **이름으로** 읽으므로 결손이 화면에서 익명 TypeError 로만 드러난다.
+  eq(assertChallengerStyles(CHALLENGERS), true, '출하 도전자 표는 초식·파해 대상이 전부 실재한다');
+  throws(() => assertChallengerStyles([{ id: 'X', styles: ['nope'] }]),
+    '미존재 초식을 세운 도전자는 throw', '도전자 미존재 초식');
+  // 「절초인데 파해 대상이 없다」는 `assertCounterIntegrity` 의 `if (!s.counters) continue` 를
+  // 그대로 빠져나가므로, 그 그물의 구멍을 이 단정이 메운다는 사실을 여기서 고정한다.
+  eq(assertCounterIntegrity([{ id: 'orphan', counters: null, finisher: true }]), true,
+    '파해 대상 없는 절초는 counter 무결성 검사를 통과한다 — 그래서 도전자 단정이 따로 필요하다');
+  for (const c of CHALLENGERS) {
+    const f = finisherOf(c);
+    if (f) ok(styleById(f.counters), `${c.id} 의 절초 ${f.id} 가 파해 대상을 갖는다 — 브리핑이 그 이름을 읽는다`);
+  }
 });
 
 // 조사는 데이터 이름에 붙으므로 문구에 박을 수 없다 (REQ-830).

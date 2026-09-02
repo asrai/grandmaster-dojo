@@ -38,6 +38,8 @@ const unknownNotice = () => el('div', { class: 'unknown' }, [
  * 대면에서만 주사색이 서고, 교체가 그것을 금색 확인으로 바꾼다.
  */
 function slotWarning(session, entry) {
+  // 빈 슬롯을 먼저 본다 — 「대련 시작」을 잠근 술어가 그것이라, 절초 경고에 가리면 비활성 사유가 화면에서 사라진다.
+  if (!session.slots.some(Boolean)) return { cls: 'risk', text: '슬롯이 비어 있다 — 낼 초식이 없으면 매 초 피격이다' };
   const counter = counterPairOf(entry);
   if (counter) {
     const { name } = counter.answer;
@@ -52,19 +54,19 @@ function slotWarning(session, entry) {
   if (entry.tier === REVEAL_TIER.RUMOR) {
     return { cls: '', text: '절초가 있다 — 파해를 모르니 폭이 넓은 편성으로 들어간다' };
   }
-  if (!session.slots.some(Boolean)) return { cls: 'risk', text: '슬롯이 비어 있다 — 낼 초식이 없으면 매 초 피격이다' };
   return null;
 }
 
 export function renderSelect(ctx) {
   const { session, params } = ctx;
   const roster = challengerRoster(session);
-  // 진입 시 지목된 차수가 곧 선택이고, 없으면 가장 최근에 열린 차수다 (홈 요약과 같은 자리).
-  let pickedFoe = Math.max(0, roster.findIndex((e) => e.challenger.stage === params.stage));
+  // 진입 시 지목된 차수가 곧 선택이고, 지목이 목록 밖이면 가장 최근에 열린 차수다 (홈 요약과 같은 자리).
+  const asked = roster.findIndex((e) => e.challenger.stage === params.stage);
+  let pickedFoe = asked < 0 ? roster.length - 1 : asked;
   // 슬롯을 먼저 고르고 후보를 고른다 — 두 번의 탭이 곧 「무엇을 빼고 무엇을 넣는가」다.
   let pickedSlot = Math.max(0, session.slots.indexOf(null));
 
-  const listEl = el('div', { class: 'list', role: 'radiogroup', 'aria-label': '도전자' });
+  const listEl = el('div', { class: 'list', role: 'group', 'aria-label': '도전자' });
   const briefEl = el('div', { class: 'brief' });
   const entry = () => roster[pickedFoe];
 
@@ -73,7 +75,7 @@ export function renderSelect(ctx) {
     roster.forEach((row, i) => {
       const { challenger } = row;
       listEl.appendChild(el('button', {
-        class: `foe${i === pickedFoe ? ' on' : ''}`, role: 'radio', 'aria-checked': String(i === pickedFoe),
+        class: `foe${i === pickedFoe ? ' on' : ''}`, 'aria-pressed': String(i === pickedFoe),
         onclick: () => { pickedFoe = i; paintList(); paintBrief(); },
       }, [
         el('span', { class: 'id' }, [
