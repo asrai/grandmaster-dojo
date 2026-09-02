@@ -8,6 +8,15 @@ export const TIME_FIELD = 't_ms';
 export const SCHEMA_VERSION_FIELD = 'sv';
 
 /**
+ * 화면 좌표축 (spec § 통합 로그 스키마) — 7화면 이식의 완주 여부가 이 축으로만 판독되므로,
+ * 라우트에서 이 id 로 가는 표는 `src/ui/theme.mjs` 의 `SCREEN` 한 곳이고 미매핑은 그쪽이 문다.
+ */
+export const SCREEN_IDS = ['s1', 's2', 's3', 's4', 's5', 's6', 's7'];
+
+/** 프레임 예산을 재는 장면 (REQ-914·915) — 판정이 겹치는 프레임 · 패럴랙스가 도는 프레임 · 그 밖. */
+export const FRAME_SCENES = ['verdict', 'parallax', 'idle'];
+
+/**
  * 이벤트 → 필수 필드(+ 열거값 · 스키마 판별). spec § 통합 로그 스키마 표와 글자 단위로 일치한다.
  * `sv` 는 적재 시점에 버퍼가 붙이므로 호출부가 넘기지 않는다 — 넘기는 자리를 두면 잊는 자리가 생긴다.
  */
@@ -33,6 +42,11 @@ export const LOG_SCHEMA = {
   cycle:     { fields: ['phase'] },
   cheat:     { fields: ['action', 'session_flagged'] },
   session:   { fields: ['tester_role', 'device'], enums: { tester_role: ['self', 'friend', 'bot'] } },
+  screen_view:  { fields: ['screen', 'ms', 'from'], enums: { screen: SCREEN_IDS } },
+  font_ready:   { fields: ['ms', 'bytes', 'subset_hit'] },
+  frame_budget: { fields: ['screen', 'scene', 'p95_ms', 'dropped'], enums: { screen: SCREEN_IDS, scene: FRAME_SCENES } },
+  undo_used:    { fields: ['screen', 'count', 'exchange_no'], enums: { screen: SCREEN_IDS } },
+  audio_state:  { fields: ['resumed', 'muted', 'ms_to_resume'] },
 };
 
 /** 스키마 대조 — 위반은 throw 다. 비엄격 버퍼를 쓰는 호출부가 직접 부를 수 있게 열어 둔다. */

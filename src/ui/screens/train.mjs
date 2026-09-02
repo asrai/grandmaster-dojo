@@ -10,8 +10,8 @@ import { stageBand } from '../band.mjs';
 import { attrMark } from '../components/attr-mark.mjs';
 import { hanja } from '../components/hanja.mjs';
 import { visitStair } from '../components/rank-stair.mjs';
-import { TRAIN_DONE_VIEW, attrLabel } from '../theme.mjs';
-import { SFX } from '../audio.mjs';
+import { SCREEN, TRAIN_DONE_VIEW, attrLabel } from '../theme.mjs';
+import { CUE, play } from '../audio.mjs';
 import { createSequenceInput } from '../sequence-input.mjs';
 import { ART_NAME, logEvent, rankOfStyle, trainHitsLeft } from '../session.mjs';
 import { createVerdictOverlay } from '../verdict-overlay.mjs';
@@ -63,7 +63,7 @@ function styleDetail(style) {
       el('span', { class: 'sub', text: ` · ${ART_NAME} 제${style.order}초식` }),
     ]),
     line('특성', [
-      attrMark(style.attr),
+      attrMark(style.attr, { silent: true }),
       el('b', { text: attrLabel(style.attr) }),
       el('span', { class: 'sub', text: ` · ${style.seq.length}수 · ${attrLabel(ATTRS[style.attr].beats)}에 우세` }),
     ]),
@@ -116,6 +116,7 @@ export function startTrain(ctx) {
     now: () => performance.now(),
     remainingRatio: () => Math.max(0, 1 - (performance.now() - startedAt) / windowMs),
     log: (event, fields) => logEvent(session, event, fields),
+    screen: SCREEN.train.id,
   });
 
   const wiring = trainWiring(session, { styleId: params.styleId, input });
@@ -154,8 +155,9 @@ export function startTrain(ctx) {
       onFire: () => {
         if (settled) return;
         settled = true;
-        SFX.fire();
-        wiring.onFire();
+        play(CUE.FIRE);
+        // 수련 적립이 성을 올리는 초에도 상승음이 난다 — 발화 조건은 화면이 아니라 「성이 오른다」다 (REQ-925).
+        if (wiring.onFire()?.rank) play(CUE.RANK_UP);
         // 마지막 구절은 프레임 루프가 아니라 여기서 켠다 — 완주가 루프를 세우므로 그 한 구절만
         // 영영 흐린 채로 성공 화면이 뜬다 (REQ-841).
         scroll.light(style.seq.length);

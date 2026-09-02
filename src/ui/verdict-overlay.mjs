@@ -2,7 +2,7 @@
 // 화면과 함께 생성·파괴되고, 낭독 리전은 스테이지 직속 상주라 화면 전환에도 침묵하지 않는다.
 
 import { BALANCE } from '../balance.mjs';
-import { $, clear, el } from './dom.mjs';
+import { $, el } from './dom.mjs';
 import { hanja } from './components/hanja.mjs';
 import { EXTREME_GRADES, GRADE_VIEW, gradeLabel } from './theme.mjs';
 
@@ -52,8 +52,14 @@ function shakeShell() {
  *   hide: () => void}}
  */
 export function createVerdictOverlay({ heldSince = () => null } = {}) {
+  // 상주 노드 3장 — 화면과 함께 한 번 서고 그 뒤로는 클래스·문면만 갈린다 (REQ-913).
+  // 판정마다 새로 만들면 그 생성·레이아웃이 하필 판정 프레임에 겹친다.
+  const scrim = el('div', { class: 'vscrim' });
+  const markEl = hanja('');
+  const labelEl = el('span', { class: 'verdict-label' });
+  const pop = el('div', { class: 'verdict-pop' }, [markEl, labelEl]);
   // 마크는 라벨의 시각적 중복 표현이라, 낭독은 리전 한 곳으로만 나간다.
-  const node = el('div', { class: 'verdict-overlay', 'aria-hidden': 'true' });
+  const node = el('div', { class: 'verdict-overlay', 'aria-hidden': 'true' }, [scrim, pop]);
   let waiting = 0;
   /** 아직 낭독되지 않은 대기 판정의 문면 — 시각이 자리를 잃어도 이것만은 남겨야 한다 (REQ-807). */
   let unspoken = null;
@@ -65,17 +71,22 @@ export function createVerdictOverlay({ heldSince = () => null } = {}) {
     return Math.max(0, tokenMs('--only-hold') - (performance.now() - since));
   }
 
-  /** 매번 새 노드로 갈아끼운다 — 방금 삽입된 노드는 클래스 재부착 없이도 애니메이션을 처음부터 재생한다. */
+  /** 상주 노드의 문면·등급을 갈아 끼우고 재생을 처음부터 다시 건다. */
   function show({ mark = null, label, cls, punched = false, deferMs = 0 }) {
     // 다음 예고가 열리는 순간(resolveMs 뒤)에는 이미 사라져 있어야 두 판정이 겹쳐 읽히지 않는다.
     // 대기·히트스톱은 이 길이를 늘리지 않고 그 안에서 시작을 미룬다 — 대기분은 여기서, 히트스톱은
     // 원장의 `.verdict-pop.punched` 가 뺀다. 둘의 합이 재생을 남기는 것은 부팅 단정이 문다.
-    const style = `--vd-dur:${BALANCE.resolveMs - deferMs}ms`;
-    clear(node).appendChild(el('div', { class: `verdict-pop ${cls}${punched ? ' punched' : ''}`, style }, [
-      // 한자는 한글 위에 얹히는 낙관이라, 마크가 없는 호출자에게는 그 자리도 없다 (REQ-813 · #46).
-      mark ? hanja(mark) : null,
-      el('span', { class: 'verdict-label', text: label }),
-    ]));
+    // 스크림은 팝의 형제라 팝에 꽂으면 그 값을 못 보고 폴백으로 돈다 — 오버레이 루트가 둘의 상속점이다.
+    node.style.setProperty('--vd-dur', `${BALANCE.resolveMs - deferMs}ms`);
+    // 한자는 한글 위에 얹히는 낙관이라, 마크가 없는 호출자에게는 그 자리도 없다 (REQ-813 · #46).
+    markEl.textContent = mark ?? '';
+    markEl.hidden = !mark;
+    labelEl.textContent = label;
+    pop.className = `verdict-pop ${cls}${punched ? ' punched' : ''}`;
+    // 같은 노드를 다시 쓰므로 클래스를 뗐다 붙이는 것만으로는 재생이 처음부터 돌지 않는다.
+    node.classList.remove('on');
+    void node.offsetWidth;
+    node.classList.add('on');
     announce(label);
   }
 
@@ -120,7 +131,7 @@ export function createVerdictOverlay({ heldSince = () => null } = {}) {
       // 시계가 튀어(백그라운드 복귀) 대기가 통째로 넘어간 초에도 판정이 있었다는 사실은 남긴다 —
       // 자리를 내주는 것은 시각 층뿐이고 낭독은 유실되지 않는다 (REQ-807).
       if (unspoken !== null) { announce(unspoken); unspoken = null; }
-      clear(node);
+      node.classList.remove('on');
     },
   };
 }

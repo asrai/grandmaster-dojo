@@ -21,6 +21,15 @@ python3 -m http.server 8000
 
 - 데스크톱: 방향키 ← ↑ → ↓ 또는 WASD · 리셋 `Space` / `Esc`
 - 모바일: 화면 하단 십자 4버튼 + 리셋 (스와이프 없음)
+- 키보드만으로도 전 화면을 조작할 수 있다 — 화면이 바뀌면 포커스가 그 화면 본문으로 옮겨 가고 화면 이름이 낭독되며, 죽간·도전자 행·슬롯은 전부 진짜 버튼이라 탭 순회에 든다. 도전자 목록은 라디오 그룹이라 「몇 중 몇 번째를 골랐는가」가 함께 읽히고, 잠긴 버튼은 포커스를 받지 않는다.
+- 속성 도형(▲●■)은 낭독기에 기호가 아니라 **속성 이름**(쾌·강·정)으로 읽힌다. 판정은 화면과 별개로 낭독 리전에도 실리고, 화면을 떠나면 한 틱 뒤에 지워져 다음 화면에 잔류하지 않는다.
+
+## 소리
+
+- **SFX 6종 + BGM 루프 1종**이 `assets/audio/` 의 Ogg/Opus 실파일로 재생된다 — 방향 키 타격음(칠 때마다 피치가 달라진다) · 후보 확정음 · 판정음 3계열(완파 / 우세·상쇄·열세 / 역파·피격) · 성 상승음.
+- 브라우저 자동재생 정책상 **첫 입력 전에는 소리가 나지 않는다** — 아무 키나 탭 한 번이면 그 입력부터 난다.
+- **음소거 토글**은 도장·도전자 선택·파견 예고 화면의 상단 띠 오른쪽에 있다 (「소리 켜짐 / 소리 꺼짐」). 끄면 BGM 루프도 함께 멈춘다.
+- 어떤 사건에 어떤 소리가 붙는지는 `src/balance.data.json` 의 `audio` 표가 정하고, 재생은 `src/ui/audio.mjs` 한 모듈이 소유한다. 매핑이 없는 사건·등급은 로드나 재생 시점에 죽으므로 조용한 무음으로 지나가지 않는다.
 
 ## 규칙 (v2)
 
@@ -53,7 +62,7 @@ node scripts/check-font-coverage.mjs   # 폰트 커버리지 — 서브셋이 �
 
 폰트는 사용 글자 기반 서브셋이라 **새 문구를 넣으면 커버리지 게이트가 red 로 잡는 것이 정상**이다. 그때는 `bash scripts/subset-fonts.sh` 로 `assets/fonts/` 의 woff2 를 다시 만들어 같은 커밋에 담는다 (생성에는 `fonttools`·`brotli` 와 Noto Serif KR 가변 폰트가 필요하며, 절차는 그 스크립트 헤더에 있다).
 
-`src/balance.mjs`(콘텐츠 테이블 + `balance.data.json` 로더) · `src/core.mjs`(순수 로직) · `src/log.mjs`(로그 스키마) · `src/bot.mjs`(봇·헤드리스 사이클)는 DOM 을 모르므로 브라우저와 하네스가 같은 모듈을 쓴다. DOM 을 아는 코드는 `src/ui/` 아래에 있고, 그중 입력기 `src/ui/sequence-input.mjs` · 대련 루프 `src/ui/match.mjs` · 세션 상태 `src/ui/session.mjs` · 계측 배선 `src/ui/wiring.mjs` 는 DOM-free 라 하네스가 함께 회귀한다 — 파견 밸런스 게이트도 사본이 아니라 이 대련 루프를 가상 시계로 돌려 검증하고, 화면과 헤드리스 사이클은 같은 계측 배선 한 벌 위에 각자의 렌더·구동만 얹는다.
+`src/balance.mjs`(콘텐츠 테이블 + `balance.data.json` 로더) · `src/core.mjs`(순수 로직) · `src/log.mjs`(로그 스키마) · `src/bot.mjs`(봇·헤드리스 사이클)는 DOM 을 모르므로 브라우저와 하네스가 같은 모듈을 쓴다. DOM 을 아는 코드는 `src/ui/` 아래에 있고, 그중 입력기 `src/ui/sequence-input.mjs` · 대련 루프 `src/ui/match.mjs` · 세션 상태 `src/ui/session.mjs` · 계측 배선 `src/ui/wiring.mjs` · 죽간 상태 `src/ui/tablet-state.mjs` · 표시 규약 `src/ui/theme.mjs` · 사운드 매핑 `src/ui/audio.mjs` · 프레임 예산 `src/ui/frame-budget.mjs` 는 DOM-free 라 하네스가 함께 회귀한다 — 파견 밸런스 게이트도 사본이 아니라 이 대련 루프를 가상 시계로 돌려 검증하고, 화면과 헤드리스 사이클은 같은 계측 배선 한 벌 위에 각자의 렌더·구동만 얹는다.
 
 ### 로그 내보내기 · kill 판독
 

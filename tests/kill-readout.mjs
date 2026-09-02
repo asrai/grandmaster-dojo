@@ -63,6 +63,14 @@ function loadPayload(raw) {
  */
 export const BOT_UNREACHABLE = ['rank_wall', 'cheat', 'disciple_train'];
 
+/**
+ * 브라우저 런타임에서만 발화하는 이벤트 — 봇의 손이 못 가는 것이 아니라 **잴 것이 없다**.
+ * 서체 로드·프레임 시계·오디오 컨텍스트는 셋 다 문서와 함께 존재하므로 헤드리스에는
+ * 그 사건 자체가 일어나지 않는다. `BOT_UNREACHABLE` 과 갈라 두는 것이 그 차이다 —
+ * 한 목록에 접으면 「손이 안 갔다」와 「잴 것이 없었다」가 판독에서 구별되지 않는다.
+ */
+export const BROWSER_ONLY = ['font_ready', 'frame_budget', 'audio_state'];
+
 /** 필드 결손 0 의 기계적 증명 — 스키마 대조 + 전 종류 방출 확인 (수용 케이스 11). */
 function auditEntries(entries) {
   const problems = [];
@@ -84,8 +92,11 @@ function auditEntries(entries) {
       problems.push(`#${i} ${err.message}`);
     }
   });
+  // 두 목록을 함께 뺀다 — 「손이 그 자리에 못 간다」와 「헤드리스에는 잴 것이 없다」는 사유가
+  // 다르지만 헤드리스 사이클이 낼 수 없다는 결과는 같다.
+  const unreachable = [...BOT_UNREACHABLE, ...BROWSER_ONLY];
   const missing = Object.keys(LOG_SCHEMA)
-    .filter((event) => !seen.has(event) && !BOT_UNREACHABLE.includes(event));
+    .filter((event) => !seen.has(event) && !unreachable.includes(event));
   return { problems, missing, seen };
 }
 
@@ -389,7 +400,7 @@ function main(argv) {
     failures += 1;
   }
   if (!audit.missing.length) {
-    console.log(`✓ 통합 로그 스키마 ${Object.keys(LOG_SCHEMA).length - BOT_UNREACHABLE.length}종 전부 최소 1회 emit`);
+    console.log(`✓ 통합 로그 스키마 ${Object.keys(LOG_SCHEMA).length - BOT_UNREACHABLE.length - BROWSER_ONLY.length}종 전부 최소 1회 emit`);
   } else if (selfTest) {
     // 자체 생성 사이클은 계측 빌드 자체의 검증이라, 여기서 빠진 종은 계측 구멍이다 (REQ-601).
     console.error(`✗ 계측 사이클 미방출 ${audit.missing.length}종: ${audit.missing.join(', ')}`

@@ -11,7 +11,7 @@ import { stageBand } from '../band.mjs';
 import { REASON_VIEW, attrLabel, winAttrOf } from '../theme.mjs';
 import { attrMark, attrTone } from '../components/attr-mark.mjs';
 import { hanja } from '../components/hanja.mjs';
-import { SFX } from '../audio.mjs';
+import { CUE, play, playVerdict } from '../audio.mjs';
 import { SPOT, createArena } from '../arena.mjs';
 import { createMatch } from '../match.mjs';
 import {
@@ -98,7 +98,12 @@ export function renderPreview(ctx) {
       '', `${discipleStyleRank(session.disciple, ART_ID, s.id)}성`))),
     el('div', { class: 'actions' }, [
       el('button', {
-        class: 'primary', text: '파견 보내기', disabled: !unlocked, onclick: () => ctx.go('dispatch'),
+        class: 'primary',
+        text: '파견 보내기',
+        // 잠긴 차수의 사유는 위 잠금 카드가 전부 지므로 버튼은 잠겼다는 사실만 말한다 (REQ-911·743).
+        disabled: !unlocked,
+        'aria-disabled': String(!unlocked),
+        onclick: () => ctx.go('dispatch'),
       }),
     ]),
   ].filter(Boolean)) });
@@ -253,9 +258,10 @@ export function startDispatch(ctx) {
       },
       onVerdict(view, ranked) {
         renderHp(view);
-        verdict.showGrade(view.verdict.grade);
-        (view.verdict.grade === 'crush' ? SFX.crush : SFX.hit)();
-        if (ranked) SFX.rank();
+        // 소리를 `onShow` 에 싣는 것이 대련과 같은 계약이다 — 지금은 이 화면에 확정 연출 대기가
+        // 없어 즉시 호출과 동치이지만, 대기가 생기는 순간 관전만 소리가 판정보다 앞선다.
+        verdict.showGrade(view.verdict.grade, { onShow: () => playVerdict(view.verdict.grade) });
+        if (ranked) play(CUE.RANK_UP);
       },
       onEnd(view) {
         logDispatchResult(session, { mission, win: view.outcome.win });

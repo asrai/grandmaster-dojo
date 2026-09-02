@@ -54,7 +54,7 @@ function telegraphView(view, openText) {
   const win = winAttrOf(foe.attr);
   return el('div', { class: 'tele', style: `--attr:${attrTone(foe.attr)}` }, [
     el('div', { class: 'tele-attr' }, [
-      attrMark(foe.attr, { size: 'big' }),
+      attrMark(foe.attr, { size: 'big', silent: true }),
       el('span', { class: 'an', text: attrLabel(foe.attr) }),
     ]),
     el('div', { class: 'tele-id' }, [
@@ -63,7 +63,7 @@ function telegraphView(view, openText) {
     ]),
     el('div', { class: 'tele-win', style: `--attr:${attrTone(win)}` }, [
       el('span', { class: 'cap', text: '이기는 색' }),
-      el('span', { class: 'val' }, [attrMark(win), el('b', { text: attrLabel(win) })]),
+      el('span', { class: 'val' }, [attrMark(win, { silent: true }), el('b', { text: attrLabel(win) })]),
     ]),
   ]);
 }

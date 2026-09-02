@@ -4,10 +4,13 @@
 import { BALANCE } from '../balance.mjs';
 import { createBot } from '../bot.mjs';
 import { $ } from './dom.mjs';
+import { initAudio, resumeAudio } from './audio.mjs';
+import { createFrameBudget } from './frame-budget.mjs';
+import { SCREEN } from './theme.mjs';
 import { mountCheatPanel } from './cheat.mjs';
 import { createPad } from './pad.mjs';
 import {
-  createSession, enterPhase, exportPayload, logSessionMeta, setBotRunning,
+  createSession, enterPhase, exportPayload, flushScreenView, logEvent, logSessionMeta, setBotRunning,
 } from './session.mjs';
 import { renderDojo } from './screens/dojo.mjs';
 import { renderPreview, startDispatch } from './screens/dispatch.mjs';
@@ -44,6 +47,15 @@ const ctx = {
 };
 let teardown = null;
 let phase = null;
+/**
+ * 프레임 예산 원장 (REQ-914·915) — 화면 하나 단위로 모으고 떠날 때 낸다. 화면을 섞으면
+ * 「어느 화면이 비싼가」가 평균에 묻히므로 전이마다 비운다.
+ */
+const budget = createFrameBudget();
+/** 그 화면의 무대·판정 노드 — 프레임마다 DOM 을 뒤지지 않도록 전이 때 한 번만 잡는다. */
+let sceneNode = null;
+let overlayNode = null;
+let lastFrameAt = 0;
 // 상단 띠의 주인이 화면이라 갱신 주체도 그 화면이다 — 띠가 없는 화면에서는 갱신할 것도 없다 (REQ-801).
 let paintTop = () => {};
 
@@ -58,6 +70,8 @@ function refreshTop() {
 
 /** 화면 전환의 유일한 경로 — 이전 화면의 루프·리스너·입력 회수가 여기 한 곳에 묶인다. */
 function go(nextPhase, params = {}) {
+  // 화면을 떠나기 전에 낸다 — teardown 뒤에는 그 화면의 노드도 표본의 주인도 남지 않는다.
+  if (nextPhase !== phase) flushFrameBudget();
   if (teardown) teardown();
   teardown = null;
   paintTop = () => {};
@@ -69,10 +83,82 @@ function go(nextPhase, params = {}) {
   phase = nextPhase;
   enterPhase(session, phase);
   teardown = route(ctx) ?? null;
+  sceneNode = ctx.root.querySelector('.scene');
+  overlayNode = ctx.root.querySelector('.verdict-overlay');
+  announceScreen(nextPhase);
+  releaseVerdictLive();
+}
+
+/**
+ * 이 프레임이 무엇을 그리고 있었나 (REQ-915) — 측정 대상은 「흔들림 + 96px 글로우 + 스크림이
+ * 겹치는 프레임」이라, 판정이 재생 중인 프레임을 다른 것과 섞지 않는 것이 이 구분의 전부다.
+ */
+function sceneOfFrame() {
+  if (overlayNode?.classList.contains('on')) return 'verdict';
+  if (sceneNode && !sceneNode.classList.contains('flat')) return 'parallax';
+  return 'idle';
+}
+
+/** 떠나는 화면의 프레임 예산을 장면별로 낸다 — 표본이 모자란 장면은 말하지 않는다. */
+function flushFrameBudget() {
+  if (phase === null) return;
+  for (const scene of budget.scenes()) {
+    logEvent(session, 'frame_budget', {
+      screen: SCREEN[phase].id,
+      scene,
+      p95_ms: Math.round(budget.p95(scene) * 10) / 10,
+      dropped: budget.dropped(scene),
+    });
+  }
+  budget.reset();
+}
+
+/**
+ * 프레임 시계 (REQ-914·915) — 게임 루프와 별개로 도는 관측자다. 패럴랙스를 끄는 판정도 여기서
+ * 하는 것은, 끌지 말지의 근거가 바로 이 표본이기 때문이다. 임계 50fps 는 실기 측정 전 잠정값이다.
+ */
+function watchFrames(at) {
+  window.requestAnimationFrame(watchFrames);
+  const delta = at - lastFrameAt;
+  lastFrameAt = at;
+  budget.sample(sceneOfFrame(), delta);
+  if (!sceneNode) return;
+  const fps = budget.fps('parallax');
+  // 표본이 모자라면 켜 둔 채로 둔다 — 시작하자마자 끄면 무엇을 잰 것인지가 없다.
+  // 한 번 끈 화면에서는 다시 켜지지 않는다: 끈 뒤의 프레임은 되켜도 되는지의 근거가 아니고,
+  // 껐다 켰다 하는 무대가 느린 무대보다 나쁘다. 판정은 화면 전이에서 표본과 함께 다시 선다.
+  if (fps !== null) sceneNode.classList.toggle('flat', fps < BALANCE.parallaxMinFps);
+}
+
+/** 직전에 낭독한 화면 — 도장은 조작마다 자기를 다시 그리므로, 그 재렌더는 전환이 아니다. */
+let announcedScreen = null;
+
+/**
+ * 전환 낭독 (#102) — 판정 전용 `#live` 와 **분리한** 리전에 화면 이름을 한 번 싣는다.
+ * 한 리전을 나눠 쓰면 같은 프레임에 겹친 두 낭독 중 뒤가 앞을 덮는다.
+ */
+function announceScreen(nextPhase) {
+  if (announcedScreen === nextPhase) return;
+  announcedScreen = nextPhase;
+  $('nav-live').textContent = SCREEN[nextPhase].label;
+}
+
+/**
+ * 판정 낭독의 잔류를 끊는다 (#101) — 비우는 시점이 다음 화면 렌더 **뒤 한 틱**인 것이 계약이다.
+ * 렌더 전으로 당기면 대련 마지막 수의 판정이 결과 화면 전환에 잘린다. 그 한 틱 사이에 새 화면이
+ * 자기 문면을 실었으면 그것은 남긴다 — 비우려던 것은 떠난 화면의 잔상뿐이다.
+ */
+function releaseVerdictLive() {
+  const region = $('live');
+  const leftover = region.textContent;
+  if (!leftover) return;
+  window.setTimeout(() => { if (region.textContent === leftover) region.textContent = ''; }, 0);
 }
 
 // 낭독 리전이 사라지면 판정이 에러 없이 침묵한다 — 그 마크업 계약을 부팅 때 터뜨린다 (REQ-807).
 if (!$('live')) throw new Error('낭독 리전 #live 가 스테이지에 없다');
+// 전환 낭독도 같은 실패 모드다 — 리전이 없으면 화면이 바뀐 사실이 비시각 사용자에게 침묵한다 (#102).
+if (!$('nav-live')) throw new Error('전환 낭독 리전 #nav-live 가 스테이지에 없다');
 // 셸이 없으면 흔들림이 스테이지로 올라가 완파·역파마다 배율이 날아간다 (REQ-816).
 if (!$('shell')) throw new Error('흔들림 래퍼 #shell 이 스테이지에 없다');
 
@@ -96,6 +182,9 @@ if (preroll >= BALANCE.resolveMs) {
 
 /** 로그 내보내기 (REQ-602) — 위반 목록을 함께 실어, 결손 로그가 조용히 판독에 쓰이지 않게 한다. */
 function exportLog() {
+  // 체류·프레임 예산은 둘 다 이탈에서 찍히므로, 그대로 내보내면 지금 보고 있는 화면이 통째로 빠진다.
+  flushScreenView(session);
+  flushFrameBudget();
   const payload = exportPayload(session);
   if (payload.log_violations.length) {
     window.alert(`로그 스키마 위반 ${payload.log_violations.length}건이 함께 실린다`
@@ -145,6 +234,44 @@ const refreshCheat = mountCheatPanel({
 // 도구 띠가 세로를 먹어 무대 배율이 1 밑으로 내려가므로, 목업 대조 스크린샷은 이 스위치로 1:1 을 되찾는다.
 if (new URLSearchParams(window.location.search).get('tools') === '0') $('tools').hidden = true;
 
+// 오디오는 컨텍스트를 정지 상태로 먼저 세우고 파일을 디코드해 둔다 — 첫 제스처가 오는 순간
+// 이미 준비돼 있어야 「그 입력부터 소리가 난다」가 성립한다 (REQ-920·921).
+initAudio({ log: (event, fields) => logEvent(session, event, fields), now: () => performance.now() });
+// 자동재생 정책을 푸는 것은 제스처 하나뿐이라, 어느 입력이 첫 입력이든 같은 자리를 지난다 (REQ-921).
+// 한 번만 거는 것이 아닌 이유는 첫 제스처가 거절될 수 있어서다 — 재개된 뒤로는 즉시 반환한다.
+for (const type of ['pointerdown', 'keydown']) {
+  window.addEventListener(type, resumeAudio, { capture: true });
+}
+
+/**
+ * 서체 로드 계측 (REQ-803) — 서브셋의 효과가 「로딩 비용이 주 변수」라는 진단의 검증이므로,
+ * 실제로 받은 바이트와 그것이 서브셋 파일이었는지를 함께 남긴다.
+ */
+function declaredFaces() {
+  let n = 0;
+  for (const sheet of document.styleSheets) {
+    // 확장이 끼워 넣은 시트는 교차 출처라 규칙 열람이 던진다 — 우리 시트를 세는 것이 목적이다.
+    try {
+      for (const rule of sheet.cssRules) if (rule instanceof CSSFontFaceRule) n += 1;
+    } catch { /* 열 수 없는 시트에는 우리 @font-face 가 없다 */ }
+  }
+  return n;
+}
+
+function logFontReady() {
+  const woff2 = performance.getEntriesByType('resource').filter((e) => e.name.endsWith('.woff2'));
+  const declared = declaredFaces();
+  logEvent(session, 'font_ready', {
+    ms: Math.round(performance.now()),
+    bytes: woff2.reduce((sum, e) => sum + (e.encodedBodySize || e.transferSize || 0), 0),
+    // 선언한 면을 전부 받았는가 — 한 벌이라도 빠지면 그 범위가 폴백 산세리프로 그려진다.
+    subset_hit: declared > 0 && woff2.length >= declared,
+  });
+}
+// 계측이 던지면 서체 로드 체인이 unhandled 로 끝나고 이 항목만 조용히 사라진다.
+const measureFonts = () => { try { logFontReady(); } catch (err) { console.warn(`[서체 계측] ${err.message}`); } };
+document.fonts.ready.then(measureFonts, measureFonts);
+
 $('exportBtn').addEventListener('click', exportLog);
 $('botBtn').addEventListener('click', () => {
   if (bot.running) bot.stop();
@@ -161,3 +288,5 @@ window.__dojo = { session, go, BALANCE, bot, exportLog };
 
 logSessionMeta(session, { testerRole: 'self', device: DEVICE });
 go('dojo');
+lastFrameAt = performance.now();
+window.requestAnimationFrame(watchFrames);

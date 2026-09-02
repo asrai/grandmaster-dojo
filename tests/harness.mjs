@@ -1,18 +1,22 @@
 // 헤드리스 회귀 하네스 — 의존성 0, `node tests/harness.mjs` 로 실행한다.
 // 기대값은 BALANCE 키에서 직접 산출하므로 파라미터 개명·판정표 변경은 즉시 red 다.
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import {
   ART_SETS, ATTRS, BALANCE, BALANCE_REV, CHALLENGERS, DISCIPLE, FOE_STYLES, STYLES,
   validateBalance, validateStyleContent, valueDigest,
 } from '../src/balance.mjs';
-import { LOG_SCHEMA, TIME_FIELD, createLogBuffer, validate } from '../src/log.mjs';
+import {
+  FRAME_SCENES, LOG_SCHEMA, SCREEN_IDS, TIME_FIELD, createLogBuffer, validate,
+} from '../src/log.mjs';
 import {
   createDiscipleHand, createSeededRandom, nextDojoAction, nextDuelStage, runHeadlessCycle,
   runHeadlessMissions,
 } from '../src/bot.mjs';
 import { createMatch, createVirtualTimer, pumpToEnd } from '../src/ui/match.mjs';
 import { createSequenceInput } from '../src/ui/sequence-input.mjs';
+import { CUE } from '../src/ui/audio.mjs';
+import { createFrameBudget } from '../src/ui/frame-budget.mjs';
 import {
   ART_ID, DISPATCH_CHALLENGER, EXPORT_SCHEMA, accrueDiscipleRank, addCoins, advanceDiscipleTraining,
   autoEquip, beatenChallengers, beginDuel, beginMission, canDiscipleTrain, canDispatch, canEquip,
@@ -28,10 +32,10 @@ import {
   composeHooks, dispatchWiring, duelWiring, trainWiring,
 } from '../src/ui/wiring.mjs';
 import {
-  ATTR_VIEW, EXTREME_GRADES, GRADE_VIEW, REASON_VIEW, REVEAL_VIEW, TRAIN_DONE_VIEW, particle,
+  ATTR_VIEW, EXTREME_GRADES, GRADE_VIEW, REASON_VIEW, REVEAL_VIEW, SCREEN, TRAIN_DONE_VIEW, particle,
 } from '../src/ui/theme.mjs';
 import { TABLET, tabletStates } from '../src/ui/tablet-state.mjs';
-import { BOT_UNREACHABLE, KILL, killVerdicts, readout } from './kill-readout.mjs';
+import { BOT_UNREACHABLE, BROWSER_ONLY, KILL, killVerdicts, readout } from './kill-readout.mjs';
 import {
   REVEAL_TIER, SELECT_REASON,
   accrueDiscipleStyle, accrueRank, applyDiscipleTraining, applyEffectiveSuccess, applyOutcome,
@@ -286,8 +290,13 @@ suite('통합 로그 스키마 (REQ-601)', () => {
     cycle: ['phase'],
     cheat: ['action', 'session_flagged'],
     session: ['tester_role', 'device'],
+    screen_view: ['screen', 'ms', 'from'],
+    font_ready: ['ms', 'bytes', 'subset_hit'],
+    frame_budget: ['screen', 'scene', 'p95_ms', 'dropped'],
+    undo_used: ['screen', 'count', 'exchange_no'],
+    audio_state: ['resumed', 'muted', 'ms_to_resume'],
   };
-  eq(Object.keys(LOG_SCHEMA).length, 21, '이벤트 21종');
+  eq(Object.keys(LOG_SCHEMA).length, 26, '이벤트 26종');
   deepEq(Object.keys(LOG_SCHEMA), Object.keys(EXPECTED), '이벤트 이름·순서');
   for (const [event, fields] of Object.entries(EXPECTED)) {
     deepEq(LOG_SCHEMA[event].fields, fields, `${event} 필드`);
@@ -295,6 +304,18 @@ suite('통합 로그 스키마 (REQ-601)', () => {
   deepEq(LOG_SCHEMA.key.enums.device, ['keyboard', 'button'], 'key.device 열거');
   deepEq(LOG_SCHEMA.session.enums.tester_role, ['self', 'friend', 'bot'], 'session.tester_role 열거');
   deepEq(LOG_SCHEMA.dispatch.enums.result, ['win', 'loss'], 'dispatch.result 열거');
+  // 신설 5종은 화면 좌표축에 키잉된다 (spec § 통합 로그 스키마) — 축을 잃으면 「어느 화면이
+  // 아직 구 크롬을 쓰는가」가 판독 불능이 된다.
+  deepEq(SCREEN_IDS, ['s1', 's2', 's3', 's4', 's5', 's6', 's7'], '화면 좌표축 7칸');
+  deepEq(FRAME_SCENES, ['verdict', 'parallax', 'idle'], '프레임 예산 장면 3종');
+  for (const keyed of ['screen_view', 'frame_budget', 'undo_used']) {
+    deepEq(LOG_SCHEMA[keyed].enums.screen, SCREEN_IDS, `${keyed}.screen 은 화면 축에 묶인다`);
+  }
+  deepEq(LOG_SCHEMA.frame_budget.enums.scene, FRAME_SCENES, 'frame_budget.scene 열거');
+  // 라우트 8개가 7좌표를 나눠 쓴다 — 파견은 예고와 관전이 `s4` 한 칸을 공유한다.
+  deepEq(Object.keys(SCREEN), ['duel', 'dojo', 'train', 'preview', 'dispatch', 'transmit', 'result', 'select'],
+    '라우트 → 화면 좌표 표의 키 집합');
+  deepEq([...new Set(Object.values(SCREEN).map((v) => v.id))].sort(), SCREEN_IDS, '7좌표가 전부 도달된다');
   // 뜻이 바뀐 이벤트만 판별 토큰을 단다 — 신설 이벤트는 구 스키마가 없어 `sv` 가 필요 없다 (REQ-791).
   deepEq(Object.entries(LOG_SCHEMA).filter(([, v]) => v.sv).map(([k]) => k),
     ['rank', 'unlock', 'slot', 'transmit', 'dispatch'],
@@ -324,6 +345,10 @@ suite('통합 로그 스키마 (REQ-601)', () => {
   throws(() => buf.log('narrow', {}), '필드 결손은 throw', '필드 결손');
   throws(() => buf.log('narrow', { styleId: 'a', extra: 1 }), '스키마 밖 필드는 throw', '스키마 밖 필드');
   throws(() => buf.log('session', { tester_role: 'ghost', device: 'keyboard' }), '열거 밖 값은 throw', '허용 밖 값');
+  throws(() => buf.log('screen_view', { screen: 's8', ms: 1, from: null }),
+    '축 밖 화면은 throw', '허용 밖 값');
+  throws(() => buf.log('frame_budget', { screen: 's1', scene: 'blur', p95_ms: 1, dropped: 0 }),
+    '정의 밖 장면은 throw', '허용 밖 값');
 });
 
 // ------------------------------------------ 3. 응수 창 · 파생 수식 (REQ-201·203·204·210)
@@ -1714,6 +1739,7 @@ suite('후보 필터 입력기 (REQ-102·103·105·106·108·109)', () => {
       now: () => clock,
       remainingRatio: () => 0.5,
       log: (event, fields) => events.push({ event, ...fields }),
+      screen: SCREEN[mode === 'train' ? 'train' : 'duel'].id,
     });
     input.arm();
     return { input, events, tick: (ms) => { clock += ms; }, ids: () => input.candidates.map((s) => s.id) };
@@ -1833,6 +1859,7 @@ suite('케이스 3·4 — 죽간 상태 전이 (REQ-824·825·826)', () => {
     now: () => 0,
     remainingRatio: () => 1,
     log: () => {},
+    screen: SCREEN.duel.id,
   });
   input.arm();
 
@@ -1936,9 +1963,10 @@ suite('헤드리스 봇 1사이클 (REQ-601·603·605)', () => {
     deepEq(run.session.logViolations, [], `시드 ${SEEDS[i]} — 로그 스키마 위반 0건`);
 
     const emitted = new Set(payload.entries.map((e) => e.event));
-    const missing = Object.keys(LOG_SCHEMA).filter((event) => !emitted.has(event) && !BOT_UNREACHABLE.includes(event));
+    const unreachable = [...BOT_UNREACHABLE, ...BROWSER_ONLY];
+    const missing = Object.keys(LOG_SCHEMA).filter((event) => !emitted.has(event) && !unreachable.includes(event));
     // REQ-601 최종 검증 — 실제 1사이클에서 전 종류가 나오지 않으면 kill 산식에 구멍이 있다.
-    deepEq(missing, [], `시드 ${SEEDS[i]} — 통합 로그 ${Object.keys(LOG_SCHEMA).length - BOT_UNREACHABLE.length}종 전량 emit`);
+    deepEq(missing, [], `시드 ${SEEDS[i]} — 통합 로그 ${Object.keys(LOG_SCHEMA).length - unreachable.length}종 전량 emit`);
 
     const metrics = readout(payload);
     eq(metrics.aux.tester_role, 'bot', `시드 ${SEEDS[i]} — tester_role 이 봇으로 남는다`);
@@ -2182,6 +2210,7 @@ suite('계측 배선 공유 (#11)', () => {
     hintDelayMs: 0,
     now: () => 0,
     log: (event, fields) => logEvent(session, event, fields),
+    screen: SCREEN.train.id,
   });
   const disciple = { arm() {}, tick: () => null };
 
@@ -2631,6 +2660,11 @@ suite('밸런스 데이터 스키마 (#45)', () => {
   throwsWith((r) => { delete r.hp['A-3']; }, 'hp: 키 "A-3" 누락 (CHALLENGERS 와 1:1)', 'hp 도전자 키 누락');
   throwsWith((r) => { r.bot.reactionMs = [650, 450]; }, 'bot.reactionMs: [650,450] 는 [최소, 최대] 순서가 뒤집혔다', 'bot 배열 역순');
   throwsWith((r) => { delete r.damageByLen['5']; }, 'damageByLen: 초식 길이 5 의 피해가 없다', 'damageByLen 이 초식 길이를 못 덮음');
+  // 사운드 매핑 (REQ-920·924) — 「매핑 없는 사건이 조용히 무음으로 지나가지 않는다」의 기계 층.
+  throwsWith((r) => { delete r.audio.key; }, 'audio: cue "key" 누락', '사운드 cue 누락');
+  throwsWith((r) => { r.audio.key = 'ding'; }, 'audio.key: "ding" 는 sfx_·bgm_ 로 시작하는 사운드 id 가 아니다', '사운드 id 꼴 아님');
+  throwsWith((r) => { delete r.audio.verdict.crush; }, 'audio.verdict: 판정 계열 키', '판정 계열이 6단을 못 덮음');
+  throwsWith((r) => { r.audio.extra = 'sfx_key'; }, 'audio.extra: 사운드 매핑에 없는 cue', '매핑에 없는 cue');
   throwsWith((r) => { r.nonesuch = 1; }, 'nonesuch: 스키마에 없는 필드', '스키마 밖 필드');
 
   // 창안자는 표시 전용이라 값이 비어도 아무것도 죽지 않는다 (REQ-891) — 그 무음을 로드 시점에
@@ -2753,6 +2787,67 @@ suite('밸런스 데이터 스키마 (#45)', () => {
   ok(batched !== null && batched.includes('2건'), `불량 2건이 한 번에 보고된다 (실제: ${batched})`);
   ok(batched !== null && batched.includes('slots') && batched.includes('grades.clash.formula'),
     '전건 수집 — 두 오류가 모두 문면에 실린다');
+});
+
+// ---------------------------- 15. 사운드 매핑 · 프레임 예산 (REQ-914·915·920·924)
+
+suite('사운드 매핑 (REQ-920·924)', () => {
+  // 판정 계열은 6단 전부를 덮어야 한다 — 한 등급이라도 비면 그 판정이 무음으로 지나간다.
+  deepEq(Object.keys(BALANCE.audio.verdict).slice().sort(),
+    Object.keys(BALANCE.grades).slice().sort(), '판정 매핑이 6단 집합과 같다');
+  deepEq([...new Set(Object.values(BALANCE.audio.verdict))].sort(),
+    ['sfx_break', 'sfx_clash', 'sfx_hit'], '3계열로 접힌다');
+  eq(BALANCE.audio.verdict.crush, 'sfx_break', '완파 = 유리 극단');
+  eq(BALANCE.audio.verdict.reversal, BALANCE.audio.verdict.struck, '역파·피격이 같은 불리 계열');
+  eq(BALANCE.audio.verdict.advantage, BALANCE.audio.verdict.disadvantage, '우세·열세가 같은 중립 교차');
+
+  // 사건 이름은 코드가 분기하는 값이라 그 집합이 pin 이다 — 늘리면 이 줄이 먼저 red 다.
+  deepEq(Object.values(CUE), ['key', 'ignore', 'reset', 'fire', 'confirm', 'rankUp', 'transmit'],
+    '소리가 붙는 사건 7종');
+  // 납품 id 는 파일 이름의 줄기이기도 하다 — 경로 표를 따로 두지 않는 것이 그 계약이다.
+  for (const [cue, id] of Object.entries(BALANCE.audio)) {
+    if (cue === 'verdict') continue;
+    ok(/^(sfx|bgm)_[a-z0-9_]+$/.test(id), `audio.${cue} 는 사운드 id 꼴이다 (${id})`);
+  }
+  // 꼴이 맞아도 파일이 없으면 그 사건은 콘솔 경고 하나 뒤 **영구 무음**이다 — 서체 커버리지
+  // 게이트와 같은 축으로, 납품 누락·id 오타를 출하 전에 여기서 문다.
+  const soundIds = [...new Set([
+    ...Object.entries(BALANCE.audio).filter(([cue]) => cue !== 'verdict').map(([, id]) => id),
+    ...Object.values(BALANCE.audio.verdict),
+  ])].sort();
+  eq(soundIds.length, 7, '납품 사운드 7종 (sfx 6 + bgm 1)');
+  for (const id of soundIds) {
+    ok(existsSync(new URL(`../assets/audio/${id}.ogg`, import.meta.url)), `assets/audio/${id}.ogg 실재`);
+  }
+
+});
+
+suite('프레임 예산 (REQ-914·915)', () => {
+  const budget = createFrameBudget({ minSamples: 4 });
+  deepEq(budget.scenes(), [], '표본이 없으면 말할 장면도 없다');
+  eq(budget.p95('verdict'), null, '표본이 모자라면 p95 는 침묵한다');
+  eq(budget.fps('parallax'), null, '표본이 모자라면 fps 도 침묵한다');
+
+  for (const ms of [16, 16, 17, 40]) budget.sample('verdict', ms);
+  deepEq(budget.scenes(), ['verdict'], '표본이 찬 장면만 보고된다');
+  eq(budget.p95('verdict'), 40, 'p95 는 최악 프레임을 잡는다 (4표본의 95백분위 = 4번째)');
+  eq(budget.dropped('verdict'), 1, '25ms 를 넘긴 프레임이 유실로 센다');
+
+  // 배경 탭 복귀의 초 단위 간격은 렌더 비용이 아니라 정지 시간이라 표본이 아니다.
+  budget.sample('verdict', 5000);
+  budget.sample('verdict', 0);
+  budget.sample('verdict', -3);
+  eq(budget.dropped('verdict'), 1, '정지·비정상 간격은 표본에 들지 않는다');
+
+  for (let i = 0; i < 10; i += 1) budget.sample('parallax', 25);
+  eq(Math.round(budget.fps('parallax')), 40, '평균 25ms = 40fps');
+  ok(budget.fps('parallax') < BALANCE.parallaxMinFps, '임계 미만이면 패럴랙스를 끈다');
+  for (let i = 0; i < 60; i += 1) budget.sample('parallax', 16);
+  ok(budget.fps('parallax') > BALANCE.parallaxMinFps,
+    '최근 창만 보므로 초반의 느린 프레임이 남은 세션을 끌어내리지 않는다');
+
+  budget.reset();
+  deepEq(budget.scenes(), [], '화면 전이는 원장을 비운다 — 화면별 표본이 섞이면 축이 무너진다');
 });
 
 // ------------------------------------------------------------------ 결과

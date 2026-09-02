@@ -25,7 +25,7 @@ export function counterPairOf(entry) {
  */
 export function foeChips(entry) {
   const chips = revealedStyles(entry).map((foe) => el('span', { class: 'at', style: `--attr:${attrTone(foe.attr)}` }, [
-    attrMark(foe.attr),
+    attrMark(foe.attr, { silent: true }),
     el('span', { text: attrLabel(foe.attr) }),
   ]));
   if (!chips.length) chips.push(el('span', { class: 'at unseen', text: '미상' }));

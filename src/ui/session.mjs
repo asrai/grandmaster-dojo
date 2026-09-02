@@ -3,6 +3,7 @@
 
 import { ART_SETS, BALANCE, BALANCE_REV, CHALLENGERS, STYLES } from '../balance.mjs';
 import { createLogBuffer, validate } from '../log.mjs';
+import { SCREEN } from './theme.mjs';
 import {
   accrueDiscipleStyle, applyDiscipleTraining, applyEffectiveSuccess, applyOutcome, artStyles,
   canEquipRank, canTransmit, createDisciple, createProgress, discipleStyleRank, discipleStyles,
@@ -95,6 +96,9 @@ export function createSession({ now = () => Date.now() } = {}) {
     // 제자 수련은 상태기계를 점유하지 않는다 (REQ-752) — 시계만 들고 있어 사부의 화면 전이를 막지 않는다.
     discipleTrain: { styleId: null, sinceMs: now(), carryMs: {} },
     masterActivity: 'dojo',
+    // 화면 체류 원장 (spec § 통합 로그 스키마) — `screen_view` 는 화면을 **떠날 때** 찍히므로
+    // 그 시점까지의 머문 시각과 어디서 왔는지를 여기 들고 있는다.
+    screen: { route: null, at: now(), from: null },
     // 파견 차수 — 1 = B-1 고정 상대, 2 부터 랜덤 임무 + 하드 잠금 (REQ-741·742).
     dispatchStage: 1,
     mission: null,
@@ -153,8 +157,54 @@ const isFinishingBlow = (view) => view.outcome?.win === true && view.outcome.by 
  */
 export function enterPhase(session, phase) {
   settleDiscipleTraining(session);
+  leaveScreen(session, phase);
   session.masterActivity = phase;
   logEvent(session, 'cycle', { phase });
+}
+
+/** 라우트의 화면 좌표 — 좌표가 없는 라우트는 로그에서 사라지므로 그 자리에서 터뜨린다. */
+function screenIdOf(route) {
+  const view = SCREEN[route];
+  if (!view) throw new Error(`화면 좌표가 없는 라우트: ${route}`);
+  return view.id;
+}
+
+/**
+ * 지금까지의 체류를 한 항목으로 낸다 (spec § 통합 로그 스키마) — 체류 시간은 그 화면을 떠나야
+ * 확정되므로 진입이 아니라 이탈에서 찍는 축이다. 아직 아무 화면도 없으면 낼 것이 없다.
+ */
+function emitScreenView(session) {
+  const { route, at, from } = session.screen;
+  if (route === null) return false;
+  logEvent(session, 'screen_view', {
+    screen: screenIdOf(route),
+    ms: Math.round(session.now() - at),
+    from: from === null ? null : screenIdOf(from),
+  });
+  return true;
+}
+
+/**
+ * 화면을 떠나는 자리 — 낸 뒤 다음 화면의 시계를 걸고, 그 화면이 어디서 왔는지를 기억한다.
+ * 같은 화면으로 다시 들어오는 것은 전환이 아니라 **재렌더**라 접는다 (도장은 조작마다 자기를
+ * 다시 그린다) — 접지 않으면 한 번의 체류가 조각나고 방문 수가 부풀어 판독이 무의미해진다.
+ */
+function leaveScreen(session, next) {
+  const previous = session.screen.route;
+  if (previous === next) return;
+  emitScreenView(session);
+  session.screen = { route: next, at: session.now(), from: previous };
+}
+
+/**
+ * 지금 보고 있는 화면의 체류를 남긴다 (spec § 통합 로그 스키마) — 이탈에서 찍는 축이라 그대로
+ * 두면 **가장 최근에 본 화면이 통째로 빠진 채** 판독된다. 내보내기가 그 경계라 호출부는 거기다.
+ * 화면은 그대로 있으므로 자리를 옮기지 않고 시계만 다시 건다 — 플레이 도중 두 번 내보내도
+ * 두 항목의 합이 실제 체류가 된다.
+ */
+export function flushScreenView(session) {
+  if (!emitScreenView(session)) return;
+  session.screen = { ...session.screen, at: session.now() };
 }
 
 export const logEvent = (session, event, fields) => session.log.log(event, fields);

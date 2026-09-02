@@ -11,13 +11,20 @@ import { isOneTapRank } from '../core.mjs';
  * @param {() => number} p.now 단조 클럭
  * @param {() => number} p.remainingRatio 발동 시점의 창 잔여 비율 `r`
  * @param {(event: string, fields: object) => void} p.log 통합 로그 싱크
+ * @param {string} p.screen 이 입력기가 선 화면의 좌표 (`theme.mjs` 의 `SCREEN`) — 되돌리기 분리
+ *   배치의 효과가 화면별로만 판독되므로, 좌표 없는 입력기는 그 표본을 익명으로 흘린다 (REQ-829)
+ * @param {() => number} [p.exchangeNo] 되돌린 시점의 초 번호 — 초 축이 없는 화면은 0 이다
  */
 export function createSequenceInput({
   pool: initialPool, rankOf, hintDelayMs, now, remainingRatio = () => 0, log,
+  screen, exchangeNo = () => 0,
 }) {
+  // 좌표를 빠뜨린 입력기는 `undo_used` 를 익명으로 흘리고, 그 결손은 로그를 읽을 때에야 드러난다.
+  if (!screen) throw new Error('입력기에 화면 좌표가 없다');
   let pool = initialPool;
   let buffer = [];
   let ignores = 0;
+  let undos = 0;
   let locked = false;
   let hintFrom = now();
 
@@ -90,13 +97,19 @@ export function createSequenceInput({
       return { accepted: true, fired };
     },
 
+    /** @returns {boolean} 실제로 되돌렸는지 — 발동 뒤 잠긴 창의 누름은 손도 로그도 소리도 없다 */
     reset() {
-      if (locked) return;
+      if (locked) return false;
       buffer = [];
       ignores = 0;
       hintFrom = now();
       candidates = matching(buffer);
+      undos += 1;
       log('reset', {});
+      // `count` 는 그 화면에 머무는 동안의 **누적**이고 `exchange_no` 는 그 시점의 초다 — 창마다
+      // 되돌아가면 화면 단위 효과(REQ-829)를 볼 수 없어 `arm()` 이 이 수를 비우지 않는다.
+      log('undo_used', { screen, count: undos, exchange_no: exchangeNo() });
+      return true;
     },
 
     /** 원터치 (REQ-713) — 7성 초식만, 잔여 시퀀스를 생략하고 그 자리에서 발동한다. */

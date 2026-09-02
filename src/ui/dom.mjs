@@ -2,6 +2,7 @@
 // 전부 src/ui/ 아래에만 산다.
 
 import { ARROW } from '../balance.mjs';
+import { isMuted, toggleMute } from './audio.mjs';
 
 export const $ = (id) => document.getElementById(id);
 
@@ -46,10 +47,15 @@ export function composeScreen(ctx, {
     root.appendChild(top.node);
     ctx.ownTop(top.paint);
   }
-  const main = el('main', { class: `screen-body${padded ? ' padded' : ''}` },
+  // 프로그램이 옮기는 포커스라 탭 순서에는 들어가지 않는다 — `-1` 이 그 구분이다.
+  const main = el('main', { class: `screen-body${padded ? ' padded' : ''}`, tabindex: '-1' },
     [].concat(body).filter(Boolean));
   root.appendChild(main);
   if (bottom) root.appendChild(bottom);
+  // 전환 직후 포커스가 body 로 떨어지면 키보드·낭독기 사용자는 새 화면의 첫 요소까지 Tab 을
+  // 다시 짚어야 한다. 조립의 소유가 이 함수라 화면마다 반복되는 자리가 생기지 않는다 (#102).
+  // 스크롤을 막는 것은 본문이 스크롤 상자여서 — 포커스가 그것을 맨 위로 당기면 안 된다.
+  main.focus({ preventScroll: true });
   return main;
 }
 
@@ -75,6 +81,19 @@ export function topBand(session, artName, { onLeave = null } = {}) {
     session.accessibilityToggles += 1;
   });
 
+  // 음소거는 싸우는 중이 아니라 들어가기 전에 정하는 설정이라, 실전 3단 좌표를 건드리지 않는
+  // 이 설정 줄이 그 자리다 (REQ-926). 시안에 자리가 지정된 컨트롤이 아니다.
+  const mute = el('button', { class: 'mute' });
+  const paintMute = () => {
+    const off = isMuted();
+    mute.textContent = off ? '소리 꺼짐' : '소리 켜짐';
+    mute.setAttribute('aria-pressed', String(off));
+    mute.setAttribute('aria-label', off ? '음소거 해제' : '음소거');
+    mute.classList.toggle('off', off);
+  };
+  mute.addEventListener('click', () => { toggleMute(); paintMute(); });
+  paintMute();
+
   const node = el('header', { class: 'top-band' }, [
     el('div', { class: 'top-row' }, [
       onLeave ? el('button', { class: 'leave', text: '←', 'aria-label': '물러나기', onclick: onLeave }) : null,
@@ -84,6 +103,7 @@ export function topBand(session, artName, { onLeave = null } = {}) {
     ]),
     el('div', { class: 'top-row' }, [
       el('label', {}, [a11y, el('span', { text: '응수 창 ×1.3 (쉬움)' })]),
+      mute,
     ]),
   ]);
 
@@ -92,6 +112,7 @@ export function topBand(session, artName, { onLeave = null } = {}) {
     labelEl.textContent = session.label;
     coinsEl.textContent = `${session.coins} 냥`;
     a11y.checked = session.accessibility;
+    paintMute();
   };
   paint();
   return { node, paint };
