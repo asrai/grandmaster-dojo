@@ -293,9 +293,11 @@ body {
 }
 .top-row { display: flex; gap: 10px; align-items: center; min-width: 0; white-space: nowrap; }
 .top-row > * { overflow: hidden; text-overflow: ellipsis; }
-/* 설정 줄의 두 컨트롤도 탭 대상이다 (REQ-910) — 띠 높이가 56 으로 고정이라 컨트롤을 키우는 대신
-   의사요소로만 넓힌다. `overflow: hidden` 인 띠에서 확장분은 잘리지 않는다: 넓히는 것이 페인트가
-   아니라 히트 상자뿐이고, 세로 44 는 띠 안에 든다. */
+/* 위 말줄임 규칙은 이름·재화가 넘칠 때를 위한 것인데 컨트롤에도 걸려 **확장 히트 상자를 자른다**
+   — 잘린 확장은 아무 일도 하지 않는다. 컨트롤만 되돌린다 (REQ-910). */
+.top-row > .leave, .top-row > label, .top-row > .mute { overflow: visible; }
+/* 설정 줄의 두 컨트롤도 탭 대상이다 (REQ-910) — 띠가 56px 2행이라 44 를 온전히 받지는 못하고
+   위아래가 띠에 잘린다. 그 상한은 #110(띠 정본 미처분)이 풀어야 열린다. */
 .top-band label, .top-band .mute { position: relative; }
 .top-band label::after, .top-band .mute::after {
   content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
