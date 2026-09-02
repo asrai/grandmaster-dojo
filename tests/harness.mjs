@@ -26,7 +26,7 @@ import {
 import {
   composeHooks, dispatchWiring, duelWiring, trainWiring,
 } from '../src/ui/wiring.mjs';
-import { ATTR_VIEW, EXTREME_GRADES, GRADE_VIEW } from '../src/ui/theme.mjs';
+import { ATTR_VIEW, EXTREME_GRADES, GRADE_VIEW, TRAIN_DONE_VIEW } from '../src/ui/theme.mjs';
 import { BOT_UNREACHABLE, KILL, killVerdicts, readout } from './kill-readout.mjs';
 import {
   accrueDiscipleStyle, accrueRank, applyDiscipleTraining, applyEffectiveSuccess, applyOutcome,
@@ -2116,6 +2116,12 @@ suite('BALANCE 파라미터 census (REQ-606)', () => {
   deepEq([...EXTREME_GRADES].sort(), ['crush', 'reversal'],
     '흔들림·히트스톱이 극단 2등급에만 배정된다');
   ok([...EXTREME_GRADES].every((g) => g in BALANCE.grades), '극단 2등급이 판정표의 등급 이름이다');
+
+  // 표시 클래스의 규칙이 원장에서 사라지면 크기·위치·색이 조용히 폴백으로 대체된다 (REQ-814).
+  const ledger = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  for (const { cls } of [...Object.values(GRADE_VIEW), TRAIN_DONE_VIEW]) {
+    ok(ledger.includes(`.verdict-pop.${cls} `), `원장에 .verdict-pop.${cls} 규칙이 있다`);
+  }
 });
 
 suite('밸런스 데이터 스키마 (#45)', () => {

@@ -40,6 +40,9 @@ export const GRADE_VIEW = {
   struck: { cls: 'struck', mark: '擊' },
 };
 
+/** 수련 성공은 등급이 아니라 판정 오버레이의 자리·조판만 빌린다 (#46 · REQ-846). */
+export const TRAIN_DONE_VIEW = { cls: 'train-done', label: '성공' };
+
 /** 흔들림·히트스톱이 붙는 등급 (REQ-815) — 크기 축의 극단 2등급과 같은 집합이다. */
 export const EXTREME_GRADES = new Set(['crush', 'reversal']);
 

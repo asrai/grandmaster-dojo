@@ -5,16 +5,12 @@ import { styleById } from '../../core.mjs';
 import { arrowRow, composeScreen, el, topBand } from '../dom.mjs';
 import { attrMark, attrTone } from '../components/attr-mark.mjs';
 import { hanja } from '../components/hanja.mjs';
+import { TRAIN_DONE_VIEW } from '../theme.mjs';
 import { SFX } from '../audio.mjs';
 import { createSequenceInput } from '../sequence-input.mjs';
 import { ART_NAME, logEvent, rankOfStyle, trainHitsLeft } from '../session.mjs';
 import { createVerdictOverlay } from '../verdict-overlay.mjs';
 import { trainWiring } from '../wiring.mjs';
-
-// 수련에는 등급이 없다 — 등급 마크를 빌리면 성공이 「우세 판정」으로 오학습되므로 자리와 색만 빌린다 (#46).
-const TRAIN_VIEW = {
-  done: { cls: 'train-done', label: '성공' },
-};
 
 export function startTrain(ctx) {
   const { session, root, params } = ctx;
@@ -87,7 +83,7 @@ export function startTrain(ctx) {
         settled = true;
         SFX.fire();
         wiring.onFire();
-        verdict.show(TRAIN_VIEW.done);
+        verdict.show(TRAIN_DONE_VIEW);
         showProgress();
         ctx.refreshTop();
         rearm = setTimeout(arm, BALANCE.resolveMs);
