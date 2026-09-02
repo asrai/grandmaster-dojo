@@ -82,7 +82,7 @@ tags:
 - **REQ-741** *(Ubiquitous)*: The system shall **B-1 (1차 파견) 을 고정 상대** 로 유지한다 — 현행 B 구성 (α·γ + 절초 δ) · **1.01 REQ-506 하한 승계**: 1성 제자가 무지시 자동으로도 이긴다 (하네스 게이트). 랜덤화 금지 — 최악 조합 패배가 무패 보장을 깬다. 전수 직후의 통쾌함이 지연 없이 온다.
 - **REQ-742** *(Ubiquitous)*: The system shall **B-2 이후를 랜덤 임무** 로 한다 — `foe_set` 을 적 초식 아키타입 풀 (α·β·γ·δ) 에서 임무마다 랜덤 구성하고 (δ 포함 가능 — 역파의 제자 무대), 임무 도전자 성은 난이도 곡선 데이터로 상승시킨다. 눌러앉기 구조적 차단 (대련의 재대련 문제가 파견에는 발생하지 않는다) + 「지금 제자 성으로 보낼까」 가 매 파견의 판단. M1 은 골격 (풀 = 기존 아키타입 재사용, 임무 종류 다수·준보스/보스는 M2). *(depends: REQ-722, REQ-741)*
 - **REQ-743** *(Unwanted)*: If 제자의 **전 초식 최소 성** 이 B-2 권장 성 (시드 5) 미만이면, then the system shall 파견 버튼을 **비활성화** 한다 (하드 잠금 — 확인 팝업 아님: 팝업은 습관적으로 넘겨져 실패를 고를 경로를 남긴다) + 부족한 초식을 표시한다. (기준 = 최소 성, 역질문 확정 2026-09-02 — 뒤처진 초식이 잠금을 쥐어 수련 지정과 정합) *(depends: REQ-742, REQ-751)*
-- **REQ-744** *(Event-driven)*: When 파견이 종료되면, the system shall `dispatch{stage: B-1|B-2+, foe_set, disciple_ranks, locked_until, result}` 를 로깅한다 — B-1 무패 보장·B-2 잠금·랜덤 조합별 승패의 분리 식별. *(depends: REQ-742)*
+- **REQ-744** *(Event-driven)*: When 파견이 종료되면, the system shall `dispatch{stage: B-1|B-2+, foe_set, disciple_ranks, locked_until, result: win|loss|abort}` 를 로깅한다 — B-1 무패 보장·B-2 잠금·랜덤 조합별 승패의 분리 식별. 관전 중도 이탈은 `abort` 로 같은 스키마에 남기고(재진입은 새 판), 판독기는 이를 그대로 실으면서 승률류 분모에서는 뺀다 — 없던 판으로 두면 「파견 N회 중 M승」의 N 이 조용히 흔들린다. 한 판은 결과 항목을 하나만 내므로 종료 뒤의 이탈은 남기지 않는다. *(depends: REQ-742)*
 - **REQ-745** *(Ubiquitous)*: The system shall 파견 실행 규칙을 승계한다 — 항상 성공 (1.01 REQ-402) · 자동 선택 우세→상쇄→역파 회피 (REQ-403) · 선택적 지시·반짝임 (REQ-404·405) · 관전 기본 (REQ-407). 성 참조만 초식 단위로 바뀐다. *(depends: REQ-721)*
 
 ### ⑥ 제자 수련 — 병렬 방치 루프, 초식 지정
@@ -124,8 +124,8 @@ tags:
 
 - **REQ-791** *(Ubiquitous)*: The system shall 로그 스키마를 좌표 모델 변경에 재정합한다 — **소멸**: `mastery`·`initiate` (개념 소멸) / **뜻-바뀜 (schema 판별 필드 `sv: 2` 부여)**: `rank` (무공 `style_set`+`pts` → 초식 `actor, style, from, to, via`) · `unlock` (발화점 숙련 100% → 5성, `style, prev_style_rank`) · `transmit` (`style_set` → `art, styles: [{id, rank}], t_ms`) · `dispatch` (`challenger` → `stage, foe_set, disciple_ranks, locked_until, result`) · `slot` (`challenger` 필드 추가) / **신설**: `rank_wall`·`rematch`·`finish`·`disciple_train`·`cheat` (신설 이벤트는 `sv` 불요 — 구 스키마가 없다) / **불변**: `key`·`ignore`·`reset`·`narrow`·`fire`·`timeout`·`verdict`·`select`·`coins`·`cycle`·`session`. *(depends: REQ-701, REQ-705)*
 - **REQ-792** *(Ubiquitous)*: The system shall 지인 kill 판정 범위를 **B-1 종료까지** 로 긋는다 — (a) 자명성·(b) 손 숙달·(c) 전수 정서는 전부 B-1 이전에 발현하므로 판정 손실 0. B-2 이후·제자 방치 루프는 구현하되 판정하지 않고 로그로 셀프 관측 (재방문은 하루 이상 걸리는 관측 — 한 자리 판정 세션의 성질이 아니다). *(depends: REQ-741)*
-- **REQ-793** *(Ubiquitous)*: The system shall kill (b) 완주율을 재확정한다 — **산식 불변** (`fire(oneTap=false) / (fire(oneTap=false) + timeout) ≥ 0.5`), 원터치 제외 시점만 숙련 100% → **7성** 으로 이동. 판독 유효 조건으로 **최소 수동 창 표본** (시드 20창) 을 추가한다 — 모집단 축소로 인한 소표본 오판 방지. (역질문 확정 2026-09-02) *(depends: REQ-713, REQ-791)*
-- **REQ-794** *(Ubiquitous)*: The system shall 로그만으로 산출 가능하게 한다 — kill 4항 개인별 pass/fail (1.01 REQ-603 승계 + (b) 재확정 반영) + 신규 지표: 재대련 중단 지점 (`rematch.attempt_n` 분포) · A-4 슬롯 교체 발생 여부 (`slot{challenger}`) · 결정타 배분·의도 일치 (`finish{intended}`) · 8성 벽 충돌 횟수 (`rank_wall`) · 제자 수련 병렬성 (`disciple_train.master_activity`). *(depends: REQ-791)*
+- **REQ-793** *(Ubiquitous)*: The system shall kill (b) 완주율을 재확정한다 — **산식 불변** (`fire(oneTap=false) / (fire(oneTap=false) + timeout) ≥ 0.5`), 원터치 제외 시점만 숙련 100% → **7성** 으로 이동. 판독 유효 조건으로 **최소 수동 창 표본** (시드 20창) 을 추가한다 — 모집단 축소로 인한 소표본 오판 방지. **수련 창은 분모 밖**이다 — 무벌 재시도라 「놓침」의 뜻이 대련과 달라 두 모집단을 한 분수에 섞지 않으며, 수련 미완주는 로그가 아니라 낭독 채널로만 관측된다. (역질문 확정 2026-09-02) *(depends: REQ-713, REQ-791)*
+- **REQ-794** *(Ubiquitous)*: The system shall 로그만으로 산출 가능하게 한다 — kill 4항 개인별 pass/fail (1.01 REQ-603 승계 + (b) 재확정 반영. **(b) 의 모집단은 대련 창 한정** — 수련 창은 REQ-793 대로 분모 밖) + 신규 지표: 재대련 중단 지점 (`rematch.attempt_n` 분포) · A-4 슬롯 교체 발생 여부 (`slot{challenger}`) · 결정타 배분·의도 일치 (`finish{intended}`) · 8성 벽 충돌 횟수 (`rank_wall`) · 제자 수련 병렬성 (`disciple_train.master_activity`) · 파견 중도 이탈 수 (`dispatch{result: 'abort'}`, 승률 분모 밖). *(depends: REQ-791)*
 
 ### 통합 로그 스키마
 
@@ -140,7 +140,7 @@ tags:
 | `slot` | ④ | `action, styleId, challenger` | A-4 진입 시 슬롯을 실제로 바꿨는가 — 「진짜 판단」 발생 여부 | sv:2 (`challenger` 추가) |
 | `finish` | ① | `style, challenger, intended` | 결정타 배분 + 노린 초식과 일치했는가 | 신설 |
 | `disciple_train` | ⑥ | `style, from, to, elapsed_ms, master_activity` | 제자 수련 체감 시간 + 병렬성 검증 | 신설 |
-| `dispatch` | ⑤ | `stage: B-1\|B-2+, foe_set, disciple_ranks, locked_until, result` | B-1 무패 보장 · B-2 잠금 · 랜덤 조합별 승패 · **(d)** 종점 (B-1) | sv:2 |
+| `dispatch` | ⑤ | `stage: B-1\|B-2+, foe_set, disciple_ranks, locked_until, result: win\|loss\|abort` | B-1 무패 보장 · B-2 잠금 · 랜덤 조합별 승패 · 중도 이탈 · **(d)** 종점 (B-1) | sv:2 |
 | `transmit` | ⑦ | `art, styles: [{id, rank}], t_ms` | 전 초식 12성 도달 시각 + 전수 시점 초식별 성 · **(c)** 보조 | sv:2 |
 | `cheat` | ⑨ | `action, session_flagged: true` | 플래그 세션 = balance-log 회차 + kill (b)(c)(d) 표본 전부 제외 | 신설 |
 | (불변) `key`·`ignore`·`reset`·`narrow`·`fire`·`timeout`·`verdict`·`select`·`coins`·`cycle`·`session` | ①~⑥ (1.01) | 1.01 통합 로그 스키마 그대로 | (a)(b)·`ignore_rate` 등 1.01 정의 그대로 (단 (b) 는 REQ-793 재확정) | 불변 |

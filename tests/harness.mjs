@@ -29,7 +29,7 @@ import {
   simulateTraining, cheatSetStyleRank, boutLedger, enterTransmit, settleResult,
 } from '../src/ui/session.mjs';
 import {
-  composeHooks, dispatchWiring, duelWiring, trainWiring,
+  composeHooks, dispatchWiring, duelWiring, logDispatchAbort, logDispatchResult, trainWiring,
 } from '../src/ui/wiring.mjs';
 import {
   ATTR_VIEW, EXTREME_GRADES, GRADE_VIEW, REASON_VIEW, REVEAL_VIEW, SCREEN, TRAIN_DONE_VIEW, particle,
@@ -303,7 +303,9 @@ suite('통합 로그 스키마 (REQ-601)', () => {
   }
   deepEq(LOG_SCHEMA.key.enums.device, ['keyboard', 'button'], 'key.device 열거');
   deepEq(LOG_SCHEMA.session.enums.tester_role, ['self', 'friend', 'bot'], 'session.tester_role 열거');
-  deepEq(LOG_SCHEMA.dispatch.enums.result, ['win', 'loss'], 'dispatch.result 열거');
+  deepEq(LOG_SCHEMA.dispatch.enums.result, ['win', 'loss', 'abort'], 'dispatch.result 열거');
+  // 열거만 넓어졌고 필드 뜻은 그대로라 판별 토큰은 2 에 머문다 — 올리면 구 판본 로그가 통째로 위반이 된다.
+  eq(LOG_SCHEMA.dispatch.sv, 2, 'abort 확장은 좌표 모델을 바꾸지 않는다');
   // 신설 5종은 화면 좌표축에 키잉된다 (spec § 통합 로그 스키마) — 축을 잃으면 「어느 화면이
   // 아직 구 크롬을 쓰는가」가 판독 불능이 된다.
   deepEq(SCREEN_IDS, ['s1', 's2', 's3', 's4', 's5', 's6', 's7'], '화면 좌표축 7칸');
@@ -1533,6 +1535,51 @@ suite('헤드리스 파견 2단 · 제자 수련 셀프 관측 (REQ-742·744·75
   eq(typeof metrics.rank_wall, 'number', '8성 벽 충돌 횟수가 산출된다');
 });
 
+suite('파견 중도 이탈 = abort — 한 판 한 결과 · 승률 분모 밖 (REQ-744)', () => {
+  const run = runHeadlessCycle({ random: createSeededRandom(20260902) });
+  const { session } = run;
+  const stub = { arm() {}, tick: () => null };
+  const dispatchesOf = () => session.log.entries.filter((e) => e.event === 'dispatch');
+  const before = dispatchesOf().length;
+
+  // 구 판본 로그 = abort 가 하나도 없는 로그 — 계수는 0 이고 승률은 win/loss 만으로 선다.
+  const legacy = readout(exportPayload(session)).metrics;
+  eq(legacy.dispatch_aborts, 0, 'abort 없는 로그에서도 판독이 죽지 않고 계수는 0 이다');
+  eq(legacy.dispatch_win_rate, 1, '구 판본 승률은 win/loss 만으로 산출된다');
+
+  // ① 관전 중 이탈 — 판을 연 뒤 결과 없이 나가면 그 판의 결과 항목이 abort 로 남는다.
+  const mission = currentMission(session);
+  dispatchWiring(session, { disciple: stub });
+  ok(logDispatchAbort(session, { mission }), '진행 중인 판의 이탈은 결과 항목을 낸다');
+  eq(dispatchesOf().length, before + 1, '이탈 1건이 로그에 실린다');
+  eq(dispatchesOf().at(-1).result, 'abort', '이탈은 패배와 다른 결과값으로 갈린다');
+  eq(dispatchesOf().at(-1).stage, mission.label, '이탈도 그 임무의 조합·차수를 함께 진다');
+  deepEq(dispatchesOf().at(-1).foe_set, mission.foeSet, '이탈 항목의 조합은 실제로 싸운 그 임무의 것이다');
+
+  // ② 같은 판에서 한 번 더 나가도 분모는 늘지 않는다 — 한 판은 결과를 하나만 낸다.
+  eq(logDispatchAbort(session, { mission }), null, '같은 판의 두 번째 이탈은 아무것도 남기지 않는다');
+  eq(dispatchesOf().length, before + 1, '중복 이탈이 분모를 부풀리지 않는다');
+
+  // ③ 재진입 = 새 판 — 완주하면 win/loss 가 별도로 한 건 더 실린다.
+  dispatchWiring(session, { disciple: stub });
+  ok(logDispatchResult(session, { mission, win: true }), '재진입한 판은 자기 결과를 낸다');
+  eq(dispatchesOf().length, before + 2, '이탈 1건 + 재진입 완주 1건 = 2건');
+  deepEq(dispatchesOf().slice(-2).map((e) => e.result), ['abort', 'win'],
+    'dispatch_by_stage 에 이탈·완주가 일어난 순서로 실린다');
+
+  // ④ 판 종료 후 이탈 — 결과 화면으로 넘어간 판을 뒤늦게 떠나도 abort 는 나지 않는다.
+  eq(logDispatchAbort(session, { mission }), null, '이미 결과를 낸 판의 이탈은 abort 가 아니다');
+  eq(dispatchesOf().length, before + 2, '종료 후 이탈은 abort 0건이다');
+
+  const { metrics } = readout(exportPayload(session));
+  eq(metrics.dispatch_aborts, 1, '판독기가 이탈을 계수로 노출한다');
+  eq(metrics.dispatch_by_stage.length, before + 2, '이탈도 dispatch_by_stage 에 그대로 실린다');
+  const settled = metrics.dispatch_by_stage.filter((m) => m.result !== 'abort');
+  eq(metrics.dispatch_win_rate,
+    settled.filter((m) => m.result === 'win').length / settled.length,
+    '승률의 분모는 win+loss 다 — 이탈은 빠진다');
+});
+
 suite('kill (b) 판독 유효 조건 — 표본 하한 · 치트 제외 (REQ-782·793)', () => {
   const at = (event, fields) => ({ event, [TIME_FIELD]: 0, ...fields });
   const duelCycle = (fires) => ({
@@ -2261,7 +2308,7 @@ suite('계측 배선 공유 (#11)', () => {
   const CONSUMERS = {
     'src/ui/screens/train.mjs': ['trainWiring'],
     'src/ui/screens/duel.mjs': ['composeHooks', 'duelWiring'],
-    'src/ui/screens/dispatch.mjs': ['composeHooks', 'dispatchWiring', 'logDispatchResult'],
+    'src/ui/screens/dispatch.mjs': ['composeHooks', 'dispatchWiring', 'logDispatchAbort', 'logDispatchResult'],
     'src/bot.mjs': ['composeHooks', 'dispatchWiring', 'duelWiring', 'logDispatchResult', 'trainWiring'],
   };
   // `log*`/`record*` 규약으로 도출한 계측 함수 — 화면이 이 이름을 직접 쥐면 배선이 두 벌이 된다.

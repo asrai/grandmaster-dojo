@@ -5,8 +5,8 @@
 
 import { responseWindowMs, styleById } from '../core.mjs';
 import {
-  beginBout, beginDuel, beginTrainVisit, equippedStyles, logEvent, logTimeout, missionLockRankOf,
-  recordDispatchVerdict, recordDuelVerdict, recordEffectiveSuccess,
+  beginBout, beginDuel, beginTrainVisit, claimBoutResult, equippedStyles, logEvent, logTimeout,
+  missionLockRankOf, recordDispatchVerdict, recordDuelVerdict, recordEffectiveSuccess,
 } from './session.mjs';
 
 /**
@@ -51,12 +51,26 @@ export function trainWiring(session, { styleId, input }) {
  * @param {object} p.mission 실제로 싸운 그 임무 — 여기서 다시 도출하면 싸운 적 없는 조합이 기록될 수 있다.
  */
 export function logDispatchResult(session, { mission, win }) {
+  return logDispatchOutcome(session, mission, win ? 'win' : 'loss');
+}
+
+/**
+ * 파견 관전 중도 이탈 (REQ-744) — 그 초까지의 판정·성 적립은 이미 로그에 남으므로 결과 항목만
+ * 보완한다. 이탈과 패배가 결과값으로 갈려야 승률의 분자가 흔들리지 않고, 재진입은 새 판이다.
+ */
+export function logDispatchAbort(session, { mission }) {
+  return logDispatchOutcome(session, mission, 'abort');
+}
+
+/** 판이 아직 결과를 내지 않았을 때만 남긴다 — 이미 냈으면 `null`, 그 자리가 분모를 부풀리는 곳이다. */
+function logDispatchOutcome(session, mission, result) {
+  if (!claimBoutResult(session)) return null;
   return logEvent(session, 'dispatch', {
     stage: mission.label,
     foe_set: mission.foeSet.slice(),
     disciple_ranks: mission.ranks,
     locked_until: missionLockRankOf(session),
-    result: win ? 'win' : 'loss',
+    result,
   });
 }
 
