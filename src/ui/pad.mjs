@@ -73,7 +73,8 @@ export function createPad() {
 
   function reset() {
     if (!accepting() || locked()) return;
-    active.input.reset();
+    // 발동 직후의 창은 열려 있어도 입력기가 잠겨 있다 — 그 누름에 소리를 내면 손과 화면이 갈린다.
+    if (!active.input.reset()) return;
     play(CUE.RESET);
     render();
   }

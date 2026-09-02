@@ -258,8 +258,9 @@ export function startDispatch(ctx) {
       },
       onVerdict(view, ranked) {
         renderHp(view);
-        verdict.showGrade(view.verdict.grade);
-        playVerdict(view.verdict.grade);
+        // 소리를 `onShow` 에 싣는 것이 대련과 같은 계약이다 — 지금은 이 화면에 확정 연출 대기가
+        // 없어 즉시 호출과 동치이지만, 대기가 생기는 순간 관전만 소리가 판정보다 앞선다.
+        verdict.showGrade(view.verdict.grade, { onShow: () => playVerdict(view.verdict.grade) });
         if (ranked) play(CUE.RANK_UP);
       },
       onEnd(view) {

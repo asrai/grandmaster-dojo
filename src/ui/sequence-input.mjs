@@ -97,16 +97,19 @@ export function createSequenceInput({
       return { accepted: true, fired };
     },
 
+    /** @returns {boolean} 실제로 되돌렸는지 — 발동 뒤 잠긴 창의 누름은 손도 로그도 소리도 없다 */
     reset() {
-      if (locked) return;
+      if (locked) return false;
       buffer = [];
       ignores = 0;
       hintFrom = now();
       candidates = matching(buffer);
       undos += 1;
       log('reset', {});
-      // 되돌리기를 십자 밖 별개 그룹으로 뺀 것의 효과는 화면·초별 누적으로만 읽힌다 (REQ-829).
+      // `count` 는 그 화면에 머무는 동안의 **누적**이고 `exchange_no` 는 그 시점의 초다 — 창마다
+      // 되돌아가면 화면 단위 효과(REQ-829)를 볼 수 없어 `arm()` 이 이 수를 비우지 않는다.
       log('undo_used', { screen, count: undos, exchange_no: exchangeNo() });
+      return true;
     },
 
     /** 원터치 (REQ-713) — 7성 초식만, 잔여 시퀀스를 생략하고 그 자리에서 발동한다. */

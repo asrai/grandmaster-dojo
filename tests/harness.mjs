@@ -1,7 +1,7 @@
 // 헤드리스 회귀 하네스 — 의존성 0, `node tests/harness.mjs` 로 실행한다.
 // 기대값은 BALANCE 키에서 직접 산출하므로 파라미터 개명·판정표 변경은 즉시 red 다.
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import {
   ART_SETS, ATTRS, BALANCE, BALANCE_REV, CHALLENGERS, DISCIPLE, FOE_STYLES, STYLES,
   validateBalance, validateStyleContent, valueDigest,
@@ -2808,6 +2808,16 @@ suite('사운드 매핑 (REQ-920·924)', () => {
   for (const [cue, id] of Object.entries(BALANCE.audio)) {
     if (cue === 'verdict') continue;
     ok(/^(sfx|bgm)_[a-z0-9_]+$/.test(id), `audio.${cue} 는 사운드 id 꼴이다 (${id})`);
+  }
+  // 꼴이 맞아도 파일이 없으면 그 사건은 콘솔 경고 하나 뒤 **영구 무음**이다 — 서체 커버리지
+  // 게이트와 같은 축으로, 납품 누락·id 오타를 출하 전에 여기서 문다.
+  const soundIds = [...new Set([
+    ...Object.entries(BALANCE.audio).filter(([cue]) => cue !== 'verdict').map(([, id]) => id),
+    ...Object.values(BALANCE.audio.verdict),
+  ])].sort();
+  eq(soundIds.length, 7, '납품 사운드 7종 (sfx 6 + bgm 1)');
+  for (const id of soundIds) {
+    ok(existsSync(new URL(`../assets/audio/${id}.ogg`, import.meta.url)), `assets/audio/${id}.ogg 실재`);
   }
 
 });

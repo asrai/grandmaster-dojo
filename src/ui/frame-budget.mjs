@@ -6,6 +6,12 @@
 const DROP_MS = 25;
 
 /**
+ * 장면별 표본 상한 — 한 화면에 오래 머물면 표본이 무한히 자라고, 관측자가 재려던 프레임 안에서
+ * 그만큼 커진다. 오래된 것부터 버려도 p95 의 뜻이 「그 화면에서 최근 겪은 최악」으로 남는다.
+ */
+const CAP = 600;
+
+/**
  * @param {object} [p]
  * @param {number} [p.minSamples] p95 를 말할 수 있는 최소 표본 — 이보다 적으면 순위 통계가
  *   한두 프레임의 튐을 그대로 대표값으로 내놓는다
@@ -29,7 +35,9 @@ export function createFrameBudget({ minSamples = 20 } = {}) {
     sample(scene, deltaMs) {
       // 배경 탭 복귀·첫 프레임은 간격이 초 단위로 튄다 — 렌더 비용이 아니라 정지 시간이다.
       if (!(deltaMs > 0) || deltaMs > 1000) return;
-      bucket(scene).push(deltaMs);
+      const list = bucket(scene);
+      list.push(deltaMs);
+      if (list.length > CAP) list.shift();
     },
 
     /** 표본이 쌓인 장면 — 재지 않은 장면을 0 으로 보고하면 「빠르다」는 거짓 신호가 된다. */
@@ -60,8 +68,11 @@ export function createFrameBudget({ minSamples = 20 } = {}) {
     fps(scene, sampleWindow = 60) {
       const list = scenes.get(scene) ?? [];
       if (list.length < minSamples) return null;
-      const recent = list.slice(-sampleWindow);
-      const mean = recent.reduce((sum, ms) => sum + ms, 0) / recent.length;
+      // 매 프레임 불리는 자리라 부분 배열을 만들지 않는다 — 관측이 관측 대상을 먹는다.
+      const from = Math.max(0, list.length - sampleWindow);
+      let sum = 0;
+      for (let i = from; i < list.length; i += 1) sum += list[i];
+      const mean = sum / (list.length - from);
       return mean > 0 ? 1000 / mean : null;
     },
 

@@ -211,7 +211,8 @@ export function initAudio({ log, now }) {
   for (const id of ids) {
     // 한 파일이 실패해도 나머지는 난다 — 소리 하나 때문에 게임이 멈추는 편이 더 나쁘다.
     fetch(srcOf(id))
-      .then((res) => res.arrayBuffer())
+      // 404 의 본문을 그대로 디코드에 넘기면 실패 문면이 「깨진 오디오」로 바뀌어 원인을 가린다.
+      .then((res) => (res.ok ? res.arrayBuffer() : Promise.reject(new Error(`${res.status} ${srcOf(id)}`))))
       .then((raw) => ac.decodeAudioData(raw))
       .then((buffer) => {
         state.buffers.set(id, buffer);
