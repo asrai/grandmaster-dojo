@@ -147,6 +147,47 @@ export function isFirstEncounter(priorWins) {
 }
 
 /**
+ * 도전자가 세우는 초식과 그 절초의 파해 대상 (REQ-884) — 예고·브리핑이 둘을 **이름으로** 읽으므로
+ * 결손은 화면에서 익명 TypeError 로만 드러난다. `assertCounterIntegrity` 는 `counters` 가 있는
+ * 초식만 검사하므로 「절초인데 파해 대상이 없다」는 그 그물을 그대로 빠져나간다.
+ */
+export function assertChallengerStyles(challengers) {
+  for (const c of challengers) {
+    for (const id of c.styles) {
+      if (!foeStyleById(id)) throw new Error(`도전자 미존재 초식: ${c.id} → ${id}`);
+    }
+    const finisher = finisherOf(c);
+    if (finisher && !styleById(finisher.counters)) {
+      throw new Error(`절초의 파해 대상 미존재: ${c.id} → ${finisher.id}`);
+    }
+  }
+  return true;
+}
+
+/**
+ * 절초 공개의 3층 (REQ-882~884·894) — 화면이 이 이름을 참조하고 문구표(`theme.mjs` 의
+ * `REVEAL_VIEW`)가 층마다 한 줄을 갖는다. 층이 늘면 그 표의 빈자리가 부팅 때 드러난다.
+ * 「이름」과 「파해」가 한 층에 함께 도착하는 것이 REQ-884 의 결정이라 층은 셋이다.
+ */
+export const REVEAL_TIER = {
+  NONE: 'none',        /* 절초를 쓰지 않는 도전자 — 가르칠 답이 없다 */
+  RUMOR: 'rumor',      /* 첫 대면 — 존재만 소문으로 (REQ-883) */
+  COUNTER: 'counter',  /* 재대련 — 이름과 파해 대상 (REQ-884) */
+};
+
+/**
+ * 그 대면에서 절초를 어디까지 공개하는가 (REQ-882~884) — 홈 요약과 도전자 선택 화면이 같은
+ * 층을 읽어야 예고가 함정이 되지 않는다 (REQ-835).
+ * @param {object} challenger
+ * @param {boolean} firstEncounter `isFirstEncounter` 의 결과 — 회차 0 이 곧 첫 대면이다 (REQ-894)
+ */
+export function finisherRevealTier(challenger, firstEncounter) {
+  if (typeof firstEncounter !== 'boolean') throw new Error(`첫 대면 여부가 불리언이 아니다: ${firstEncounter}`);
+  if (!finisherOf(challenger)) return REVEAL_TIER.NONE;
+  return firstEncounter ? REVEAL_TIER.RUMOR : REVEAL_TIER.COUNTER;
+}
+
+/**
  * 역파 피격 감쇠 계수 (REQ-771) — 내 초식이 상대보다 여문 만큼 덜 아프되 관통 하한 아래로는
  * 내려가지 않는다. 하한의 목적은 「절초는 무서워야 한다」 하나이고 난이도 손잡이가 아니다.
  */
@@ -599,5 +640,6 @@ export function selectDiscipleStyle({ styles, foeStyle = null, rankOf: rankFn = 
 const ALL_STYLES = [...STYLES, ...FOE_STYLES];
 assertPrefixFree(STYLES);
 assertCounterIntegrity(ALL_STYLES);
+assertChallengerStyles(CHALLENGERS);
 assertGugyeol(STYLES);
 for (const art of ART_SETS) assertAttrCoverage(artStyles(art.id));

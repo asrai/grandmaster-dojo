@@ -1,152 +1,21 @@
-// 사부 대련 (REQ-201·206~211·708·731~736) — 유저가 시퀀스를 치는 유일한 실전 화면과 그 예고.
+// 사부 대련 (REQ-201·206~211·708·731~736) — 유저가 시퀀스를 치는 유일한 실전 화면.
 // 화면은 상단 띠 50 / 아레나 440 / 입력부 362 의 3단 고정이고, 나머지 4화면이 그 좌표를
 // 상속하므로 아레나는 `arena.mjs` 가, 하단부는 `pad.mjs` 가 각자 소유한다 (REQ-820·850).
+// 대련 **전**의 준비(도전자 고르기·절초 공개·슬롯 교체)는 S7 `select.mjs` 의 몫이다 (REQ-880).
 
-import { BALANCE, STYLES } from '../../balance.mjs';
-import { clear, composeScreen, el, topBand } from '../dom.mjs';
-import { attrLabel, winAttrOf } from '../theme.mjs';
-import { attrMark, attrTone } from '../components/attr-mark.mjs';
-import { hanja } from '../components/hanja.mjs';
+import { BALANCE } from '../../balance.mjs';
+import { composeScreen, el } from '../dom.mjs';
 import { SFX } from '../audio.mjs';
-import { finisherOf, foeStyleById, styleById } from '../../core.mjs';
+import { styleById } from '../../core.mjs';
 import { SPOT, createArena } from '../arena.mjs';
 import { stageBand } from '../band.mjs';
 import { PHASE, createMatch } from '../match.mjs';
 import { createSequenceInput } from '../sequence-input.mjs';
 import {
-  ART_NAME, canEquip, challengerOfStage, duelAttemptOf, equip, equippedStyles,
-  isFirstEncounterOf, logEvent, rankOfStyle, rematchBonusOf,
+  challengerOfStage, equippedStyles, logEvent, rankOfStyle,
 } from '../session.mjs';
 import { createVerdictOverlay } from '../verdict-overlay.mjs';
 import { composeHooks, duelWiring, logDuelStart } from '../wiring.mjs';
-
-/**
- * 절초 공개 (REQ-732 개정 · REQ-883·894) — 역파 벌칙을 가진 유일한 초식이라 그것만 예외로
- * 답을 가르치되, 공개 수위를 대면 이력이 가른다. 첫 대면이 존재만 아는 것은 싸워 본 적 없는
- * 상대의 초식을 아는 것이 성립하지 않기 때문이고, 그렇다고 전면 비공개로 두지 않는 것은
- * 그러면 첫 대면이 반드시 역파를 맞고 시작해 「갑자기 어려워졌다」로 읽히기 때문이다.
- */
-function finisherNotice(session, finisher, firstEncounter) {
-  if (firstEncounter) {
-    return el('div', { class: 'card' }, [
-      el('p', {}, [el('b', { text: '이 상대는 절초를 쓴다고 한다' })]),
-      el('p', { class: 'dim', text: '이름도 파해도 알려진 바 없다 — 한 번 이겨 두면 다음 대면에 드러난다.' }),
-    ]);
-  }
-  const answer = styleById(finisher.counters);
-  const equipped = session.slots.includes(answer.id);
-  return el('div', { class: 'card' }, [
-    el('p', {}, [
-      el('b', { text: `절초 ${finisher.name}` }),
-      hanja(finisher.hanja),
-      el('span', { class: 'dim', text: ` · ${attrLabel(finisher.attr)} · ${finisher.len}수` }),
-    ]),
-    el('p', {}, [
-      el('span', { class: 'dim', text: '파해 — ' }),
-      el('b', { text: answer.name }),
-      el('span', { class: 'tag', text: equipped ? '장착됨' : '미장착' }),
-    ]),
-    el('p', { class: 'dim', text: '그 초식을 내지 않으면 역파는 일어나지 않는다. 예고된 초에 파해를 내면 완파다.' }),
-  ]);
-}
-
-/**
- * 예고 순서대로의 도전자 초식 — 어떤 색이 몇 번 오는지가 슬롯 판단의 입력이다. 첫 대면의
- * 절초만 「미상」으로 접는다 (REQ-883) — 같은 화면에서 소문 고지와 이름이 함께 뜨면 소문 층이
- * 무효가 되고, 나머지 초식까지 접으면 첫 대면에 슬롯 판단의 입력 자체가 사라진다.
- */
-const foeLineup = (challenger, firstEncounter) => el('div', { class: 'icons' }, challenger.styles.map((id) => {
-  const foe = foeStyleById(id);
-  if (firstEncounter && foe.finisher) {
-    return el('div', { class: 'cand', style: '--attr:var(--line)' }, [
-      el('span', { class: 'cand-name', text: '미상' }),
-      el('span', { class: 'tag', text: '절초' }),
-    ]);
-  }
-  return el('div', { class: 'cand', style: `--attr:${attrTone(foe.attr)}` }, [
-    attrMark(foe.attr),
-    el('span', { class: 'cand-name', text: foe.name }),
-    el('span', { class: 'tag', text: `${attrLabel(foe.attr)} · ${foe.len}수` }),
-    el('span', { class: 'tag', text: `이기는 색 ${attrLabel(winAttrOf(foe.attr))}` }),
-  ]);
-}));
-
-/**
- * 도전자 예고 화면 (REQ-504·732·736) — 판단의 순간과 조작의 장소를 붙인다. 슬롯 교체를 도장으로
- * 돌려보내면 A-4 의 슬롯 압박이 판단이 아니라 왕복 잡무가 된다 (도장 동선은 그대로 남는다).
- */
-export function renderDuelPreview(ctx) {
-  const { session, root, params } = ctx;
-  const challenger = challengerOfStage(params.stage);
-  const finisher = finisherOf(challenger);
-  const attempt = duelAttemptOf(session, challenger.id);
-  const bonus = rematchBonusOf(session, challenger.id);
-  // 대면 이력을 한 자리에서 읽는다 — 안내 문구와 절초 공개가 각자 파생하면 한쪽만 바뀌어도 화면이 모순된다.
-  const firstEncounter = isFirstEncounterOf(session, challenger.id);
-
-  // 슬롯을 먼저 고르고 후보를 고른다 — 두 번의 탭이 곧 「무엇을 빼고 무엇을 넣는가」다.
-  let picked = session.slots.findIndex((id) => id === null);
-  if (picked < 0) picked = 0;
-
-  const slotsEl = el('div', { class: 'icons' });
-  const benchEl = el('div', { class: 'icons' });
-
-  function renderSlots() {
-    clear(slotsEl);
-    clear(benchEl);
-    session.slots.forEach((styleId, i) => {
-      const style = styleId ? styleById(styleId) : null;
-      const node = el('button', {
-        class: `cand${i === picked ? ' picked' : ''}`,
-        style: `--attr:${style ? attrTone(style.attr) : 'var(--line)'}`,
-        onclick: () => { picked = i; renderSlots(); },
-      }, [
-        style ? attrMark(style.attr) : null,
-        el('span', { class: 'cand-name', text: style ? style.name : '빈 슬롯' }),
-        el('span', { class: 'tag', text: `슬롯 ${i + 1}` }),
-      ]);
-      slotsEl.appendChild(node);
-    });
-    const benched = STYLES.filter((s) => session.progress.styles[s.id].learned
-      && !session.slots.includes(s.id) && canEquip(session, s.id));
-    if (!benched.length) {
-      benchEl.appendChild(el('span', { class: 'dim', text: '교체할 초식이 없다 — 장착 성에 닿은 초식이 전부 슬롯에 있다.' }));
-      return;
-    }
-    for (const style of benched) {
-      benchEl.appendChild(el('button', {
-        class: 'cand', style: `--attr:${attrTone(style.attr)}`,
-        onclick: () => {
-          equip(session, style.id, picked, { challenger: challenger.id });
-          renderSlots();
-        },
-      }, [
-        attrMark(style.attr),
-        el('span', { class: 'cand-name', text: style.name }),
-        el('span', { class: 'tag', text: `${rankOfStyle(session, style.id)}성` }),
-      ]));
-    }
-  }
-  renderSlots();
-
-  composeScreen(ctx, {
-    top: topBand(session, ART_NAME, { onLeave: () => ctx.go('dojo') }),
-    body: el('section', { class: 'card' }, [
-    el('h2', { text: `도전자 예고 — ${challenger.name} ${challenger.stage}차` }),
-    firstEncounter
-      ? el('p', { class: 'dim' }, [hanja(challenger.hanja), el('span', { text: ' · 아직 이겨 본 적 없는 상대다.' })])
-      : el('p', { class: 'dim', text: `${attempt}번째 대면 — 상대가 성 +${bonus} 만큼 여물었고 재대련 승리에 재화는 없다.` }),
-    foeLineup(challenger, firstEncounter),
-    finisher ? finisherNotice(session, finisher, firstEncounter) : null,
-    el('h2', { text: '실전 슬롯' }),
-    el('p', { class: 'dim', text: '슬롯을 고르고 아래 초식을 누르면 그 자리에서 바뀐다.' }),
-    slotsEl,
-    benchEl,
-    el('div', { class: 'actions' }, [
-      el('button', { class: 'primary', text: '대련 시작', onclick: () => ctx.go('duel', { stage: params.stage }) }),
-    ]),
-  ]) });
-}
 
 export function startDuel(ctx) {
   const { session, params } = ctx;
@@ -167,7 +36,7 @@ export function startDuel(ctx) {
   const banner = el('div', { class: 'toast' });
   let exchanges = 0;
   // 대련 중 상황은 「누구와 몇 초째인가」뿐이라 띠가 그 둘만 진다 — 재화·접근성 토글은
-  // 대련 밖(도장·예고)의 자리다 (REQ-820·893·897).
+  // 대련 밖(도장·도전자 선택)의 자리다 (REQ-820·893·897).
   const band = stageBand({
     onLeave: () => ctx.go('dojo'),
     name: challenger.name,

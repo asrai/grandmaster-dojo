@@ -1,4 +1,4 @@
-// 결과 화면 (REQ-209·406·708·734) — 패배는 무손실이고, 재도전은 같은 차수를 예고 화면부터 다시 연다.
+// 결과 화면 (REQ-209·406·708·734) — 패배는 무손실이고, 재도전은 같은 차수를 도전자 선택 화면부터 다시 연다.
 
 import { styleById } from '../../core.mjs';
 import { composeScreen, el } from '../dom.mjs';
@@ -47,8 +47,8 @@ export function renderResult(ctx) {
           duel && !params.win ? el('button', {
             class: 'primary', text: '재도전',
             // 진 자리에서 바로 같은 슬롯으로 되돌아가면 절초 공개·슬롯 교체(REQ-732·736)가 가장 필요한
-            // 순간에만 빠진다 — 예고를 거치는 것이 그 학습 계단의 자리다.
-            onclick: () => ctx.go('duelPreview', { stage: params.stage }),
+            // 순간에만 빠진다 — 선택 화면을 거치는 것이 그 학습 계단의 자리다.
+            onclick: () => ctx.go('select', { stage: params.stage }),
           }) : null,
           el('button', { class: 'primary', text: '도장으로', onclick: () => ctx.go('dojo') }),
         ]),

@@ -6,7 +6,8 @@ import { createLogBuffer, validate } from '../log.mjs';
 import {
   accrueDiscipleStyle, applyDiscipleTraining, applyEffectiveSuccess, applyOutcome, artStyles,
   canEquipRank, canTransmit, createDisciple, createProgress, discipleStyleRank, discipleStyles,
-  discipleTrainMsPerRank, foeRankOf, isEffectiveSuccess, isFirstEncounter, isMissionUnlocked,
+  discipleTrainMsPerRank, finisherRevealTier, foeRankOf, isEffectiveSuccess, isFirstEncounter,
+  isMissionUnlocked,
   ladderBandAt, learn,
   missionFoeRank, missionFoeSet, missionLockRank, missionShortfall, rematchFoeRank, setStyleRank,
   styleById, styleRank, trainHitsToNext, transmit,
@@ -176,16 +177,41 @@ export const isFirstEncounterOf = (session, challengerId) =>
 
 export const isRematch = (session, challengerId) => !isFirstEncounterOf(session, challengerId);
 
-/** 그 대면의 도전자 성 — 재대련 강화가 실린 값이고 대련 루프·예고 화면이 같은 자리를 읽는다. */
+/** 그 대면의 도전자 성 — 재대련 강화가 실린 값이고 대련 루프·도전자 선택 화면이 같은 자리를 읽는다. */
 export const duelFoeRank = (session, challengerId) =>
   rematchFoeRank(foeRankOf(challengerId), duelWinsOf(session, challengerId));
 
-/** 그 대면에 실린 강화량 — 예고 화면과 도장 재대련 카드가 같은 수를 말하게 하는 한 자리. */
+/** 그 대면에 실린 강화량 — 도전자 선택 화면과 홈 요약이 같은 수를 말하게 하는 한 자리. */
 export const rematchBonusOf = (session, challengerId) =>
   duelFoeRank(session, challengerId) - foeRankOf(challengerId);
 
-/** 이미 이긴 도전자 목록 — 도장 재대련 항목의 원본 (REQ-734). */
+/** 이미 이긴 도전자 목록 (REQ-734). */
 export const beatenChallengers = (session) => DUEL_STAGES.filter((c) => isRematch(session, c.id));
+
+/**
+ * 한 도전자를 화면이 읽는 형태로 (REQ-835) — 홈 요약과 도전자 선택 화면이 **이 함수 하나**를
+ * 지난다. 두 화면이 각자 파생하면 「같은 공개 층」이 두 구현으로 갈려 선택 화면이 함정이 된다.
+ */
+export function challengerEntry(session, challenger) {
+  const firstEncounter = isFirstEncounterOf(session, challenger.id);
+  return {
+    challenger,
+    firstEncounter,
+    attempt: duelAttemptOf(session, challenger.id),
+    bonus: rematchBonusOf(session, challenger.id),
+    tier: finisherRevealTier(challenger, firstEncounter),
+  };
+}
+
+/**
+ * 지금 칠 수 있는 도전자 전부 (REQ-834) — 해금된 차수까지이고 순서가 곧 난이도 신호다
+ * (REQ-887: 도전자 성은 숫자로 뜨지 않으므로 목록 순서와 절초 유무만 남는다).
+ */
+export const challengerRoster = (session) =>
+  DUEL_STAGES.slice(0, session.stage).map((c) => challengerEntry(session, c));
+
+/** 홈이 요약 1건으로 세우는 다음 상대 (REQ-834) — 가장 최근에 열린 차수다. */
+export const nextChallengerEntry = (session) => challengerEntry(session, challengerOfStage(session.stage));
 
 /**
  * 대련 진입 (REQ-734) — 그 대면의 성을 확정하고 재대련이면 그것을 로그에 남긴다.
@@ -202,8 +228,8 @@ export function beginDuel(session, challengerId) {
 }
 
 /**
- * @param {?string} [challenger] 그 교체가 일어난 도전자 예고 화면의 도전자 — 「A-4 를 앞두고
- *   진짜 슬롯 판단을 했는가」가 REQ-736 의 지표라 장소가 곧 그 판별자다. null 은 예고 화면 **밖**
+ * @param {?string} [challenger] 그 교체가 일어난 **도전자 선택 화면**(S7)의 도전자 — 「A-4 를 앞두고
+ *   진짜 슬롯 판단을 했는가」가 REQ-736 의 지표라 장소가 곧 그 판별자다. null 은 그 화면 **밖**
  *   전부다 (도장 교체 · 적립이 부르는 `autoEquip`), 그 둘을 다시 가르는 것은 이 필드의 몫이 아니다.
  */
 export function equip(session, styleId, slotIdx, { challenger = null } = {}) {

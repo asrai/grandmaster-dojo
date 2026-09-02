@@ -3,7 +3,7 @@
 // 시각 토큰 원장은 `index.html` 의 `:root` 한 곳이고 이 모듈은 그 이름을 JS 쪽에 내주는 접근 계층이다.
 
 import { ATTRS, BALANCE } from '../balance.mjs';
-import { SELECT_REASON } from '../core.mjs';
+import { REVEAL_TIER, SELECT_REASON } from '../core.mjs';
 
 /**
  * 색 원장 C1~C9 의 이름 (REQ-810) — 팔레트 색을 JS 에서 부르는 자리다. 역할 토큰(`--line`·`--dim`
@@ -57,6 +57,51 @@ export const REASON_VIEW = {
 // 계열이 늘었는데 문구가 없으면 그 초의 판단이 조용히 빈칸으로 뜬다 — 부팅 때 문다 (REQ-853).
 for (const reason of Object.values(SELECT_REASON)) {
   if (!REASON_VIEW[reason]) throw new Error(`선택 이유 문구가 없다: ${reason}`);
+}
+
+/**
+ * 절초 공개 3층의 화면 문구 (REQ-882~884) — 층이 늘었는데 문구가 없으면 그 대면의 브리핑이
+ * 조용히 빈칸으로 뜨므로, `REASON_VIEW` 와 같은 형태로 아래에서 부팅 때 문다.
+ * 인자는 그 대면에서 실제로 아는 것만 받는다 — `RUMOR` 문구가 `finisher` 를 쓰면 소문 층이
+ * 이름을 쥔 채 렌더되고, 그 순간 층 구분이 문구 하나로 무너진다.
+ */
+export const REVEAL_VIEW = {
+  [REVEAL_TIER.NONE]: {
+    cls: 'none',
+    title: () => '절초 없음',
+    note: () => '이 도전자는 답을 가르칠 것이 없다',
+  },
+  [REVEAL_TIER.RUMOR]: {
+    cls: 'rumor',
+    title: () => '이 상대는 절초를 쓴다고 한다',
+    note: () => '이름도 파해도 알려진 바 없다 — 한 번 이겨 두면 다음 대면에 드러난다',
+  },
+  [REVEAL_TIER.COUNTER]: {
+    cls: 'tell-open',
+    title: ({ finisher }) => `절초 ${finisher.name}`,
+    note: ({ answer }) => `파해는 ${answer.name} · 그 초식을 내지 않으면 역파는 일어나지 않는다`,
+  },
+};
+
+// 층을 복사해 늘리다 한 칸만 빠뜨리면 부팅이 아니라 그 대면의 렌더에서 죽는다 — 형까지 문다 (REQ-882·884).
+for (const tier of Object.values(REVEAL_TIER)) {
+  const view = REVEAL_VIEW[tier];
+  if (!view || typeof view.title !== 'function' || typeof view.note !== 'function') {
+    throw new Error(`절초 공개 층 문구가 없다: ${tier}`);
+  }
+}
+
+/**
+ * 받침 유무로 갈리는 조사 (REQ-830) — 초식·도전자 이름이 데이터라 문구에 조사를 박을 수 없고,
+ * 박으면 이름을 하나 늘릴 때마다 「파운현월가 열린다」가 된다.
+ * @param {string} word 조사가 붙는 말
+ * @param {string} after 받침 있는 말 뒤에 오는 형태 (`이`·`은`·`을`)
+ * @param {string} bare  받침 없는 말 뒤에 오는 형태 (`가`·`는`·`를`)
+ */
+export function particle(word, after, bare) {
+  const last = word.codePointAt(word.length - 1);
+  const hangul = last >= 0xAC00 && last <= 0xD7A3;
+  return hangul && (last - 0xAC00) % 28 !== 0 ? after : bare;
 }
 
 /** 흔들림·히트스톱이 붙는 등급 (REQ-815) — 크기 축의 극단 2등급과 같은 집합이다. */

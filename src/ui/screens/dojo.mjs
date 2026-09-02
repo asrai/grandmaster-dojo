@@ -1,24 +1,28 @@
-// 도장 (REQ-707·711·713·715) — 배우기 · 수련 · 장착 · 전수 · 대련/파견 진입.
+// 도장 (REQ-707·711·713·715·830~837) — 배우기 · 수련 · 장착 · 전수 · 대련/파견 진입.
+// 홈은 「지금 무엇을 할 수 있나」의 요약이라 다음 상대 1건만 지고, 도전자 전체 목록은 그 행동의
+// 진입 화면인 S7 `select.mjs` 가 진다 (REQ-834). 두 화면은 `challengerEntry` 한 자리를 읽는다.
 
 import { BALANCE, STYLES } from '../../balance.mjs';
 import {
   artById, canLearn, discipleStyleRank, discipleStyles, ladderBandAt, styleById, trainAccrualCap,
 } from '../../core.mjs';
 import { arrowRow, clear, composeScreen, el, tipAnchor, topBand } from '../dom.mjs';
+import { particle } from '../theme.mjs';
 import { attrMark, attrTone } from '../components/attr-mark.mjs';
 import { hanja } from '../components/hanja.mjs';
+import { foeChips, revealNotice } from '../components/foe-view.mjs';
 import { rankStair } from '../components/rank-stair.mjs';
 import {
-  ART_ID, ART_NAME, DISPATCH_CHALLENGER, beatenChallengers, canDiscipleTrain, canDispatch,
-  canEquip, canTransmitNow, challengerOfStage, consumeTooltip, designateDiscipleTraining,
-  discipleTrainProgress, duelAttemptOf, equip, learnStyle, missionLockRankOf, pickTooltip,
-  rematchBonusOf, settleDiscipleTraining, simulateTraining, unequip,
+  ART_ID, ART_NAME, DISPATCH_CHALLENGER, canDiscipleTrain, canDispatch, canEquip, canTransmitNow,
+  challengerOfStage, consumeTooltip, designateDiscipleTraining, discipleTrainProgress, equip,
+  learnStyle, missionLockRankOf, missionShortfallOf, nextChallengerEntry, pickTooltip,
+  settleDiscipleTraining, simulateTraining, unequip,
 } from '../session.mjs';
 
 const rankLabel = (rank) => (rank >= BALANCE.rankMax ? `${rank}성 · 완벽히 깨달음` : `${rank}성`);
 
-/** 계단마다 무엇이 필요한지 — 규칙이 눈금에서 읽히지 않으면 성이 왜 멈췄는지 알 수 없다 (REQ-707). */
-const STEP_MARK = { [BALANCE.rankLadder.finishRank]: '결정타 필요', [BALANCE.rankLadder.crushRank]: '완파 필요' };
+/** 순차 해금에서 이 초식 다음에 오는 식 — 계단 안내가 「무엇이 열리는가」를 이름으로 댄다. */
+const heirOf = (style) => STYLES.find((s) => s.set === style.set && s.order === style.order + 1) ?? null;
 
 /**
  * 유도 툴팁 문구표 (#15) — 키는 액션 id 의 접두사이고, 배열 순서가 곧 안내 우선순위(1사이클의
@@ -52,20 +56,62 @@ const rowToggleId = (styleId) => `row-toggle-${styleId}`;
 let chosen = null;
 
 /**
- * 초식 성 게이지 (REQ-707·817) — 계단 자체는 공유 컴포넌트가 그리고, 여기서는 그 옆에
+ * 도장 정경 (REQ-837) — 제자의 **존재·정서**가 서는 자리다. 조작과 수치는 제자 블록이 지므로
+ * 여기서는 실루엣이 늘었다는 사실 하나만 말한다 (REQ-833).
+ */
+function sceneBanner(session) {
+  const progress = discipleTrainProgress(session);
+  return el('div', { class: 'dojo-banner' }, [
+    el('div', { class: 'layer floor', 'aria-hidden': 'true' }),
+    el('div', { class: 'fig master sil_master_dojo', 'aria-hidden': 'true' }),
+    session.transmitted ? el('div', { class: 'fig pupil sil_disciple_dojo', 'aria-hidden': 'true' }) : null,
+    el('div', { class: 'layer vignette', 'aria-hidden': 'true' }),
+    el('div', { class: 'plaque' }, [el('b', { text: '도장' }), hanja('道場')]),
+    session.transmitted
+      ? el('div', { class: 'pupil-tag' }, [
+        el('span', { class: 'dim', text: '제자' }),
+        el('b', { text: progress ? '수련 중' : '대기' }),
+      ])
+      : null,
+  ]);
+}
+
+/**
+ * 다음 계단에서 무엇이 열리는가 (REQ-707·830) — 적립 수단이 구간마다 바뀌는 규칙이 게이지 밖
+ * 설명문에만 있으면 화면은 다시 숫자만 남는다. 계단 값은 전부 `BALANCE` 에서 온다.
+ * @returns {{text: string, wall: boolean}} `wall` 은 수련이 끊기는 계단이라 주사색을 받는다 (REQ-811)
+ */
+function nextStepNote(style, rank) {
+  const { equip: equipRank, unlock, oneTap } = BALANCE.rankGate;
+  const { finishRank, crushRank } = BALANCE.rankLadder;
+  const wall = trainAccrualCap() + 1;
+  const next = rank + 1;
+  const heir = heirOf(style);
+  const opens = next === crushRank ? '이 초식으로 완파 1회'
+    : next === finishRank ? '이 초식으로 결정타 1회'
+      : next === wall ? '수련은 여기까지, 대련으로만'
+        : next === oneTap ? '원터치가 열린다'
+          : next === equipRank ? '실전에 장착할 수 있다'
+            : next === unlock && heir ? `${heir.name}${particle(heir.name, '이', '가')} 열린다`
+              : ladderBandAt(rank)?.train ? '수련·대련' : '대련 유효 성공';
+  return { text: `다음 ${next}성 — ${opens}`, wall: next === wall };
+}
+
+/**
+ * 초식 성 게이지 (REQ-707·817·830) — 계단 자체는 공유 컴포넌트가 그리고, 여기서는 그 옆에
  * 성 배지와 다음 계단 안내를 붙인다.
  */
 function rankGauge(session, style) {
   const { rank, pts } = session.progress.styles[style.id];
   const band = ladderBandAt(rank);
-  const need = band ? null : STEP_MARK[rank + 1] ?? null;
-  return el('div', { class: 'rank-gauge' }, [
-    rankStair({ rank, progress: band ? pts / band.cost : 0 }),
-    el('span', {
-      class: `badge${rank >= BALANCE.rankMax ? ' max' : ''}`, text: rankLabel(rank),
-    }),
-    need ? el('span', { class: 'dim', text: ` 다음 계단 — ${need}` }) : null,
-  ]);
+  const note = nextStepNote(style, rank);
+  return [
+    el('div', { class: 'rank-gauge' }, [
+      el('span', { class: 'badge', text: rankLabel(rank) }),
+      rankStair({ rank, progress: band ? pts / band.cost : 0 }),
+    ]),
+    el('p', { class: `rank-next${note.wall ? ' wall' : ''}`, text: note.text }),
+  ];
 }
 
 /**
@@ -84,9 +130,10 @@ function openRowOf(session, guidedRow) {
  */
 function styleActions(ctx, style) {
   const { session } = ctx;
+  const { learned, rank } = session.progress.styles[style.id];
   const slotIdx = session.slots.indexOf(style.id);
 
-  if (!session.progress.styles[style.id].learned) {
+  if (!learned) {
     return [{
       id: `learn:${style.id}`, class: 'small', text: '배우기',
       disabled: !canLearn(session.progress, style.id),
@@ -94,7 +141,8 @@ function styleActions(ctx, style) {
     }];
   }
 
-  const actions = [{
+  // 만성은 더 오를 곳이 없어 수련 버튼이 하는 일이 없다 — 자리만 먹는다 (REQ-831).
+  const actions = rank >= BALANCE.rankMax ? [] : [{
     id: `train:${style.id}`, class: 'small', text: '수련', disabled: false,
     onclick: () => ctx.go('train', { styleId: style.id }),
   }];
@@ -120,12 +168,15 @@ function styleActions(ctx, style) {
 function bandActions(ctx) {
   const { session } = ctx;
   const stage = challengerOfStage(session.stage);
+  // 하드 잠금의 이유는 「어느 초식이 몇 성인가」다 — 권장 성만으로는 무엇을 올려야 할지 모른다 (REQ-836).
+  const behind = missionShortfallOf(session)
+    .slice().sort((a, b) => a.rank - b.rank)[0] ?? null;
   return [
     {
       id: 'duel', text: '대련',
       sub: `${stage.name} ${stage.stage}차`, lockedSub: '장착 필요',
       disabled: !session.slots.some(Boolean),
-      onclick: () => ctx.go('duelPreview', { stage: session.stage }),
+      onclick: () => ctx.go('select', { stage: session.stage }),
     },
     {
       id: 'transmit', text: '전수',
@@ -135,12 +186,12 @@ function bandActions(ctx) {
       onclick: () => ctx.go('transmit'),
     },
     {
-      // 차수 잠금은 여기서 막지 않는다 — 부족 초식 표시가 예고 화면에 있어, 닫으면 그 안내에 닿을 수 없다.
+      // 차수 잠금은 여기서 막지 않는다 — 부족 초식 전량이 예고 화면에 있어, 닫으면 그 안내에 닿을 수 없다.
       id: 'dispatch', text: '파견',
       // 차수는 대련과 같은 「N차」로 부른다 — 스펙 식별자는 데이터·로그에만 남는다 (REQ-895·896).
-      sub: canDispatch(session)
+      sub: canDispatch(session) || !behind
         ? `${DISPATCH_CHALLENGER.name} 임무 ${session.dispatchStage}차`
-        : `임무 ${session.dispatchStage}차 잠김 — 전 초식 ${missionLockRankOf(session)}성`,
+        : `${behind.name} ${behind.rank}성 · 권장 ${missionLockRankOf(session)}성`,
       lockedSub: '전수 후 열린다',
       disabled: !session.transmitted,
       onclick: () => ctx.go('preview'),
@@ -161,12 +212,21 @@ function actionButton(ctx, action, target) {
     : button;
 }
 
+/**
+ * 초식 한 줄 — 만성·잠김 행은 게이지를 접고 배지만 머리줄에 남긴다 (REQ-831). 전부 금색이거나
+ * 전부 빈 계단은 정보량이 0인데 세로를 행마다 먹고, 회수한 그 세로가 제자 블록의 자리다.
+ */
 function styleRow(ctx, style, actions, target, guidedRow, open) {
   const { session } = ctx;
-  const learned = session.progress.styles[style.id].learned;
+  const { learned, rank } = session.progress.styles[style.id];
   const slotIdx = session.slots.indexOf(style.id);
+  const mastered = rank >= BALANCE.rankMax;
+  const folded = !learned || mastered;
 
-  return el('div', { class: `row${learned ? '' : ' locked'}${open ? ' open' : ''}`, style: `--attr:${attrTone(style.attr)}` }, [
+  return el('div', {
+    class: `row${learned ? '' : ' locked'}${mastered ? ' done' : ''}${open ? ' open' : ''}`,
+    style: `--attr:${attrTone(style.attr)}`,
+  }, [
     el('div', { class: 'row-head' }, [
       el('button', {
         id: rowToggleId(style.id), class: 'row-name', 'aria-expanded': String(open),
@@ -179,45 +239,15 @@ function styleRow(ctx, style, actions, target, guidedRow, open) {
         attrMark(style.attr),
         el('b', { text: style.name }),
         hanja(style.hanja),
+        folded ? el('span', { class: `badge${mastered ? ' max' : ''}`, text: learned ? rankLabel(rank) : '잠김' }) : null,
         slotIdx >= 0 ? el('span', { class: 'tag', text: `슬롯 ${slotIdx + 1}` }) : null,
       ]),
       ...actions.map((a) => actionButton(ctx, a, target)),
     ]),
     open ? arrowRow(style.seq, 0, learned ? style.seq.length : 0) : null,
-    learned ? rankGauge(session, style)
-      : el('div', { class: 'meter-line' }, [
-        el('span', { class: 'dim', text: `미해금 — 직전 초식 ${BALANCE.rankGate.unlock}성에서 열린다` }),
-      ]),
-  ]);
-}
-
-/**
- * 재대련 항목 (REQ-734) — 이긴 도전자를 다시 칠 수 있다는 것과 그 대가를 같은 자리에서 읽힌다.
- * 회차·강화를 숨기면 「왜 갑자기 안 이기지」가 되고, 무보상을 숨기면 파밍을 끊는 근거가 사라진다.
- */
-function rematchCard(ctx) {
-  const { session } = ctx;
-  const beaten = beatenChallengers(session);
-  if (!beaten.length) return null;
-  return el('section', { class: 'card' }, [
-    el('h2', { text: '재대련' }),
-    el('p', { class: 'dim', text: `이긴 도전자는 다시 칠 수 있다 — 대면마다 상대가 한 성씩(+${BALANCE.rematch.rankCap} 까지) 여물고 재화는 나오지 않는다.` }),
-    el('div', { class: 'rows' }, beaten.map((c) => {
-      const bonus = rematchBonusOf(session, c.id);
-      return el('div', { class: 'row' }, [
-        el('div', { class: 'row-head' }, [
-          el('div', { class: 'row-name' }, [
-            el('b', { text: `${c.name} ${c.stage}차` }),
-            el('span', { class: 'tag', text: `${duelAttemptOf(session, c.id)}번째 대면` }),
-            el('span', { class: 'tag', text: bonus > 0 ? `강화 +${bonus}` : '강화 없음' }),
-          ]),
-          el('button', {
-            class: 'small', text: '재대련', disabled: !session.slots.some(Boolean),
-            onclick: () => ctx.go('duelPreview', { stage: c.stage }),
-          }),
-        ]),
-      ]);
-    })),
+    ...(folded ? [] : rankGauge(session, style)),
+    // 만성은 더 오를 계단이 없어 안내할 것도 없다 — 잠김 행은 여는 조건이 곧 그 안내다.
+    learned ? null : el('p', { class: 'rank-next', text: `직전 초식 ${BALANCE.rankGate.unlock}성에서 열린다` }),
   ]);
 }
 
@@ -227,49 +257,68 @@ const trainLeftLabel = (leftMs) => {
 };
 
 /**
- * 제자 카드 (REQ-751·752) — 수련 지정 · 진척 막대 1 · 초식별 성 4 를 한 카드에 나란히 둔다.
+ * 제자 블록 (REQ-751·752·833) — 수련 지정 · 진척 막대 · 남은 시간 · 초식별 성 4열.
  * 전용 화면으로 가르지 않는 것이 결정이다: 어느 초식이 뒤처졌는지는 넷을 붙여 놓아야 보이고,
- * 그 비교가 곧 지정의 근거다.
+ * 그 비교가 곧 지정의 근거다. 열 자체가 지정 버튼이라 판단과 조작이 같은 자리에서 끝난다.
  */
-function discipleCard(ctx, bar) {
+function pupilBlock(ctx, bar) {
   const { session } = ctx;
   const styles = discipleStyles(session.disciple, ART_ID);
+  const head = el('div', { class: 'pb-head' }, [
+    el('b', { class: 'ttl', text: '제자' }),
+    hanja('弟子'),
+    styles.length ? el('span', { class: 'dim', text: ART_NAME }) : null,
+  ]);
   if (!styles.length) {
-    return el('section', { class: 'card' }, [
-      el('h2', { text: '제자' }),
+    return el('section', { class: 'pupil-block' }, [
+      head,
       el('p', { class: 'dim', text: `아직 전수한 무공이 없다 — 전 초식을 ${artById(ART_ID).transmitRank}성으로 깨달으면 전수할 수 있다.` }),
     ]);
   }
   const progress = discipleTrainProgress(session);
-  return el('section', { class: 'card' }, [
-    el('h2', { text: '제자' }),
-    el('p', {}, [el('b', { text: ART_NAME })]),
-    el('div', { class: 'rows' }, styles.map((s) => {
-      const rank = discipleStyleRank(session.disciple, ART_ID, s.id);
-      const designated = progress?.styleId === s.id;
-      return el('div', { class: `row${designated ? ' open' : ''}`, style: `--attr:${attrTone(s.attr)}` }, [
-        el('div', { class: 'row-head' }, [
-          el('div', { class: 'row-name' }, [
-            attrMark(s.attr),
-            el('b', { text: s.name }),
-            el('span', { class: 'tag', text: `${rank}성` }),
-            designated ? el('span', { class: 'tag', text: '수련 중' }) : null,
-          ]),
-          el('button', {
-            class: 'small', text: designated ? '수련 중' : '수련',
-            // 8성 벽 위는 파견 전용이라 지정 자체가 열리지 않는다 (REQ-706).
-            disabled: designated || !canDiscipleTrain(session, s.id),
-            onclick: () => { designateDiscipleTraining(session, s.id); ctx.go('dojo'); },
-          }),
-        ]),
-      ]);
-    })),
+  return el('section', { class: 'pupil-block' }, [
+    head,
     // 막대는 하나다 — 지정이 배타적이라 두 개가 동시에 차오르는 상태가 규칙에 없다.
-    progress ? el('div', { class: 'meter-line' }, [bar]) : el('p', {
+    progress ? bar : el('p', {
       class: 'dim',
       text: `초식을 지정해 걸어 두면 사부가 다른 일을 하는 동안에도 성이 오른다 (1성당 ${Math.round(BALANCE.discipleTrain.secondsPerRank / 60)}분, ${trainAccrualCap()}성까지).`,
     }),
-  ].filter(Boolean));
+    el('div', { class: 'pb-cols' }, styles.map((s) => {
+      const rank = discipleStyleRank(session.disciple, ART_ID, s.id);
+      const designated = progress?.styleId === s.id;
+      return el('button', {
+        // 권장 성에 못 미치는 열이 곧 파견을 잠근 초식이다 — 잠금 사유와 같은 축을 같은 색으로 (REQ-836).
+        class: `pcol${designated ? ' training' : ''}${rank < BALANCE.mission.unlockRank ? ' low' : ''}`,
+        style: `--attr:${attrTone(s.attr)}`,
+        // 8성 벽 위는 파견 전용이라 지정 자체가 열리지 않는다 (REQ-706).
+        disabled: designated || !canDiscipleTrain(session, s.id),
+        onclick: () => { designateDiscipleTraining(session, s.id); ctx.go('dojo'); },
+      }, [
+        el('span', { class: 'nm', text: s.name }),
+        el('span', { class: 'rk', text: `${rank}성` }),
+        designated ? el('span', { class: 'tag', text: '수련 중' }) : null,
+      ]);
+    })),
+  ]);
+}
+
+/**
+ * 다음 상대 요약 (REQ-834·835) — 홈에는 1건만 서고 전체 목록은 S7 이 진다. 공개 층을 S7 과
+ * 같은 자리(`challengerEntry`)에서 받아, 같은 정보를 두 화면이 다르게 말하지 않는다.
+ */
+function nextFoeSummary(session) {
+  const entry = nextChallengerEntry(session);
+  const { challenger } = entry;
+  return el('section', { class: 'foe-sum' }, [
+    el('div', { class: 'foe-head' }, [
+      el('span', { class: 'cap', text: '다음 상대' }),
+      el('b', { class: 'nm', text: challenger.name }),
+      hanja(challenger.hanja),
+      entry.firstEncounter ? null : el('span', { class: 'tag', text: `${entry.attempt}번째 대면` }),
+    ]),
+    foeChips(entry),
+    revealNotice(entry),
+  ]);
 }
 
 /**
@@ -295,8 +344,9 @@ function trackDiscipleTraining(ctx, bar) {
 
 function paintTrainBar(bar, progress) {
   clear(bar).append(
-    el('div', { class: 'meter' }, [el('i', { style: `width:${progress.ratio * 100}%` })]),
-    el('span', { class: 'dim', text: ` ${styleById(progress.styleId).name} ${progress.rank}성 → ${progress.rank + 1}성 · ${trainLeftLabel(progress.leftMs)}` }),
+    el('span', { class: 'who' }, [el('span', { class: 'dim', text: '수련 중 ' }), el('b', { text: styleById(progress.styleId).name })]),
+    el('span', { class: 'meter' }, [el('i', { style: `width:${progress.ratio * 100}%` })]),
+    el('span', { class: 'left', text: trainLeftLabel(progress.leftMs) }),
   );
 }
 
@@ -322,7 +372,7 @@ function bandNode(ctx, actions, target) {
 }
 
 export function renderDojo(ctx) {
-  const { session, root } = ctx;
+  const { session } = ctx;
 
   const rowActions = STYLES.map((s) => styleActions(ctx, s));
   const band = bandActions(ctx);
@@ -333,22 +383,28 @@ export function renderDojo(ctx) {
   const guidedRow = rowStyleId(target?.id);
   const openId = openRowOf(session, guidedRow);
 
-  const bar = el('div', { class: 'train-bar' });
+  const bar = el('div', { class: 'pb-train' });
   composeScreen(ctx, {
     top: topBand(session, ART_NAME),
-    // 재대련 카드는 이긴 도전자가 생기기 전까지 없다 — `append(null)` 은 "null" 텍스트 노드가 된다.
     body: [
-      el('section', { class: 'card' }, [
-        el('h2', {}, [el('span', { text: ART_NAME }), hanja(artById(ART_ID).hanja)]),
+      sceneBanner(session),
+      // 목록을 감싼 카드는 목록을 또 하나의 패널로 만든다 — 머리글 한 줄로 대체한다 (REQ-832).
+      el('div', { class: 'body-flow' }, [
+        el('div', { class: 'art-head' }, [
+          el('b', { class: 'kr', text: ART_NAME }),
+          hanja(artById(ART_ID).hanja),
+        ]),
         el('div', { class: 'rows' }, STYLES.map((s, i) => styleRow(ctx, s, rowActions[i], target, guidedRow, s.id === openId))),
         session.slots.some(Boolean) ? null : el('p', {
           class: 'dim', text: `초식을 수련해 ${BALANCE.rankGate.equip}성에 닿으면 실전 슬롯에 자동으로 장착된다.`,
         }),
-      ]),
-      rematchCard(ctx),
-      discipleCard(ctx, bar),
+        nextFoeSummary(session),
+        pupilBlock(ctx, bar),
+      ].filter(Boolean)),
     ],
     bottom: bandNode(ctx, band, target),
+    // 정경은 풀블리드 배너라 본문 여백이 붙으면 좌우가 잘린다 — 여백은 아래 흐름이 각자 진다 (REQ-802·837).
+    padded: false,
   });
 
   const progress = discipleTrainProgress(session);
