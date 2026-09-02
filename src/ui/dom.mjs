@@ -28,6 +28,21 @@ export function clear(node) {
 }
 
 /**
+ * JS 가 이름으로 부르는 원장 ms 토큰 전량 — 부팅이 이 목록을 전건 읽어 형식 위반을 첫 페인트
+ * 전에 터뜨리므로, 새 토큰을 읽는 코드는 여기에 이름을 더해야 한다 (#132).
+ */
+export const LEDGER_MS = Object.freeze(
+  ['--juice-hitstop', '--only-hold', '--slip-exit', '--tm-follow-delay'],
+);
+
+/** 원장의 연출 시간 하나 — 못 읽은 값이 0 으로 접히면 연출이 에러 없이 사라지므로 형식부터 문다. */
+export function ledgerMs(name) {
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  if (!/^\d+(\.\d+)?ms$/.test(raw)) throw new Error(`${name} 이 ms 값이 아니다 — ${raw || '<미정의>'}`);
+  return parseFloat(raw);
+}
+
+/**
  * 화면 크롬 조립 (REQ-801) — 상단 띠·하단부의 유무와 본문 여백을 화면이 정하므로, 어떤 화면도
  * 풀블리드 레이어를 y=0 부터 깔 수 있다 (REQ-802).
  * @param {object} ctx 화면 컨텍스트 — `root` 를 비워 다시 채우고 `ownTop` 으로 띠 갱신을 등록한다

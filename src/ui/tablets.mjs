@@ -3,16 +3,11 @@
 // 탈락한 매는 즉시 지우지 않고 가라앉힌다 (REQ-824·825). 어느 매가 어느 상태인지는
 // `tablet-state.mjs` 가 정하고 이 모듈은 그것을 DOM 으로 옮기기만 한다.
 
-import { clear, el } from './dom.mjs';
+import { clear, el, ledgerMs } from './dom.mjs';
 import { attrMark, attrTone } from './components/attr-mark.mjs';
 import { hanja } from './components/hanja.mjs';
 import { TABLET, tabletStates } from './tablet-state.mjs';
 import { CUE, play } from './audio.mjs';
-
-/** 전이 길이는 시각 토큰이라 원장(`:root`)이 값을 갖고 여기는 이름만 부른다. */
-const exitMs = () => parseFloat(
-  getComputedStyle(document.documentElement).getPropertyValue('--slip-exit'),
-) || 0;
 
 /**
  * 죽간 매 하나 — 속성 기호·성 배지·초식명·한자 세로열이 한 매 안에 함께 선다. 속성과 성이
@@ -106,7 +101,7 @@ export function createTablets({ soloEmphasis = false } = {}) {
       const states = tabletStates(drawn, next);
 
       // 배경 탭에서는 `animationend` 가 오지 않는다 — 시효가 지난 유령은 렌더가 함께 걷어 낸다.
-      const stale = performance.now() - exitMs();
+      const stale = performance.now() - ledgerMs('--slip-exit');
       for (const [id, ghost] of [...sinking]) if (ghost.at <= stale) bury(id);
 
       // 새 매를 그리기 전에 잰다 — 뒤에 재면 폭 계단이 이미 바뀌어 옛 자리를 알 수 없다.

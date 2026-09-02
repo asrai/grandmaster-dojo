@@ -2,18 +2,13 @@
 // 화면과 함께 생성·파괴되고, 낭독 리전은 스테이지 직속 상주라 화면 전환에도 침묵하지 않는다.
 
 import { BALANCE } from '../balance.mjs';
-import { $, el } from './dom.mjs';
+import { $, el, ledgerMs } from './dom.mjs';
 import { hanja } from './components/hanja.mjs';
 import { EXTREME_GRADES, GRADE_VIEW, gradeLabel } from './theme.mjs';
 
 // 같은 판정이 연달아 오면 문자열이 그대로라 리전이 변경을 못 보고 낭독이 접힌다 — 보이지 않는
 // 표식을 번갈아 붙여 매 판정이 새 문면이 되게 한다.
 let announceFlip = false;
-
-/** 연출 시간의 값은 원장(`:root`)이 갖고 JS 는 이름만 부른다 — 시각 토큰이 코드로 복사되지 않는다. */
-const tokenMs = (name) => parseFloat(
-  getComputedStyle(document.documentElement).getPropertyValue(name),
-) || 0;
 
 function announce(text) {
   const region = $('live');
@@ -68,7 +63,7 @@ export function createVerdictOverlay({ heldSince = () => null } = {}) {
   function owedMs() {
     const since = heldSince();
     if (since == null) return 0;
-    return Math.max(0, tokenMs('--only-hold') - (performance.now() - since));
+    return Math.max(0, ledgerMs('--only-hold') - (performance.now() - since));
   }
 
   /** 상주 노드의 문면·등급을 갈아 끼우고 재생을 처음부터 다시 건다. */

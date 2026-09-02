@@ -3,7 +3,7 @@
 
 import { BALANCE } from '../balance.mjs';
 import { createBot } from '../bot.mjs';
-import { $ } from './dom.mjs';
+import { $, LEDGER_MS, ledgerMs } from './dom.mjs';
 import { initAudio, resumeAudio } from './audio.mjs';
 import { createFrameBudget } from './frame-budget.mjs';
 import { SCREEN } from './theme.mjs';
@@ -165,12 +165,9 @@ if (!$('shell')) throw new Error('흔들림 래퍼 #shell 이 스테이지에 �
 // 히트 영역 최소치도 BALANCE 값이라, CSS 가 그 값을 변수로 받아 간다 (REQ-101).
 document.documentElement.style.setProperty('--hit', `${BALANCE.buttonHitPx}px`);
 
-/** 원장의 연출 시간 하나 — 값을 못 읽으면 아래 예산 검사가 0 으로 통과하므로 형식부터 문다. */
-function ledgerMs(name) {
-  const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  if (!/^\d+(\.\d+)?ms$/.test(raw)) throw new Error(`${name} 이 ms 값이 아니다 — ${raw || '<미정의>'}`);
-  return parseFloat(raw);
-}
+// 형식 위반을 여기서 전건 터뜨려, 판정 오버레이·죽간 exit·전수 팔 각도가 각자 연출 도중에
+// 죽는 경로를 없앤다 — 실패 시점이 첫 페인트 앞으로 고정된다 (#132).
+for (const name of LEDGER_MS) ledgerMs(name);
 
 // 두 원장이 만나는 유일한 결합 — 판정 재생 앞에서 히트스톱과 확정 연출 대기가 함께 예산을 먹고,
 // 남는 것이 없으면 완파·역파가 에러 없이 화면에서 사라진다. 밸런스 쪽에서 재생 길이만 줄여도
