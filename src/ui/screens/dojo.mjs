@@ -201,7 +201,7 @@ function bandActions(ctx) {
 
 /**
  * 액션 id 를 DOM id 로 (#133) — 재렌더 뒤 같은 액션을 다시 찾는 열쇠라, 서술자의 id 에서
- * 기계적으로 나와야 두 벌이 갈리지 않는다. `:` 는 CSS 선택자에서 결합자라 `-` 로 편다.
+ * 기계적으로 나와야 두 벌이 갈리지 않는다. `:` 를 펴는 것은 선택자로도 부를 수 있게 두기 위해서다.
  */
 const actionDomId = (id) => `dojo-act-${String(id).replace(':', '-')}`;
 

@@ -45,8 +45,8 @@ export function ledgerMs(name) {
 /**
  * 지금 탭 순회에 드는 노드를 문서 순으로 (REQ-910·911) — `focusHint` 의 순번이 이 목록의
  * 첨자라, 채집(`app.mjs`)과 복원(`composeScreen`)이 같은 정의를 봐야 자리가 어긋나지 않는다.
- * 잠긴 버튼은 포커스를 받지 못하므로 목록 밖이고, 그래서 id 가 살아 있어도 잠긴 노드는
- * 이웃 규칙으로 넘어간다 — 지정한 제자 수련 열이 그 경로다.
+ * 잠긴 버튼은 포커스를 받지 못하므로 목록 밖이고, 그래서 id 로 되찾은 노드가 그 사이 잠겼으면
+ * 이웃 규칙으로 넘어간다.
  */
 export function focusables(root) {
   return [...root.querySelectorAll('a[href], button, input, select, textarea, [tabindex]')]
@@ -68,7 +68,7 @@ export function focusables(root) {
 export function composeScreen(ctx, {
   top = null, body = [], bottom = null, padded = true,
 }) {
-  // 읽고 비운다 — 남겨 두면 다음 전환이 떠난 화면의 자리를 집는다.
+  // 소비의 소유가 조립이다 — 힌트를 읽는 자리와 포커스를 옮기는 자리가 갈리지 않는다.
   const hint = ctx.focusHint ?? null;
   ctx.focusHint = null;
   const root = clear(ctx.root);

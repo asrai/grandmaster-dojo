@@ -289,7 +289,8 @@ body {
 }
 
 /* 실전 4화면의 `.stage-band` 와 한 토큰 한 값을 쓴다 — 두 값 클래스가 있으면 시안 대조가
-   화면마다 갈린다. 1행 50px 이라 이 줄의 컨트롤이 `--hit-min` 을 온전히 받는다 (#133). */
+   화면마다 갈린다. 띠가 확장 상자를 자기 높이로 자르므로 이 줄이 보장하는 것은 `--hit-min` 까지이고,
+   그보다 큰 `--hit` 을 요구하는 물러나기는 띠 높이에서 멈춘다 — REQ-910 하한은 넘는다 (#133). */
 .top-band {
   display: flex; align-items: center;
   height: var(--band-h); padding: 0 14px; border-bottom: 1px solid var(--line); font-size: 13px;

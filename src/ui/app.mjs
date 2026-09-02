@@ -248,6 +248,8 @@ const refreshCheat = mountCheatPanel({
 
 // 응수 창 ×1.3 은 디버그 컨트롤이라 스테이지 밖 도구 띠에 산다 — 접근성 옵션의 정착지는 M3
 // 설정 화면이고, 그때까지 게임 화면이 그 자리를 빌려 주지 않는다.
+// 조립이 만들던 컨트롤을 마크업이 소유한다 — 사라지면 접근성 옵션이 에러 없이 없어진다.
+if (!$('a11y-window')) throw new Error('응수 창 ×1.3 (#a11y-window) 이 스테이지에 없다');
 const a11yBox = $('a11y-window');
 a11yBox.checked = session.accessibility;
 a11yBox.addEventListener('change', () => {

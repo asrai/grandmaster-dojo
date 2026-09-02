@@ -2432,7 +2432,7 @@ suite('크롬 원장은 한 토큰 한 값 (#133)', () => {
     const block = html.match(new RegExp(`^\\${sel} \\{([\\s\\S]*?)\\n\\}`, 'm'))?.[1];
     ok(block, `${sel} 규칙 블록을 실제로 떼어냈다`);
     ok(/height:\s*var\(--band-h\)/.test(block ?? ''), `${sel} 의 높이가 --band-h 다`);
-    ok(!/height:\s*\d/.test(block ?? 'height: 1'), `${sel} 에 px 리터럴 높이가 없다`);
+    ok(!/(^|[;\s])height:\s*\d/.test(block ?? ' height: 1'), `${sel} 에 px 리터럴 높이가 없다`);
   }
 
   // (I3) 히트 축 44 의 정본은 `--hit-min` 하나다. 경계 인식이 없으면 `-144px` 같은 부분 문자열이
@@ -2441,7 +2441,8 @@ suite('크롬 원장은 한 토큰 한 값 (#133)', () => {
   const rootAt = html.match(/^:root \{[\s\S]*?\n\}/m);
   ok(rootAt, ':root 블록을 실제로 떼어냈다');
   const rootBlock = rootAt?.[0] ?? '';
-  // 양성 대조 — 모집단이 0 으로 접히면 이 계수가 먼저 무너진다. 셋은 원장 토큰의 정의부다.
+  // 양성 대조 — 모집단이 0 으로 접히면 이 계수가 먼저 무너진다. 셋은 44 라는 **값**을 쓰는
+  // 토큰 전량이고, 그중 히트 축은 `--hit-min` 하나다.
   eq((rootBlock.match(HIT44) ?? []).length, 3, ':root 안 44px 리터럴 — 경계 인식 검색이 실재 히트를 센다');
   // 그 경계가 실제로 무는지 — `--watch-y` 는 44px 리터럴이 아닌데 부분 문자열로는 걸린다.
   ok(/--watch-y:\s*-144px/.test(rootBlock), '-144px 토큰이 :root 에 실재한다');
@@ -2453,12 +2454,16 @@ suite('크롬 원장은 한 토큰 한 값 (#133)', () => {
   ok(outside.length > 1000, `:root 밖 모집단이 실재한다 — ${outside.length}자`);
   deepEq(outside.match(HIT44) ?? [], [], ':root 밖에 44px 리터럴이 없다');
   // 부재만 두면 「그 규칙을 통째로 지웠다」도 통과한다 — 치환이 실제로 앉았음을 함께 문다.
-  ok((outside.match(/var\(--hit-min\)/g) ?? []).length >= 3,
-    ':root 밖 히트 축이 --hit-min 을 부른다 — 치환 실재');
+  // 계수 문턱은 선재 호출부가 이미 채워 부분 소실을 못 본다: 세 자리를 이름으로 하나씩 문다.
+  for (const sel of ['.row-head', '.tele-attr', '.cand']) {
+    const block = outside.match(new RegExp(`^\\${sel} \\{([\\s\\S]*?)\\n?\\}`, 'm'))?.[1];
+    ok(block, `${sel} 규칙 블록을 실제로 떼어냈다`);
+    ok(/var\(--hit-min\)/.test(block ?? ''), `${sel} 의 히트 축이 --hit-min 이다`);
+  }
 });
 
 // 원장 축과 스위트를 가르는 것은 격리다 — 한쪽 추출이 무너져도 다른 축의 단정이 함께 침묵하지 않는다.
-suite('재렌더 포커스의 소유는 조립 한 곳 (#133)', () => {
+suite('화면 모듈은 포커스를 직접 조작하지 않는다 (#133)', () => {
   // (I4) 재렌더 포커스의 소유는 `dom.mjs` 의 `composeScreen` 한 곳이다. 화면이 자기 손으로
   // 되돌리면 id 가 전이하는 경로에서 헛돌고, 그 헛돎이 화면마다 따로 재발한다.
   // 모집단은 화면 모듈뿐 — `composeScreen` 의 소유 호출은 이 계약의 정본이라 의도적으로 밖이다.
