@@ -54,13 +54,13 @@ export function createFrameBudget({ minSamples = 20 } = {}) {
      * 최근 프레임률 — 패럴랙스 활성 임계의 입력이다 (REQ-914). 누적 전체가 아니라 **최근**을
      * 보는 것이 계약이다: 세션 초반의 로딩 프레임이 남은 시간 내내 임계를 끌어내리면 안 된다.
      * @param {string} scene
-     * @param {number} [window] 볼 프레임 수
+     * @param {number} [sampleWindow] 볼 프레임 수
      * @returns {?number} 표본이 모자라면 null
      */
-    fps(scene, window = 60) {
+    fps(scene, sampleWindow = 60) {
       const list = scenes.get(scene) ?? [];
       if (list.length < minSamples) return null;
-      const recent = list.slice(-window);
+      const recent = list.slice(-sampleWindow);
       const mean = recent.reduce((sum, ms) => sum + ms, 0) / recent.length;
       return mean > 0 ? 1000 / mean : null;
     },

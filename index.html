@@ -310,6 +310,9 @@ body {
 .leave::after {
   content: ''; position: absolute; left: 50%; top: 50%;
   width: var(--hit); height: var(--hit); transform: translate(-50%, -50%);
+  /* 56px 띠 안에서 두 행의 확장 상자는 산술적으로 겹친다 — 겹치는 자리를 DOM 순서에 맡기면
+     뒤에 오는 설정 줄이 이겨, 물러나기 아래쪽 탭이 난이도 토글을 켠다. 주 조작이 이긴다 (REQ-897). */
+  z-index: 1;
 }
 /* 음소거 (REQ-926) — 싸우는 중이 아니라 들어가기 전에 정하는 설정이라 이 줄에 산다. 상태를
    색이 아니라 문면으로도 말해야 낭독에서 「지금 켜져 있는가」가 읽힌다. */

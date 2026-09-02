@@ -56,6 +56,7 @@ const state = {
   muted: false,
   resumed: false,
   resumedAtMs: null,
+  startedAtMs: 0,
   log: () => {},
   now: () => 0,
 };
@@ -119,8 +120,8 @@ export function play(cue) {
 }
 
 /**
- * 판정음 (REQ-924) — 6단 전부가 3계열 중 하나로 덮이고, 그 접힘은 데이터에만 있다. 등급이
- * 늘면 로드 시점의 `checkAudio` 가 먼저 죽지만, 그 표를 우회해 부른 등급은 여기가 문다.
+ * 판정음 (REQ-924) — 6단 전부가 3계열 중 하나로 덮이고, 그 접힘은 데이터에만 있다.
+ * 매핑 표와 등급 집합이 같다는 것은 로드가 지고, 표를 우회해 부른 등급은 여기가 문다.
  */
 export function playVerdict(grade) {
   const id = BALANCE.audio.verdict[grade];
@@ -169,18 +170,24 @@ function logState() {
 
 /**
  * 첫 사용자 입력에 컨텍스트를 재개한다 (REQ-921) — 브라우저 자동재생 정책상 그 전에는 소리가
- * 나지 않으므로, 이 호출이 실제로 뚫렸는지가 `audio_state` 로만 판독된다.
- * 두 번째부터는 아무것도 하지 않으므로 어느 입력 경로에 걸어도 무해하다.
+ * 나지 않으므로, 이 호출이 실제로 뚫렸는지가 `audio_state` 로만 판독된다. 그래서 `resumed` 는
+ * 시도한 사실이 아니라 **컨텍스트가 실제로 running 이 된 사실**이다 — 정책이 제스처를 거절한
+ * 세션이 「뚫렸다」로 기록되면 그 판독이 조용히 거짓 통과한다.
+ * 못 뚫렸으면 아무것도 남기지 않고, 다음 입력이 같은 자리로 다시 온다.
  */
 export function resumeAudio() {
   if (state.resumed) return;
   const ac = context();
   if (!ac) return;
-  state.resumed = true;
-  state.resumedAtMs = state.now();
-  const done = () => { startBgm(); logState(); };
-  if (ac.state === 'suspended') ac.resume().then(done, done);
-  else done();
+  const settle = () => {
+    state.resumed = ac.state === 'running';
+    if (!state.resumed) return;
+    state.resumedAtMs = state.now() - state.startedAtMs;
+    startBgm();
+    logState();
+  };
+  if (ac.state === 'suspended') ac.resume().then(settle, settle);
+  else settle();
 }
 
 /**
@@ -193,6 +200,8 @@ export function resumeAudio() {
 export function initAudio({ log, now }) {
   state.log = log;
   state.now = now;
+  // `ms_to_resume` 는 기동부터 재개까지의 **경과**다 — 절대 시각을 실으면 이름과 값이 갈린다.
+  state.startedAtMs = now();
   const ac = context();
   if (!ac) return;
   const ids = [...new Set([
@@ -204,7 +213,11 @@ export function initAudio({ log, now }) {
     fetch(srcOf(id))
       .then((res) => res.arrayBuffer())
       .then((raw) => ac.decodeAudioData(raw))
-      .then((buffer) => state.buffers.set(id, buffer))
+      .then((buffer) => {
+        state.buffers.set(id, buffer);
+        // 첫 제스처가 디코드보다 빨랐으면 그 세션 내내 루프가 없다 — 도착한 그 자리에서 되살린다.
+        if (id === BALANCE.audio.bgm) startBgm();
+      })
       .catch((err) => console.warn(`[오디오] ${id} 를 재생 준비하지 못했다 — ${err.message}`));
   }
 }

@@ -76,7 +76,8 @@ export function createVerdictOverlay({ heldSince = () => null } = {}) {
     // 다음 예고가 열리는 순간(resolveMs 뒤)에는 이미 사라져 있어야 두 판정이 겹쳐 읽히지 않는다.
     // 대기·히트스톱은 이 길이를 늘리지 않고 그 안에서 시작을 미룬다 — 대기분은 여기서, 히트스톱은
     // 원장의 `.verdict-pop.punched` 가 뺀다. 둘의 합이 재생을 남기는 것은 부팅 단정이 문다.
-    pop.style.setProperty('--vd-dur', `${BALANCE.resolveMs - deferMs}ms`);
+    // 스크림은 팝의 형제라 팝에 꽂으면 그 값을 못 보고 폴백으로 돈다 — 오버레이 루트가 둘의 상속점이다.
+    node.style.setProperty('--vd-dur', `${BALANCE.resolveMs - deferMs}ms`);
     // 한자는 한글 위에 얹히는 낙관이라, 마크가 없는 호출자에게는 그 자리도 없다 (REQ-813 · #46).
     markEl.textContent = mark ?? '';
     markEl.hidden = !mark;

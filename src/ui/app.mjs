@@ -125,9 +125,8 @@ function watchFrames(at) {
   if (!sceneNode) return;
   const fps = budget.fps('parallax');
   // 표본이 모자라면 켜 둔 채로 둔다 — 시작하자마자 끄면 무엇을 잰 것인지가 없다.
-  // 한 번 끄면 그 화면에서는 다시 켜지지 않는다: 끈 뒤의 프레임은 패럴랙스 표본이 아니라
-  // 되켜도 되는지의 근거가 없고, 껐다 켰다 하는 무대가 느린 무대보다 나쁘다. 판정은 화면
-  // 전이에서 표본과 함께 처음부터 다시 선다.
+  // 한 번 끈 화면에서는 다시 켜지지 않는다: 끈 뒤의 프레임은 되켜도 되는지의 근거가 아니고,
+  // 껐다 켰다 하는 무대가 느린 무대보다 나쁘다. 판정은 화면 전이에서 표본과 함께 다시 선다.
   if (fps !== null) sceneNode.classList.toggle('flat', fps < BALANCE.parallaxMinFps);
 }
 
@@ -239,18 +238,29 @@ if (new URLSearchParams(window.location.search).get('tools') === '0') $('tools')
 // 이미 준비돼 있어야 「그 입력부터 소리가 난다」가 성립한다 (REQ-920·921).
 initAudio({ log: (event, fields) => logEvent(session, event, fields), now: () => performance.now() });
 // 자동재생 정책을 푸는 것은 제스처 하나뿐이라, 어느 입력이 첫 입력이든 같은 자리를 지난다 (REQ-921).
+// 한 번만 거는 것이 아닌 이유는 첫 제스처가 거절될 수 있어서다 — 재개된 뒤로는 즉시 반환한다.
 for (const type of ['pointerdown', 'keydown']) {
-  window.addEventListener(type, resumeAudio, { once: true, capture: true });
+  window.addEventListener(type, resumeAudio, { capture: true });
 }
 
 /**
  * 서체 로드 계측 (REQ-803) — 서브셋의 효과가 「로딩 비용이 주 변수」라는 진단의 검증이므로,
  * 실제로 받은 바이트와 그것이 서브셋 파일이었는지를 함께 남긴다.
  */
+function declaredFaces() {
+  let n = 0;
+  for (const sheet of document.styleSheets) {
+    // 확장이 끼워 넣은 시트는 교차 출처라 규칙 열람이 던진다 — 우리 시트를 세는 것이 목적이다.
+    try {
+      for (const rule of sheet.cssRules) if (rule instanceof CSSFontFaceRule) n += 1;
+    } catch { /* 열 수 없는 시트에는 우리 @font-face 가 없다 */ }
+  }
+  return n;
+}
+
 function logFontReady() {
   const woff2 = performance.getEntriesByType('resource').filter((e) => e.name.endsWith('.woff2'));
-  const declared = [...document.styleSheets[0].cssRules]
-    .filter((rule) => rule instanceof CSSFontFaceRule).length;
+  const declared = declaredFaces();
   logEvent(session, 'font_ready', {
     ms: Math.round(performance.now()),
     bytes: woff2.reduce((sum, e) => sum + (e.encodedBodySize || e.transferSize || 0), 0),
@@ -258,7 +268,9 @@ function logFontReady() {
     subset_hit: declared > 0 && woff2.length >= declared,
   });
 }
-document.fonts.ready.then(logFontReady, logFontReady);
+// 계측이 던지면 서체 로드 체인이 unhandled 로 끝나고 이 항목만 조용히 사라진다.
+const measureFonts = () => { try { logFontReady(); } catch (err) { console.warn(`[서체 계측] ${err.message}`); } };
+document.fonts.ready.then(measureFonts, measureFonts);
 
 $('exportBtn').addEventListener('click', exportLog);
 $('botBtn').addEventListener('click', () => {
