@@ -30,7 +30,7 @@ function rowState(entry) {
 /** 첫 대면 안내 (REQ-882) — 브리핑이 설 자리에 「왜 없는가」가 대신 선다. */
 const unknownNotice = () => el('div', { class: 'unknown' }, [
   el('span', { class: 't', text: '겪어본 적 없는 상대다' }),
-  el('span', { class: 's', text: '상대 초식과 절초는 한 번 겨뤄봐야 알 수 있다 — 슬롯은 지금 고르고, 답은 다음 대면에' }),
+  el('span', { class: 's', text: '상대 초식은 한 번 겨뤄봐야 알 수 있다 — 슬롯은 지금 고르고, 답은 다음 대면에' }),
 ]);
 
 /**
@@ -64,19 +64,27 @@ export function renderSelect(ctx) {
   const asked = roster.findIndex((e) => e.challenger.stage === params.stage);
   let pickedFoe = asked < 0 ? roster.length - 1 : asked;
   // 슬롯을 먼저 고르고 후보를 고른다 — 두 번의 탭이 곧 「무엇을 빼고 무엇을 넣는가」다.
-  let pickedSlot = Math.max(0, session.slots.indexOf(null));
+  const emptySlot = session.slots.indexOf(null);
+  let pickedSlot = emptySlot < 0 ? 0 : emptySlot;
 
   const listEl = el('div', { class: 'list', role: 'group', 'aria-label': '도전자' });
   const briefEl = el('div', { class: 'brief' });
   const entry = () => roster[pickedFoe];
+  // 재렌더가 누른 버튼 노드를 파기하므로, 포커스를 되돌리려면 같은 자리를 id 로 다시 찾아야 한다.
+  const slotId = (i) => `select-slot-${i}`;
+  function repaint(paint, focusId = document.activeElement?.id) {
+    paint();
+    if (focusId) document.getElementById(focusId)?.focus();
+  }
 
   function paintList() {
     clear(listEl);
     roster.forEach((row, i) => {
       const { challenger } = row;
       listEl.appendChild(el('button', {
+        id: `select-foe-${challenger.stage}`,
         class: `foe${i === pickedFoe ? ' on' : ''}`, 'aria-pressed': String(i === pickedFoe),
-        onclick: () => { pickedFoe = i; paintList(); paintBrief(); },
+        onclick: () => { pickedFoe = i; repaint(paintList); paintBrief(); },
       }, [
         el('span', { class: 'id' }, [
           el('span', { class: 'nm' }, [el('b', { text: challenger.name }), hanja(challenger.hanja)]),
@@ -92,9 +100,10 @@ export function renderSelect(ctx) {
     const slotsEl = el('div', { class: 'slots' }, session.slots.map((styleId, i) => {
       const style = styleId ? styleById(styleId) : null;
       return el('button', {
+        id: slotId(i),
         class: `sl${style ? '' : ' empty'}${i === pickedSlot ? ' hit' : ''}`,
         style: `--attr:${style ? attrTone(style.attr) : 'var(--line)'}`,
-        onclick: () => { pickedSlot = i; paintBrief(); },
+        onclick: () => { pickedSlot = i; repaint(paintBrief); },
       }, [
         el('span', { class: 'n', text: style ? style.name : '빈 슬롯' }),
         style ? hanja(style.hanja) : null,
@@ -107,8 +116,10 @@ export function renderSelect(ctx) {
       ? el('div', { class: 'bench' }, benched.map((style) => el('button', {
         class: 'sl bench-pick', style: `--attr:${attrTone(style.attr)}`,
         onclick: () => {
-          equip(session, style.id, pickedSlot, { challenger: entry().challenger.id });
-          paintBrief();
+          const at = pickedSlot;
+          equip(session, style.id, at, { challenger: entry().challenger.id });
+          // 고른 초식은 벤치에서 사라지므로 포커스가 갈 자리는 그것을 받은 슬롯이다.
+          repaint(paintBrief, slotId(at));
         },
       }, [
         el('span', { class: 'n', text: style.name }),

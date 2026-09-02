@@ -242,7 +242,7 @@ export function nextDojoAction(session) {
   if (learnable) return { kind: 'learn', styleId: learnable.id, params: {} };
   const swap = nextSwap(session);
   if (swap) return swap;
-  // 예고를 건너뛰면 봇이 도는 경로가 사람의 경로와 갈려, 재대련 계측이 화면에서만 나온다 (REQ-736).
+  // 선택 화면을 건너뛰면 봇이 도는 경로가 사람의 경로와 갈려, 재대련 계측이 화면에서만 나온다 (REQ-736).
   return { kind: 'select', params: { stage: nextDuelStage(session) } };
 }
 

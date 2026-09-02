@@ -79,13 +79,16 @@ export const REVEAL_VIEW = {
   [REVEAL_TIER.COUNTER]: {
     cls: 'tell-open',
     title: ({ finisher }) => `절초 ${finisher.name}`,
-    note: ({ answer }) => `파해 — ${answer.name} · 그 초식을 내지 않으면 역파는 일어나지 않는다`,
+    note: ({ answer }) => `파해는 ${answer.name} · 그 초식을 내지 않으면 역파는 일어나지 않는다`,
   },
 };
 
-// 층이 늘었는데 문구가 없으면 브리핑이 빈칸으로 뜬다 — 부팅 때 문다 (REQ-882·884).
+// 층을 복사해 늘리다 한 칸만 빠뜨리면 부팅이 아니라 그 대면의 렌더에서 죽는다 — 형까지 문다 (REQ-882·884).
 for (const tier of Object.values(REVEAL_TIER)) {
-  if (!REVEAL_VIEW[tier]) throw new Error(`절초 공개 층 문구가 없다: ${tier}`);
+  const view = REVEAL_VIEW[tier];
+  if (!view || typeof view.title !== 'function' || typeof view.note !== 'function') {
+    throw new Error(`절초 공개 층 문구가 없다: ${tier}`);
+  }
 }
 
 /**

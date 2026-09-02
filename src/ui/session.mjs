@@ -177,11 +177,11 @@ export const isFirstEncounterOf = (session, challengerId) =>
 
 export const isRematch = (session, challengerId) => !isFirstEncounterOf(session, challengerId);
 
-/** 그 대면의 도전자 성 — 재대련 강화가 실린 값이고 대련 루프·예고 화면이 같은 자리를 읽는다. */
+/** 그 대면의 도전자 성 — 재대련 강화가 실린 값이고 대련 루프·도전자 선택 화면이 같은 자리를 읽는다. */
 export const duelFoeRank = (session, challengerId) =>
   rematchFoeRank(foeRankOf(challengerId), duelWinsOf(session, challengerId));
 
-/** 그 대면에 실린 강화량 — 예고 화면과 도장 재대련 카드가 같은 수를 말하게 하는 한 자리. */
+/** 그 대면에 실린 강화량 — 도전자 선택 화면과 홈 요약이 같은 수를 말하게 하는 한 자리. */
 export const rematchBonusOf = (session, challengerId) =>
   duelFoeRank(session, challengerId) - foeRankOf(challengerId);
 
@@ -190,7 +190,7 @@ export const beatenChallengers = (session) => DUEL_STAGES.filter((c) => isRematc
 
 /**
  * 한 도전자를 화면이 읽는 형태로 (REQ-835) — 홈 요약과 도전자 선택 화면이 **이 함수 하나**를
- * 지난다. 두 화면이 각자 파생하면 「같은 공개 층」이 두 구현으로 갈려 예고가 함정이 된다.
+ * 지난다. 두 화면이 각자 파생하면 「같은 공개 층」이 두 구현으로 갈려 선택 화면이 함정이 된다.
  */
 export function challengerEntry(session, challenger) {
   const firstEncounter = isFirstEncounterOf(session, challenger.id);
@@ -228,8 +228,8 @@ export function beginDuel(session, challengerId) {
 }
 
 /**
- * @param {?string} [challenger] 그 교체가 일어난 도전자 예고 화면의 도전자 — 「A-4 를 앞두고
- *   진짜 슬롯 판단을 했는가」가 REQ-736 의 지표라 장소가 곧 그 판별자다. null 은 예고 화면 **밖**
+ * @param {?string} [challenger] 그 교체가 일어난 **도전자 선택 화면**(S7)의 도전자 — 「A-4 를 앞두고
+ *   진짜 슬롯 판단을 했는가」가 REQ-736 의 지표라 장소가 곧 그 판별자다. null 은 그 화면 **밖**
  *   전부다 (도장 교체 · 적립이 부르는 `autoEquip`), 그 둘을 다시 가르는 것은 이 필드의 몫이 아니다.
  */
 export function equip(session, styleId, slotIdx, { challenger = null } = {}) {

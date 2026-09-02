@@ -36,7 +36,7 @@ export function startDuel(ctx) {
   const banner = el('div', { class: 'toast' });
   let exchanges = 0;
   // 대련 중 상황은 「누구와 몇 초째인가」뿐이라 띠가 그 둘만 진다 — 재화·접근성 토글은
-  // 대련 밖(도장·예고)의 자리다 (REQ-820·893·897).
+  // 대련 밖(도장·도전자 선택)의 자리다 (REQ-820·893·897).
   const band = stageBand({
     onLeave: () => ctx.go('dojo'),
     name: challenger.name,
