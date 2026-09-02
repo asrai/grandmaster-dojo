@@ -15,13 +15,20 @@ const STEP_SHAPE = {
 };
 
 /**
+ * 계단이 누구의 성인지의 색 (REQ-864) — 사부는 금, 제자는 쾌의 청이다. 값은 원장이 지고
+ * 여기서는 그 토큰의 **이름**만 고르므로, 색 하나를 바꾸는 자리는 여전히 `:root` 한 곳이다.
+ */
+export const STAIR_TONE = { MASTER: 'master', DISCIPLE: 'disciple' };
+
+/**
  * @param {object} p
  * @param {number} p.rank 현재 성
  * @param {number} [p.progress] 다음 칸의 부분 채움 비율 (0~1)
  * @param {number} [p.gained] 이번 판에 오른 칸 수 — 그만큼의 최근 칸이 발광한다 (REQ-818)
+ * @param {string} [p.tone] `STAIR_TONE` 중 하나 — 생략하면 사부의 금이다
  * @returns {HTMLElement} `.steps` 노드
  */
-export function rankStair({ rank, progress = 0, gained = 0 }) {
+export function rankStair({ rank, progress = 0, gained = 0, tone = STAIR_TONE.MASTER }) {
   const wall = wallStep();
   const glowFrom = rank - gained + 1;
   const steps = Array.from({ length: BALANCE.rankMax }, (_, i) => {
@@ -36,7 +43,7 @@ export function rankStair({ rank, progress = 0, gained = 0 }) {
       shape ? el('i', { class: `mk ${shape}`, 'aria-hidden': 'true' }) : null,
     ]);
   });
-  return el('div', { class: 'steps' }, steps);
+  return el('div', { class: `steps tone-${tone}` }, steps);
 }
 
 /**

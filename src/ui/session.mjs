@@ -108,10 +108,14 @@ export function createSession({ now = () => Date.now() } = {}) {
  * 안에서만 센 수가 있어야 한다. 통합 로그는 세션 전체라 그 슬라이스를 되찾을 수 없으므로,
  * 판정과 성 변화가 지나는 자리에서 함께 쌓는다.
  */
-const createBout = () => ({ verdicts: {}, gains: {} });
+const createBout = (attempt = 0) => ({ attempt, verdicts: {}, gains: {}, finisher: null });
 
-/** 판의 시작 — 대련 진입과 임무 확정 둘뿐이고, 화면과 헤드리스가 그 두 자리를 공유한다. */
-const beginBout = (session) => { session.bout = createBout(); };
+/**
+ * 판의 시작 — 대련 진입과 임무 확정 둘뿐이고, 화면과 헤드리스가 그 두 자리를 공유한다.
+ * @param {number} [attempt] 그 대면의 회차 — 결과 화면의 표찰이 「몇 차 재대련이었나」를 산술로
+ *   되짚지 않게 실제로 싸운 값을 들고 간다. 임무에는 회차 축이 없어 0 이다.
+ */
+const beginBout = (session, attempt = 0) => { session.bout = createBout(attempt); };
 
 /**
  * 그 판에 오른 성 한 건 — 같은 초식이 한 판에 여러 번 오르면 시작은 첫 값, 끝은 마지막 값이라
@@ -126,9 +130,14 @@ function noteGain(session, change) {
 
 /** 그 판의 판정 분포·성 변화 스냅샷 — 결과 화면이 읽는 유일한 형태다 (REQ-871). */
 export const boutLedger = (session) => ({
+  attempt: session.bout.attempt,
+  finisher: session.bout.finisher,
   verdicts: { ...session.bout.verdicts },
   gains: Object.entries(session.bout.gains).map(([style, move]) => ({ style, ...move })),
 });
+
+/** 상대를 쓰러뜨린 초인가 — 초 상한의 잔여 HP 비교승은 그 타격이 확정한 승리가 아니다 (REQ-708). */
+const isFinishingBlow = (view) => view.outcome?.win === true && view.outcome.by === 'hp';
 
 /**
  * 화면 전이의 계측 지점 — `cycle{phase}` 의 유일한 출처이자, 걸어 둔 제자 수련이 「사부가 그동안
@@ -248,9 +257,9 @@ export const nextChallengerEntry = (session) => challengerEntry(session, challen
  * 마지막 회차(대개 포기한 그 판)가 통째로 빠지기 때문이다.
  */
 export function beginDuel(session, challengerId) {
-  beginBout(session);
   const foeRank = duelFoeRank(session, challengerId);
   const attemptN = duelAttemptOf(session, challengerId);
+  beginBout(session, attemptN);
   if (attemptN > 1) {
     logEvent(session, 'rematch', { challenger: challengerId, foe_rank: foeRank, attempt_n: attemptN });
   }
@@ -532,9 +541,8 @@ export function recordDuelVerdict(session, view) {
   logVerdict(session, view.verdict, 'user');
   if (!view.fire) return null;
   const styleId = view.fire.style.id;
-  // 초 상한의 잔여 HP 비교승은 그 타격이 확정한 승리가 아니다 — 결정타는 상대를 쓰러뜨린 초뿐이다.
-  const finish = view.outcome?.win === true && view.outcome.by === 'hp';
-  if (finish) logFinish(session, view, styleId);
+  const finish = isFinishingBlow(view);
+  if (finish) noteFinisher(session, view, styleId);
   const promoted = recordOutcomeRank(session, styleId, {
     finish, crush: view.verdict.grade === 'crush',
   });
@@ -548,10 +556,12 @@ export function recordDuelVerdict(session, view) {
 }
 
 /**
- * 결정타 기록 (REQ-708) — 어느 초식이 끝냈는지의 인과를 남긴다. `intended` 는 그 초가 11성
- * 계단을 노리던 초식에 떨어졌는가다: 결정타의 통제 불가는 의도된 난이도이고 재는 것은 배분이다.
+ * 결정타 기록 (REQ-708) — 어느 초식이 끝냈는지의 인과를 로그와 판 원장에 함께 남긴다.
+ * `intended` 는 그 초가 11성 계단을 노리던 초식에 떨어졌는가다: 결정타의 통제 불가는 의도된
+ * 난이도이고 재는 것은 배분이다.
  */
-function logFinish(session, view, styleId) {
+function noteFinisher(session, view, styleId) {
+  session.bout.finisher = styleId;
   logEvent(session, 'finish', {
     style: styleId,
     challenger: view.challenger.id,
@@ -564,6 +574,8 @@ export function recordDispatchVerdict(session, view) {
   logVerdict(session, view.verdict, 'disciple');
   if (!view.fire || !isEffectiveSuccess(view.verdict.grade)) return null;
   const styleId = view.fire.style.id;
+  // 결과 화면의 결정타 줄이 대련·파견을 가르지 않으므로 그 사실을 붙잡는 자리도 하나여야 한다.
+  if (isFinishingBlow(view)) noteFinisher(session, view, styleId);
   const accrued = accrueDiscipleRank(session, styleId);
   noteGain(session, accrued && { style: styleId, ...accrued });
   return accrued;
