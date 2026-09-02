@@ -156,6 +156,9 @@ export function startTrain(ctx) {
         settled = true;
         SFX.fire();
         wiring.onFire();
+        // 마지막 구절은 프레임 루프가 아니라 여기서 켠다 — 완주가 루프를 세우므로 그 한 구절만
+        // 영영 흐린 채로 성공 화면이 뜬다 (REQ-841).
+        scroll.light(style.seq.length);
         verdict.show(TRAIN_DONE_VIEW);
         showProgress();
         rearm = setTimeout(arm, BALANCE.resolveMs);
