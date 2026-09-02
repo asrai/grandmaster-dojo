@@ -176,8 +176,8 @@ export function startTrain(ctx) {
     ctx.pad.render();
     if (left > 0) return;
     settled = true;
-    // 수련 실패는 무벌 재시도라 시각 표시가 없다 (#46 · REQ-846). 그래도 실패했다는 사실은
-    // 비시각 사용자에게 관측되어야 하므로 낭독 채널로만 나간다 (#51).
+    // 실패에 시각 표시를 두지 않는 규칙(REQ-846)은 「관측되지 않는다」가 아니다 — 채널이
+    // 시각이 아닐 뿐이라, 실패는 낭독으로만 나간다 (#51).
     verdict.announce('수련 실패 — 창이 다시 열린다');
     rearm = setTimeout(arm, BALANCE.resolveMs);
   }

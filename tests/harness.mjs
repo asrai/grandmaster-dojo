@@ -1002,6 +1002,17 @@ suite('제자 자동 선택 (REQ-403·853)', () => {
     '배제해도 같은 초식을 골랐으면 회피가 아니다 — 유운보는 δ 에 우세 후보가 아니었다');
   eq(selectDiscipleStyle({ styles: [styleById('yuun-bo')], foeStyle: delta }).reason,
     SELECT_REASON.CLASH, '전부 배제돼 역파를 감수한 초는 회피가 아니다');
+  // 배제 여부 판정은 배제된 초식이 슬롯 뒤에 있을 때 갈린다 — 정렬 기준이 넘어온 목록이 아니라
+  // 걸러낸 목록에 매여 있으면 배제분이 인덱스 -1 로 앞서 「바뀌지 않은 선택」이 회피로 오라벨된다.
+  const twoHard = [
+    { ...styleById('jeok-un'), id: 'hard-front' },
+    { ...styleById('jeok-un'), id: 'hard-back' },
+  ];
+  const finisherOnBack = { id: 'fake-back', attr: 'fine', d: 20, finisher: true, counters: 'hard-back' };
+  const behind = selectDiscipleStyle({ styles: twoHard, foeStyle: finisherOnBack });
+  eq(behind.style.id, 'hard-front', '배제분이 뒤 슬롯이면 앞 슬롯이 그대로 뽑힌다');
+  eq(behind.reason, SELECT_REASON.ADVANTAGE, '선택이 바뀌지 않았으므로 회피가 아니다');
+
   deepEq([...new Set(Object.values(SELECT_REASON))].length, 3, '이유 계열은 3종이고 값이 겹치지 않는다');
 });
 

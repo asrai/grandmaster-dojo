@@ -211,7 +211,7 @@ body {
 /* 화면이 통째로 소유하는 자리 — 전역 여백이 없어야 어떤 화면이든 y=0 부터 깔 수 있다 (REQ-802). */
 #app { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 /* 플렉스 자식의 기본 min-width:auto 가 긴 한글 줄을 뷰포트 밖으로 밀어낸다. */
-#app, .screen-body, .card, .row, .row-head, .row-name, .telegraph, .head, .meter-line > *, .tip-anchor { min-width: 0; }
+#app, .screen-body, .card, .row, .row-head, .row-name, .head, .meter-line > *, .tip-anchor { min-width: 0; }
 /* 낭독 전용 층 — 스테이지 직속이라 화면이 파괴돼도 판정이 침묵하지 않는다 (REQ-807). */
 .sr-only {
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
@@ -570,8 +570,8 @@ button.ghost { background: transparent; }
 .slip-tags { flex: none; display: flex; gap: 3px; min-height: 14px; }
 .slip.top { border-color: color-mix(in srgb, var(--attr) 45%, transparent); }
 .slip.picked { outline: 2px solid var(--gold); }
-/* 파해 유도 (REQ-855) — 선택 상태의 속성색과 같은 색을 쓰면 「유도」로 읽히지 않는다. 금은
-   달성·확정의 색이고 유도는 그 예고라, 굳지 않고 맥동한다. */
+/* 파해 유도 (REQ-855) — 금은 달성·확정의 색이고 유도는 그 예고라, 굳은 금테(`.picked` = 지시)와
+   맥동으로 갈린다. 속성색을 쓰면 그 죽간의 속성 표시와 겹쳐 유도로 읽히지 않는다. */
 .slip.beckon { animation: beckon var(--beckon-dur) ease-in-out infinite; }
 @keyframes beckon {
   0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--c4) 35%, transparent) inset }

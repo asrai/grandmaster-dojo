@@ -81,8 +81,9 @@ export function assertGugyeol(styles) {
 }
 
 /**
- * 한 무공은 세 속성을 다 갖는다 (REQ-403) — 제자는 무공을 통째로 물려받으므로, 빠진 속성이
- * 하나라도 있으면 어떤 예고에는 우세도 상쇄도 낼 수 없는 초가 생긴다.
+ * 한 무공은 세 속성을 다 갖는다 (REQ-403) — 제자는 **무공 단위로** 통째 물려받으므로, 한 권이라도
+ * 빠진 속성이 있으면 그 제자에게는 우세도 상쇄도 낼 수 없는 예고가 생긴다. 그래서 검사 모집단은
+ * 전 초식 합집합이 아니라 무공 하나다.
  */
 export function assertAttrCoverage(styles) {
   const held = new Set(styles.map((s) => s.attr));
@@ -567,24 +568,29 @@ export function selectDiscipleStyle({ styles, foeStyle = null, rankOf: rankFn = 
   const kept = styles.filter((s) => s.id !== avoidId);
   // 전부 배제되면 낼 초식이 없어지므로 역파를 감수한다.
   const pool = kept.length ? kept : styles;
-  const bySlot = (a, b) => pool.indexOf(a) - pool.indexOf(b);
-  const byRank = (a, b) => rankFn(b) - rankFn(a) || bySlot(a, b);
+  const excluded = kept.length > 0 && kept.length !== styles.length;
 
+  /** 정렬 기준은 넘어온 목록에 매인다 — 다른 목록의 인덱스를 쓰면 밖의 초식이 -1 로 앞선다. */
   const pick = (from) => {
-    // 상대 빈틈에는 속성 비교의 상대가 없고 아무 완주나 완파 취급이라 위력만 남는다.
+    const bySlot = (a, b) => from.indexOf(a) - from.indexOf(b);
+    const byRank = (a, b) => rankFn(b) - rankFn(a) || bySlot(a, b);
+    // 상대 빈틈에는 속성 비교의 상대가 없고 아무 완주나 완파 취급이라 위력만 남는다 — 어떤
+    // 완주든 완파라 최대 위력을 고르는 것이 곧 우세를 고르는 것이다.
     if (!foeStyle) return { style: from.slice().sort((a, b) => b.d - a.d || byRank(a, b))[0], reason: SELECT_REASON.ADVANTAGE };
     const beats = from.filter((s) => ATTRS[s.attr].beats === foeStyle.attr);
     if (beats.length) return { style: beats.sort(byRank)[0], reason: SELECT_REASON.ADVANTAGE };
     const same = from.filter((s) => s.attr === foeStyle.attr);
     if (same.length) return { style: same.sort(byRank)[0], reason: SELECT_REASON.CLASH };
-    // 잔여(열세)도 상쇄 계열로 접는다 — 무공이 세 속성을 덮으므로(assertAttrCoverage) 제자의
-    // 전 초식을 넘기는 파견에서는 서지 않고, 후보가 이미 좁혀진 대련 봇에서만 닿는다.
+    // 잔여(열세)도 상쇄 계열로 접는다 — 배제되는 초식은 한 개인데 우세군과 상쇄군은 서로 다른
+    // 속성이라 둘 중 하나는 반드시 남으므로, 제자의 전 초식을 넘기는 파견에서는 이 갈래가 서지
+    // 않는다 (무공이 세 속성을 덮는 것은 `assertAttrCoverage` 가 문다). 후보가 이미 좁혀진
+    // 대련 봇만 여기 닿고 그쪽은 이유를 읽지 않는다.
     return { style: from.slice().sort(byRank)[0], reason: SELECT_REASON.CLASH };
   };
 
   const chosen = pick(pool);
   // 배제가 실제로 선택을 바꿨을 때만 회피다 — 어차피 고르지 않았을 초식을 뺀 것은 회피가 아니다.
-  if (pool !== styles && pick(styles).style !== chosen.style) {
+  if (excluded && pick(styles).style !== chosen.style) {
     return { style: chosen.style, reason: SELECT_REASON.AVOID_REVERSAL };
   }
   return chosen;
@@ -594,4 +600,4 @@ const ALL_STYLES = [...STYLES, ...FOE_STYLES];
 assertPrefixFree(STYLES);
 assertCounterIntegrity(ALL_STYLES);
 assertGugyeol(STYLES);
-assertAttrCoverage(STYLES);
+for (const art of ART_SETS) assertAttrCoverage(artStyles(art.id));
