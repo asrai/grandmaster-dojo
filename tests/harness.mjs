@@ -15,6 +15,8 @@ import {
 } from '../src/bot.mjs';
 import { createMatch, createVirtualTimer, pumpToEnd } from '../src/ui/match.mjs';
 import { createSequenceInput } from '../src/ui/sequence-input.mjs';
+import { CUE } from '../src/ui/audio.mjs';
+import { createFrameBudget } from '../src/ui/frame-budget.mjs';
 import {
   ART_ID, DISPATCH_CHALLENGER, EXPORT_SCHEMA, accrueDiscipleRank, addCoins, advanceDiscipleTraining,
   autoEquip, beatenChallengers, beginDuel, beginMission, canDiscipleTrain, canDispatch, canEquip,
@@ -2658,6 +2660,11 @@ suite('밸런스 데이터 스키마 (#45)', () => {
   throwsWith((r) => { delete r.hp['A-3']; }, 'hp: 키 "A-3" 누락 (CHALLENGERS 와 1:1)', 'hp 도전자 키 누락');
   throwsWith((r) => { r.bot.reactionMs = [650, 450]; }, 'bot.reactionMs: [650,450] 는 [최소, 최대] 순서가 뒤집혔다', 'bot 배열 역순');
   throwsWith((r) => { delete r.damageByLen['5']; }, 'damageByLen: 초식 길이 5 의 피해가 없다', 'damageByLen 이 초식 길이를 못 덮음');
+  // 사운드 매핑 (REQ-920·924) — 「매핑 없는 사건이 조용히 무음으로 지나가지 않는다」의 기계 층.
+  throwsWith((r) => { delete r.audio.key; }, 'audio: cue "key" 누락', '사운드 cue 누락');
+  throwsWith((r) => { r.audio.key = 'ding'; }, 'audio.key: "ding" 는 sfx_·bgm_ 로 시작하는 사운드 id 가 아니다', '사운드 id 꼴 아님');
+  throwsWith((r) => { delete r.audio.verdict.crush; }, 'audio.verdict: 판정 계열 키', '판정 계열이 6단을 못 덮음');
+  throwsWith((r) => { r.audio.extra = 'sfx_key'; }, 'audio.extra: 사운드 매핑에 없는 cue', '매핑에 없는 cue');
   throwsWith((r) => { r.nonesuch = 1; }, 'nonesuch: 스키마에 없는 필드', '스키마 밖 필드');
 
   // 창안자는 표시 전용이라 값이 비어도 아무것도 죽지 않는다 (REQ-891) — 그 무음을 로드 시점에
@@ -2780,6 +2787,57 @@ suite('밸런스 데이터 스키마 (#45)', () => {
   ok(batched !== null && batched.includes('2건'), `불량 2건이 한 번에 보고된다 (실제: ${batched})`);
   ok(batched !== null && batched.includes('slots') && batched.includes('grades.clash.formula'),
     '전건 수집 — 두 오류가 모두 문면에 실린다');
+});
+
+// ---------------------------- 15. 사운드 매핑 · 프레임 예산 (REQ-914·915·920·924)
+
+suite('사운드 매핑 (REQ-920·924)', () => {
+  // 판정 계열은 6단 전부를 덮어야 한다 — 한 등급이라도 비면 그 판정이 무음으로 지나간다.
+  deepEq(Object.keys(BALANCE.audio.verdict).slice().sort(),
+    Object.keys(BALANCE.grades).slice().sort(), '판정 매핑이 6단 집합과 같다');
+  deepEq([...new Set(Object.values(BALANCE.audio.verdict))].sort(),
+    ['sfx_break', 'sfx_clash', 'sfx_hit'], '3계열로 접힌다');
+  eq(BALANCE.audio.verdict.crush, 'sfx_break', '완파 = 유리 극단');
+  eq(BALANCE.audio.verdict.reversal, BALANCE.audio.verdict.struck, '역파·피격이 같은 불리 계열');
+  eq(BALANCE.audio.verdict.advantage, BALANCE.audio.verdict.disadvantage, '우세·열세가 같은 중립 교차');
+
+  // 사건 이름은 코드가 분기하는 값이라 그 집합이 pin 이다 — 늘리면 이 줄이 먼저 red 다.
+  deepEq(Object.values(CUE), ['key', 'ignore', 'reset', 'fire', 'confirm', 'rankUp', 'transmit'],
+    '소리가 붙는 사건 7종');
+  // 납품 id 는 파일 이름의 줄기이기도 하다 — 경로 표를 따로 두지 않는 것이 그 계약이다.
+  for (const [cue, id] of Object.entries(BALANCE.audio)) {
+    if (cue === 'verdict') continue;
+    ok(/^(sfx|bgm)_[a-z0-9_]+$/.test(id), `audio.${cue} 는 사운드 id 꼴이다 (${id})`);
+  }
+
+});
+
+suite('프레임 예산 (REQ-914·915)', () => {
+  const budget = createFrameBudget({ minSamples: 4 });
+  deepEq(budget.scenes(), [], '표본이 없으면 말할 장면도 없다');
+  eq(budget.p95('verdict'), null, '표본이 모자라면 p95 는 침묵한다');
+  eq(budget.fps('parallax'), null, '표본이 모자라면 fps 도 침묵한다');
+
+  for (const ms of [16, 16, 17, 40]) budget.sample('verdict', ms);
+  deepEq(budget.scenes(), ['verdict'], '표본이 찬 장면만 보고된다');
+  eq(budget.p95('verdict'), 40, 'p95 는 최악 프레임을 잡는다 (4표본의 95백분위 = 4번째)');
+  eq(budget.dropped('verdict'), 1, '25ms 를 넘긴 프레임이 유실로 센다');
+
+  // 배경 탭 복귀의 초 단위 간격은 렌더 비용이 아니라 정지 시간이라 표본이 아니다.
+  budget.sample('verdict', 5000);
+  budget.sample('verdict', 0);
+  budget.sample('verdict', -3);
+  eq(budget.dropped('verdict'), 1, '정지·비정상 간격은 표본에 들지 않는다');
+
+  for (let i = 0; i < 10; i += 1) budget.sample('parallax', 25);
+  eq(Math.round(budget.fps('parallax')), 40, '평균 25ms = 40fps');
+  ok(budget.fps('parallax') < BALANCE.parallaxMinFps, '임계 미만이면 패럴랙스를 끈다');
+  for (let i = 0; i < 60; i += 1) budget.sample('parallax', 16);
+  ok(budget.fps('parallax') > BALANCE.parallaxMinFps,
+    '최근 창만 보므로 초반의 느린 프레임이 남은 세션을 끌어내리지 않는다');
+
+  budget.reset();
+  deepEq(budget.scenes(), [], '화면 전이는 원장을 비운다 — 화면별 표본이 섞이면 축이 무너진다');
 });
 
 // ------------------------------------------------------------------ 결과
