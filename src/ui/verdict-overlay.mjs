@@ -58,7 +58,7 @@ export function createVerdictOverlay({ heldSince = () => null } = {}) {
   /** 확정 연출이 아직 빚진 시간 — 이미 충분히 보였거나 확정 상태가 아니면 0 이다. */
   function owedMs() {
     const since = heldSince();
-    if (since === null) return 0;
+    if (since == null) return 0;
     return Math.max(0, tokenMs('--only-hold') - (performance.now() - since));
   }
 
@@ -90,6 +90,8 @@ export function createVerdictOverlay({ heldSince = () => null } = {}) {
       // 표시 규약이 빠진 등급은 조용히 빈 판정으로 그려지므로, 그 자리에서 터뜨린다.
       if (!view) throw new Error(`표시 규약이 없는 등급: ${grade}`);
       const extreme = EXTREME_GRADES.has(grade);
+      // 앞선 대기가 남아 있으면 두 판정이 겹쳐 뜬다.
+      clearTimeout(waiting);
       const deferMs = owedMs();
       const paint = () => {
         waiting = 0;

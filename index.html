@@ -112,13 +112,22 @@
   --fig-near-x: 14px;
   --fig-near-y: 30px;
   --fig-near-w: 176px;
+  /* 역광은 실루엣보다 크고 어긋나 있다 — 뒤에서 비추는 빛이라 윤곽과 같은 상자가 아니다. */
+  --glow-far-x: 22px;
+  --glow-far-y: 112px;
+  --glow-far-w: 170px;
+  --glow-far-h: 200px;
+  --glow-near-x: 2px;
+  --glow-near-y: 34px;
+  --glow-near-w: 220px;
+  --glow-near-h: 238px;
 
   /* 죽간 (REQ-824·827) — 매수가 곧 폭이라 「좁혀진다」의 계단이 이 네 값이다. */
   --slip-w1: 172px;
   --slip-w2: 132px;
   --slip-w3: 104px;
   --slip-w4: 84px;
-  --slip-h: 130px;
+  --slip-h: 146px;
   --slip-gap: 7px;
 
   /* 키패드 (REQ-828·829) — 키 간격 대 되돌리기까지의 간격이 3배라 별개 그룹으로 읽힌다. */
@@ -394,8 +403,8 @@ button.ghost { background: transparent; }
   position: absolute; border-radius: 50%; pointer-events: none;
   background: radial-gradient(closest-side, var(--backlight), transparent 72%);
 }
-.scene .backlight.far { left: calc(var(--fig-far-x) - 12px); top: var(--fig-far-y); width: calc(var(--fig-far-w) + 44px); height: 200px; }
-.scene .backlight.near { right: calc(var(--fig-near-x) - 12px); bottom: var(--fig-near-y); width: calc(var(--fig-near-w) + 44px); height: 238px; }
+.scene .backlight.far { left: var(--glow-far-x); top: var(--glow-far-y); width: var(--glow-far-w); height: var(--glow-far-h); }
+.scene .backlight.near { right: var(--glow-near-x); bottom: var(--glow-near-y); width: var(--glow-near-w); height: var(--glow-near-h); }
 /* 실루엣은 납품된 투명 PNG 다 (REQ-932) — 코드는 에셋 id·자세만 알고, 그 이름에서 파일로 가는
    표는 여기 한 곳뿐이라 후속 아트 개선이 파일 스왑으로 닫힌다 (REQ-931). */
 .scene .fig {
@@ -510,7 +519,7 @@ button.ghost { background: transparent; }
 
 /* 죽간 줄 (REQ-824) — 매수가 곧 폭이고, 그 계단이 「후보가 좁혀진다」의 표현이다. */
 .tablets {
-  flex: none; display: flex; justify-content: center; align-items: stretch;
+  position: relative; flex: none; display: flex; justify-content: center; align-items: stretch;
   gap: var(--slip-gap); height: var(--slip-h);
 }
 .slip {
@@ -545,10 +554,15 @@ button.ghost { background: transparent; }
   background: linear-gradient(180deg, color-mix(in srgb, var(--c4) 22%, var(--c1)), var(--c2));
   box-shadow: 0 0 0 1px var(--gold) inset, 0 0 26px color-mix(in srgb, var(--c4) 40%, transparent);
 }
-.slip.only .slip-name { font-size: 20px; }
+.slip.only .slip-name { font-size: 19px; }
 /* 등장·탈락 (REQ-825) — 탈락한 매를 즉시 지우면 필터링 과정이 화면에서 사라진다. */
 .slip.enter { animation: slip-in var(--slip-exit) ease-out both; }
-.slip.out { pointer-events: none; animation: slip-out var(--slip-exit) ease-in forwards; }
+/* 가라앉는 매는 흐름 밖으로 나간다 — 줄에 남으면 살아남은 매가 새 폭 계단으로 자랄 때 줄이
+   넘쳐 금테 매가 중앙에서 밀린다. 좌표·폭은 떼어내는 순간 JS 가 인라인으로 박는다. */
+.slip.out {
+  position: absolute; top: 0; pointer-events: none;
+  animation: slip-out var(--slip-exit) ease-in forwards;
+}
 @keyframes slip-in { from { opacity: 0; transform: translateY(-6px) } to { opacity: 1; transform: none } }
 @keyframes slip-out {
   from { opacity: .45; filter: grayscale(1); transform: translateY(0) }
@@ -559,7 +573,7 @@ button.ghost { background: transparent; }
 .toast.show { opacity: 1; }
 
 /* 판정은 흐름 밖에서 뜬다 — 자리를 차지하면 문구 등장마다 아래 형제가 밀린다 (#40). */
-.verdict-overlay { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.verdict-overlay { position: absolute; inset: 0; z-index: 8; pointer-events: none; }
 /* 위치가 승패 축이다 (REQ-814) — 오버레이 중심이 상쇄이고, 등급마다 그만큼 위·아래로 민다. */
 .verdict-pop {
   position: absolute; left: 0; right: 0; top: 50%; padding: 0 12px; text-align: center;
@@ -607,10 +621,10 @@ button.ghost { background: transparent; }
   background: linear-gradient(180deg, color-mix(in srgb, var(--c1) 70%, var(--shadow)), var(--panel) 40%, var(--c1));
 }
 .pad.idle { opacity: .4; }
-.pad.idle .cross button { pointer-events: none; }
+.pad.idle .cross button, .pad.idle .undo { pointer-events: none; }
 /* 봇 점유 중 사람 입력은 무시되므로, 눌러도 되는 것처럼 보이지 않게 한다. */
 .pad.bot { box-shadow: inset 0 2px 0 var(--gold); }
-.pad.bot .cross button, .pad.bot .tablets { pointer-events: none; opacity: .6; }
+.pad.bot .cross button, .pad.bot .undo, .pad.bot .tablets { pointer-events: none; opacity: .6; }
 /* 진행형 후보 색 — 입력부 상단 전폭 발광 띠 (REQ-828). JS 는 `color` 하나만 주고 발광은 그 파생이다. */
 .pad-color {
   flex: none; height: 3px; margin: 0 -13px 11px;

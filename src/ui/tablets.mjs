@@ -8,6 +8,11 @@ import { attrMark, attrTone } from './components/attr-mark.mjs';
 import { hanja } from './components/hanja.mjs';
 import { TABLET, tabletStates } from './tablet-state.mjs';
 
+/** 전이 길이는 시각 토큰이라 원장(`:root`)이 값을 갖고 여기는 이름만 부른다. */
+const exitMs = () => parseFloat(
+  getComputedStyle(document.documentElement).getPropertyValue('--slip-exit'),
+) || 0;
+
 /**
  * 죽간 매 하나 — 속성 기호·성 배지·초식명·한자 세로열이 한 매 안에 함께 선다. 속성과 성이
  * 한 쌍으로 위력을 정하므로(REQ-721) 둘을 갈라 두지 않는다 (REQ-827).
@@ -49,9 +54,9 @@ function createSlip(item) {
 /**
  * 장착 가능한 죽간 줄 — 호출부가 `node` 를 자기 트리에 넣고 `render` 로 매를 갈아 끼운다.
  * @param {object} [p]
- * @param {boolean} [p.soloEmphasis] 1매를 「확정」으로 그릴지 — 「후보가 좁혀졌다」가 참인
- *   호출부만 켠다. 파견 관전의 1매는 좁혀진 결과가 아니라 제자가 아는 초식이 하나뿐이라는
- *   뜻이라, 그 화면에서는 금테도 최소 표시 시간도 성립하지 않는다 (REQ-824·826).
+ * @param {boolean} [p.soloEmphasis] 이 줄이 **후보 필터의 결과**인지 — 필터인 줄에서만 1매가
+ *   「확정」이라 금테와 최소 표시 시간을 얻는다. 파견 관전의 죽간은 손으로 고르는 지시 목록이지
+ *   시퀀스가 좁힌 후보가 아니므로, 매수가 같아도 확정이라는 어휘가 성립하지 않는다 (REQ-824·826).
  * @returns {{node: HTMLElement, render: (items: object[]) => void, clear: () => void,
  *   onlyShownAt: () => ?number}}
  */
@@ -69,7 +74,25 @@ export function createTablets({ soloEmphasis = false } = {}) {
     const ghost = sinking.get(id);
     if (!ghost) return;
     sinking.delete(id);
-    ghost.node.remove();
+    ghost.slip.node.remove();
+  }
+
+  /**
+   * 탈락한 매를 흐름 밖으로 떼어낸다 — 남겨 두면 살아남은 매가 새 폭 계단으로 자랄 때 줄이
+   * 통째로 넘쳐 금테 매가 중앙에서 밀린다. 떼기 전에 잰 좌표를 그대로 박아 제자리에서 가라앉는다.
+   * @param {{id: string, slip: object, left: number, width: number}[]} leaving 잰 값과 함께 넘어온 매
+   */
+  function sink(leaving) {
+    for (const { id, slip, left, width } of leaving) {
+      live.delete(id);
+      sinking.set(id, { slip, at: performance.now() });
+      slip.node.setAttribute('style', `left:${left}px;width:${width}px`);
+      slip.node.className = 'slip out';
+      slip.node.addEventListener('animationend', (e) => {
+        // 자식의 애니메이션 종료도 여기까지 올라오므로 자기 것만 받는다.
+        if (e.target === slip.node) bury(id);
+      });
+    }
   }
 
   return {
@@ -80,16 +103,20 @@ export function createTablets({ soloEmphasis = false } = {}) {
       const byId = new Map(items.map((item) => [item.style.id, item]));
       const states = tabletStates(drawn, next);
 
+      // 배경 탭에서는 `animationend` 가 오지 않는다 — 시효가 지난 유령은 렌더가 함께 걷어 낸다.
+      const stale = performance.now() - exitMs();
+      for (const [id, ghost] of [...sinking]) if (ghost.at <= stale) bury(id);
+
+      // 새 매를 그리기 전에 잰다 — 뒤에 재면 폭 계단이 이미 바뀌어 옛 자리를 알 수 없다.
+      sink(states
+        .filter(({ id, state }) => state === TABLET.EXIT && live.has(id))
+        .map(({ id }) => {
+          const slip = live.get(id);
+          return { id, slip, left: slip.node.offsetLeft, width: slip.node.offsetWidth };
+        }));
+
       for (const { id, state } of states) {
-        if (state === TABLET.EXIT) {
-          const going = live.get(id);
-          if (!going) continue;
-          live.delete(id);
-          sinking.set(id, going);
-          going.node.className = 'slip out';
-          going.node.addEventListener('animationend', () => bury(id), { once: true });
-          continue;
-        }
+        if (state === TABLET.EXIT) continue;
         bury(id);
         // 파견 관전의 1매는 확정이 아니므로 금테를 주지 않는다 — 상태 계산은 같고 표현만 갈린다.
         const shown = state === TABLET.ONLY && !soloEmphasis ? TABLET.HOLD : state;
@@ -99,7 +126,7 @@ export function createTablets({ soloEmphasis = false } = {}) {
       }
       // 이미 그 순서면 손대지 않는다 — 재삽입은 가라앉는 중인 매를 확정 매 앞으로 밀어 올려
       // 금테가 옆으로 튀게 만든다. 어긋났을 때만 옮긴다(`appendChild` 는 이동이라 노드가 유지된다).
-      const want = states.map(({ id }) => (live.get(id) ?? sinking.get(id))?.node).filter(Boolean);
+      const want = states.map(({ id }) => (live.get(id) ?? sinking.get(id)?.slip)?.node).filter(Boolean);
       const have = [...node.children].filter((child) => want.includes(child));
       if (have.length !== want.length || have.some((child, i) => child !== want[i])) {
         for (const slip of want) node.appendChild(slip);
