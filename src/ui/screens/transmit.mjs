@@ -5,7 +5,7 @@
 
 import { ARROW } from '../../balance.mjs';
 import { artStyles, discipleStyleRank } from '../../core.mjs';
-import { composeScreen, el } from '../dom.mjs';
+import { composeScreen, el, ledgerMs } from '../dom.mjs';
 import { stageBand } from '../band.mjs';
 import { attrMark, attrTone } from '../components/attr-mark.mjs';
 import { hanja } from '../components/hanja.mjs';
@@ -14,14 +14,6 @@ import { CUE, play } from '../audio.mjs';
 import {
   ART_HANJA, ART_ID, ART_NAME, enterTransmit, rankOfStyle,
 } from '../session.mjs';
-
-/**
- * 연출 시간은 원장이 진다 — 시범을 보는 시간과 팔이 맞아떨어지는 시간이 한 연출의 두 구간이라
- * 이 모듈은 그 이름만 부른다 (REQ-861).
- */
-const followDelayMs = () => parseFloat(
-  getComputedStyle(document.documentElement).getPropertyValue('--tm-follow-delay'),
-) || 0;
 
 /**
  * 몸통·팔이 분리 납품된 실루엣 (spec § 아트 계약) — 팔만 별개 그룹이라 각도 하나로 시범과
@@ -128,6 +120,6 @@ export function renderTransmit(ctx) {
   // 바닥의 버튼은 자리를 지키고 뜻만 바뀐다 — 연출 중에는 건너뛰기, 완료 후에는 출구다 (REQ-865).
   action.addEventListener('click', () => (learned ? ctx.go('dojo') : land()));
 
-  timer = setTimeout(land, followDelayMs());
+  timer = setTimeout(land, ledgerMs('--tm-follow-delay'));
   return () => clearTimeout(timer);
 }
