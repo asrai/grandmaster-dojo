@@ -43,6 +43,17 @@ export function ledgerMs(name) {
 }
 
 /**
+ * 지금 탭 순회에 드는 노드를 문서 순으로 (REQ-910·911) — `focusHint` 의 순번이 이 목록의
+ * 첨자라, 채집(`app.mjs`)과 복원(`composeScreen`)이 같은 정의를 봐야 자리가 어긋나지 않는다.
+ * 잠긴 버튼은 포커스를 받지 못하므로 목록 밖이고, 그래서 id 가 살아 있어도 잠긴 노드는
+ * 이웃 규칙으로 넘어간다 — 지정한 제자 수련 열이 그 경로다.
+ */
+export function focusables(root) {
+  return [...root.querySelectorAll('a[href], button, input, select, textarea, [tabindex]')]
+    .filter((node) => !node.disabled && node.tabIndex >= 0);
+}
+
+/**
  * 화면 크롬 조립 (REQ-801) — 상단 띠·하단부의 유무와 본문 여백을 화면이 정하므로, 어떤 화면도
  * 풀블리드 레이어를 y=0 부터 깔 수 있다 (REQ-802).
  * @param {object} ctx 화면 컨텍스트 — `root` 를 비워 다시 채우고 `ownTop` 으로 띠 갱신을 등록한다
@@ -57,6 +68,9 @@ export function ledgerMs(name) {
 export function composeScreen(ctx, {
   top = null, body = [], bottom = null, padded = true,
 }) {
+  // 읽고 비운다 — 남겨 두면 다음 전환이 떠난 화면의 자리를 집는다.
+  const hint = ctx.focusHint ?? null;
+  ctx.focusHint = null;
   const root = clear(ctx.root);
   if (top) {
     root.appendChild(top.node);
@@ -69,8 +83,12 @@ export function composeScreen(ctx, {
   if (bottom) root.appendChild(bottom);
   // 전환 직후 포커스가 body 로 떨어지면 키보드·낭독기 사용자는 새 화면의 첫 요소까지 Tab 을
   // 다시 짚어야 한다. 조립의 소유가 이 함수라 화면마다 반복되는 자리가 생기지 않는다 (#102).
+  // 재렌더는 누른 노드를 파기할 뿐 화면을 떠난 것이 아니므로 그 자리를 되찾는다: id 가 살아
+  // 있으면 그 노드, 없으면 같은 순번의 이웃, 둘 다 없으면 본문이다 (#133).
+  const seats = hint ? focusables(root) : [];
+  const seat = hint && ((hint.id && seats.find((node) => node.id === hint.id)) || seats[hint.ordinal]);
   // 스크롤을 막는 것은 본문이 스크롤 상자여서 — 포커스가 그것을 맨 위로 당기면 안 된다.
-  main.focus({ preventScroll: true });
+  (seat || main).focus({ preventScroll: true });
   return main;
 }
 
@@ -87,17 +105,9 @@ export function composeScreen(ctx, {
 export function topBand(session, artName, { onLeave = null } = {}) {
   const labelEl = el('b', { class: 'top-label' });
   const coinsEl = el('span', { class: 'top-coins' });
-  const a11y = el('input', { id: 'a11y-window', type: 'checkbox' });
-  a11y.checked = session.accessibility;
-  a11y.addEventListener('change', () => {
-    // 데이터 테이블은 시드로 두고 런타임 값은 세션이 갖는다 — 다음 창부터 반영된다.
-    session.accessibility = a11y.checked;
-    // 사이클 도중에 창 배율이 바뀐 세션은 모집단이 섞인 것이라, 판독기가 그 사실을 알아야 한다.
-    session.accessibilityToggles += 1;
-  });
 
-  // 음소거는 싸우는 중이 아니라 들어가기 전에 정하는 설정이라, 실전 3단 좌표를 건드리지 않는
-  // 이 설정 줄이 그 자리다 (REQ-926). 시안에 자리가 지정된 컨트롤이 아니다.
+  // 음소거는 디버그 컨트롤이 아니라 플레이어 기능이라 스테이지 안에 남는다 (REQ-926) — 실전
+  // 3단 좌표를 건드리지 않는 이 띠가 그 자리다. 시안에 자리가 지정된 컨트롤은 아니다.
   const mute = el('button', { class: 'mute' });
   const paintMute = () => {
     const off = isMuted();
@@ -115,9 +125,6 @@ export function topBand(session, artName, { onLeave = null } = {}) {
       labelEl,
       el('span', { class: 'dim', text: artName }),
       coinsEl,
-    ]),
-    el('div', { class: 'top-row' }, [
-      el('label', {}, [a11y, el('span', { text: '응수 창 ×1.3 (쉬움)' })]),
       mute,
     ]),
   ]);
@@ -126,7 +133,6 @@ export function topBand(session, artName, { onLeave = null } = {}) {
   const paint = () => {
     labelEl.textContent = session.label;
     coinsEl.textContent = `${session.coins} 냥`;
-    a11y.checked = session.accessibility;
     paintMute();
   };
   paint();
