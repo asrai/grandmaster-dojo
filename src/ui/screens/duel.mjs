@@ -131,7 +131,7 @@ export function startDuel(ctx) {
         }
       },
       onEnd(view) {
-        ctx.go('result', { kind: 'duel', win: view.outcome.win, stage: params.stage, view });
+        ctx.go('result', { kind: 'duel', win: view.outcome.win, stage: params.stage });
       },
     }),
   });

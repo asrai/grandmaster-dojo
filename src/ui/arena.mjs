@@ -108,6 +108,10 @@ export function createArena({ height = null, figures = [], watcher = null, bout 
   const scenery = el('div', { class: 'scenery', 'aria-hidden': 'true' });
   scenery.innerHTML = SCENERY;
 
+  // 수를 넘기면 `var(360)` 이 되어 CSS 파서가 조용히 버리고 무대가 기본 높이로 선다 — 그 자리에서 문다.
+  if (height !== null && !String(height).startsWith('--')) {
+    throw new Error(`무대 높이는 원장 토큰 이름이어야 한다: ${height}`);
+  }
   const node = el('div', {
     class: 'scene',
     style: height === null ? null : `--scene-h:var(${height})`,

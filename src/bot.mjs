@@ -14,8 +14,8 @@ import { createSequenceInput } from './ui/sequence-input.mjs';
 import {
   ART_ID, DUEL_STAGES, advanceDiscipleTraining, beginMission, canDiscipleTrain, canDispatch,
   canTransmitNow, challengerOfStage, createSession, currentMission, designateDiscipleTraining,
-  enterPhase, equip, equippedStyles, learnStyle, logEvent, logSessionMeta, rankOfStyle, runTransmit,
-  setBotRunning, settleResult, simulateTraining, trainVisitDone,
+  enterPhase, equip, equippedStyles, learnStyle, logEvent, logSessionMeta, rankOfStyle,
+  enterTransmit, setBotRunning, settleResult, simulateTraining, trainVisitDone,
 } from './ui/session.mjs';
 import {
   composeHooks, dispatchWiring, duelWiring, logDispatchResult, logDuelStart, trainWiring,
@@ -598,7 +598,7 @@ export function runHeadlessCycle({
       continue;
     }
     if (phase === 'transmit') {
-      runTransmit(session);
+      enterTransmit(session);
       go('dojo');
       continue;
     }

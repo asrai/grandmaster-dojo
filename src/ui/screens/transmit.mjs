@@ -15,8 +15,13 @@ import {
   ART_HANJA, ART_ID, ART_NAME, enterTransmit, rankOfStyle,
 } from '../session.mjs';
 
-/** 시범이 끝나고 제자의 자세가 사부와 맞아떨어지기까지 (REQ-861). */
-const FOLLOW_MS = 1400;
+/**
+ * 연출 시간은 원장이 진다 — 시범을 보는 시간과 팔이 맞아떨어지는 시간이 한 연출의 두 구간이라
+ * 이 모듈은 그 이름만 부른다 (REQ-861).
+ */
+const followDelayMs = () => parseFloat(
+  getComputedStyle(document.documentElement).getPropertyValue('--tm-follow-delay'),
+) || 0;
 
 /**
  * 몸통·팔이 분리 납품된 실루엣 (spec § 아트 계약) — 팔만 별개 그룹이라 각도 하나로 시범과
@@ -46,7 +51,7 @@ function transferRow(style, masterRank, discipleRank) {
     ]),
     el('div', { class: 'mv-bot' }, [
       el('span', { class: 'seq' }, style.seq.map((dir) => el('i', { text: ARROW[dir] }))),
-      rankStair({ rank: discipleRank ?? 0, tone: STAIR_TONE.DISCIPLE }),
+      rankStair({ rank: discipleRank ?? 0, tone: STAIR_TONE.TRANSFERRED }),
     ]),
   ]);
 }
@@ -61,12 +66,12 @@ const sigil = () => el('div', { class: 'sigil' }, [
 ]);
 
 export function renderTransmit(ctx) {
-  const { session, params } = ctx;
+  const { session } = ctx;
   const mastered = artStyles(ART_ID);
   // 사부의 성은 초식마다 다르므로 행마다 그 초식의 값을 읽는다 (REQ-864).
   const masterRanks = Object.fromEntries(mastered.map((s) => [s.id, rankOfStyle(session, s.id)]));
   // 무공이 건너가는 것은 진입 1회이고 연출은 그 사실의 표현이다 — 렌더는 세션을 움직이지 않는다.
-  enterTransmit(session, params);
+  enterTransmit(session);
   const discipleRanks = Object.fromEntries(
     mastered.map((s) => [s.id, discipleStyleRank(session.disciple, ART_ID, s.id)]),
   );
@@ -123,6 +128,6 @@ export function renderTransmit(ctx) {
   // 바닥의 버튼은 자리를 지키고 뜻만 바뀐다 — 연출 중에는 건너뛰기, 완료 후에는 출구다 (REQ-865).
   action.addEventListener('click', () => (learned ? ctx.go('dojo') : land()));
 
-  timer = setTimeout(land, FOLLOW_MS);
+  timer = setTimeout(land, followDelayMs());
   return () => clearTimeout(timer);
 }

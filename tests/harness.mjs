@@ -2488,24 +2488,23 @@ suite('전수도 진입 1회 (#70 과 같은 축 · REQ-761)', () => {
   ok(canTransmitNow(session), '전수 조건이 섰다');
   const ranksOf = () => artStyles(ART).map((s) => discipleStyleRank(session.disciple, ART, s.id));
 
-  const params = {};
-  enterTransmit(session, params);
   const transmits = () => session.log.entries.filter((e) => e.event === 'transmit').length;
-  eq(transmits(), 1, '진입이 전수를 한 번 실행한다');
+  eq(enterTransmit(session), true, '조건이 선 진입은 전수를 실행한다');
+  eq(transmits(), 1, '전수 로그가 한 번 남는다');
   // 제자가 성을 올린 뒤 재렌더가 전수를 다시 돌리면 그 성이 1성으로 되감긴다.
   accrueDiscipleRank(session, artStyles(ART)[0].id);
   const ranks = ranksOf();
 
-  enterTransmit(session, params);
-  eq(transmits(), 1, '같은 진입의 재렌더는 다시 전수하지 않는다');
+  eq(enterTransmit(session), false, '재렌더는 다시 전수하지 않는다');
+  eq(transmits(), 1, '전수 로그도 늘지 않는다');
   deepEq(ranksOf(), ranks, '제자의 성이 두 번 초기화되지 않는다');
 
-  // 메모는 그 진입의 것이지 전역이 아니다 — 전역이면 두 번째 세션이 조용히 전수를 잃는다.
+  // 멱등을 지는 것은 진입 메모가 아니라 세션 상태다 — 다른 세션은 자기 조건으로 판정한다.
   const other = createSession();
   other.progress = masteredProgress;
-  enterTransmit(other, {});
-  eq(other.log.entries.filter((e) => e.event === 'transmit').length, 1,
-    '다른 진입은 그 세션에서 전수를 실행한다');
+  eq(enterTransmit(other), true, '다른 세션은 그 세션의 조건으로 전수한다');
+  // 조건이 서지 않은 세션에서는 아무것도 하지 않는다 — 던지지 않는 것이 화면 진입의 계약이다.
+  eq(enterTransmit(createSession()), false, '전수 조건이 서지 않으면 실행하지 않는다');
 });
 
 // -------------------------------------------- 12. BALANCE 파라미터 census (REQ-606)

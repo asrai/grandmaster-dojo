@@ -55,7 +55,7 @@ function stageFigures(kind, win) {
 /**
  * 정산 한 줄 — 키는 왼쪽에 작게, 값은 오른쪽에 크게. 값이 문장인 줄은 그 크기를 접는다.
  * @param {string|HTMLElement[]} value 문장이면 그대로, 조판이 갈리는 값이면 노드 배열 —
- *   `el` 의 자식은 노드만 받으므로 문장을 배열로 넘기면 그 줄이 렌더에서 죽는다.
+ *   `el` 의 자식은 노드만 받으므로 문장을 배열로 넘기면 그 자리에서 TypeError 로 터진다.
  */
 const line = (cap, value, { muted = false, cls = '' } = {}) => el('div', {
   class: `ln ${cls}${muted ? ' none' : ''}`.trim(),
@@ -202,10 +202,13 @@ function foeTag(settled, foe) {
   ]);
 }
 
-/** 판정 낙인 (REQ-874) — 한자는 한글 위에 얹히는 보조 낙관이다 (REQ-813). */
+/**
+ * 판정 낙인 (REQ-874) — 한자는 한글 위에 얹히는 보조 낙관이다 (REQ-813). 한 판의 결론이므로
+ * 이 화면의 heading 이기도 하다: 띠가 없는 유일한 화면이라 이것 말고 구조가 없다 (REQ-870).
+ */
 const brandView = (brand) => el('div', { class: `brand ${brand.cls}` }, [
   hanja(brand.mark),
-  el('span', { class: 'word', text: brand.label }),
+  el('h2', { class: 'word', text: brand.label }),
 ]);
 
 export function renderResult(ctx) {

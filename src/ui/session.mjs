@@ -674,7 +674,8 @@ export function settleDispatch(session, { win }) {
  * 다음 판의 정산이 앞 판의 메모에 조용히 삼켜진다. 정산을 부르는 주체가 렌더 자신이라
  * 진입 경로가 늘어도 정산이 통째로 빠지는 갈래는 생기지 않는다.
  * 원장 스냅샷을 정산보다 **먼저** 뜨는 것은 `settleDispatch` 가 임무를 비우기 때문이다.
- * @param {{kind: string, win: boolean, stage?: number}} params `go('result', …)` 가 만든 그 객체
+ * @param {{kind: string, win: boolean, stage?: number, settled?: object, settledBout?: object}} params
+ *   `go('result', …)` 가 만든 그 객체 — 뒤 두 필드는 이 함수가 그 객체에 써 넣는 메모다.
  */
 export function settleResult(session, params) {
   if (params.settled && params.settledBout === session.bout) return params.settled;
@@ -717,13 +718,16 @@ export function exportPayload(session, { exportedAt = new Date().toISOString() }
 export const canTransmitNow = (session) => canTransmit(session.progress, ART_ID, session.disciple);
 
 /**
- * 전수 화면 진입 실행 (#70 과 같은 축) — 무공이 건너가는 것은 한 진입에 한 번이고, 같은 진입을
- * 다시 렌더해도 두 번 건너가지 않는다. 메모가 진입 파라미터에 사는 근거는 `settleResult` 와 같다.
+ * 전수 화면 진입 실행 (#70 과 같은 축) — 무공은 한 번만 건너간다. 그 「한 번」을 지는 것은
+ * `settleResult` 처럼 진입 메모가 아니라 **세션 상태**다: 이미 받은 제자에게는 전수 조건 자체가
+ * 서지 않으므로(`canTransmit`) 재렌더가 조건에서 걸러진다 — 메모가 없어도 멱등이고, 메모를
+ * 잃어 정산이 통째로 빠지는 반대 실패도 없다.
+ * @returns {boolean} 이 호출이 실제로 전수했는지
  */
-export function enterTransmit(session, params) {
-  if (params.transmitted) return;
-  params.transmitted = true;
+export function enterTransmit(session) {
+  if (!canTransmitNow(session)) return false;
   runTransmit(session);
+  return true;
 }
 
 export function runTransmit(session) {

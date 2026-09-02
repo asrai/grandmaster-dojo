@@ -189,8 +189,8 @@
   --watch-y: -144px;
   --watch-w: 195px;
 
-  /* 결과 (REQ-870·874) — 무대는 아레나(440)를 접은 값이고 남는 세로가 정산부다. 낙인이 한 초의
-     판정 오버레이(96)보다 큰 것이 한 판의 결론이 한 수의 결론보다 무겁다는 위계다. */
+  /* 결과 (REQ-870·874) — 무대는 아레나를 접은 값이고 남는 세로가 정산부다. 낙인이 한 초의 판정
+     오버레이(`--vd-size-extreme`)보다 커야 한 판의 결론이 한 수의 결론보다 무겁게 읽힌다. */
   --result-scene-h: 360px;
   --brand-y: 44px;
   --brand-size: 104px;
@@ -214,6 +214,8 @@
   /* 회전 중심은 어깨다 — 실루엣 캔버스(512x1024) 안의 비율이라 폭·높이가 바뀌어도 따라간다. */
   --tm-arm-origin: 52% 34%;
   --tm-follow-angle: 26deg;
+  /* 시범을 보는 시간과 팔이 맞아떨어지는 시간 — 한 연출의 두 구간이라 같은 자리에 둔다. */
+  --tm-follow-delay: 1400ms;
   --tm-follow-dur: 640ms;
   --sigil-y: 26px;
   --sigil-size: 24px;
@@ -396,9 +398,9 @@ button.ghost { background: transparent; }
   position: relative; flex: 1; background: var(--sunken); overflow: hidden;
   box-shadow: var(--st-ring);
 }
-/* 계단이 누구의 성인지 (REQ-864) — 사부는 금, 제자는 쾌의 청이다. 칸 규격은 공유하고 색만 갈린다. */
-.steps.tone-master { --stair-fill: var(--c4); }
-.steps.tone-disciple { --stair-fill: var(--c6); }
+/* 계단의 색 축 (REQ-864) — 번 값은 금, 이관에서 새로 시작하는 값은 청. 칸 규격은 공유한다. */
+.steps.tone-gained { --stair-fill: var(--c4); }
+.steps.tone-transferred { --stair-fill: var(--c6); }
 .st > .fill {
   position: absolute; left: 0; top: 0; bottom: 0; width: 0;
   background: linear-gradient(180deg, var(--stair-fill, var(--c4)),
@@ -653,7 +655,7 @@ button.ghost { background: transparent; }
   color: currentColor; opacity: .5; letter-spacing: 8px; text-indent: 8px;
 }
 .scene .brand .word {
-  display: block; font-size: var(--brand-size); font-weight: 800; line-height: .94;
+  display: block; margin: 0; font-size: var(--brand-size); font-weight: 800; line-height: .94;
   letter-spacing: 8px; text-indent: 8px;
   text-shadow: 0 0 52px color-mix(in srgb, currentColor 55%, transparent), 0 6px 0 var(--sunken);
 }
