@@ -62,7 +62,7 @@ export function logDispatchAbort(session, { mission }) {
   return logDispatchOutcome(session, mission, 'abort');
 }
 
-/** 판이 아직 결과를 내지 않았을 때만 남긴다 — 이미 냈으면 `null`, 그 자리가 분모를 부풀리는 곳이다. */
+/** 판이 아직 결과를 내지 않았을 때만 남긴다 — 두 번째 결과 항목이 곧 판독 분모의 부풀림이다. */
 function logDispatchOutcome(session, mission, result) {
   if (!claimBoutResult(session)) return null;
   return logEvent(session, 'dispatch', {

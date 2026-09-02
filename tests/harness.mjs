@@ -1548,7 +1548,7 @@ suite('파견 중도 이탈 = abort — 한 판 한 결과 · 승률 분모 밖 
   eq(legacy.dispatch_win_rate, 1, '구 판본 승률은 win/loss 만으로 산출된다');
 
   // ① 관전 중 이탈 — 판을 연 뒤 결과 없이 나가면 그 판의 결과 항목이 abort 로 남는다.
-  const mission = currentMission(session);
+  const mission = currentMission(session, { random: createSeededRandom(20260903) });
   dispatchWiring(session, { disciple: stub });
   ok(logDispatchAbort(session, { mission }), '진행 중인 판의 이탈은 결과 항목을 낸다');
   eq(dispatchesOf().length, before + 1, '이탈 1건이 로그에 실린다');
