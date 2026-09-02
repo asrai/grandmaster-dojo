@@ -12,13 +12,14 @@
 // 면별 `--emit-charset` 산출을 그대로 pyftsubset 에 넘기고, 면의 담당 범위는 `index.html` 의
 // `unicode-range` 한 곳에서만 정해진다.
 
-// 수집기의 선언된 한계 (best-effort, 넓히지 않는다): 주석 제거는 따옴표·템플릿 보간까지만
-// 모델링하고 정규식 리터럴은 모르므로, 따옴표를 품은 정규식이 생기면 그 뒤 주석이 남아
-// 과수집된다. JS 정규식과 나눗셈의 구별은 파서 없이는 닫히지 않아 배제 목록을 늘리는 방향으로
-// 가지 않는다 — 대신 주석 전용 기호가 몰려 있는 CJK 구두점을 `unicode-range` 가 이미 덮어
-// 과수집이 red 로 번지지 않게 한다.
+// 수집기의 선언된 한계 (best-effort, 배제 목록을 늘리는 방향으로 가지 않는다): 주석 제거는
+// 따옴표·템플릿 보간까지만 모델링하고 정규식 리터럴은 모른다. 따옴표를 품은 정규식이 생기면
+// 그 뒤 주석이 남아 과수집되고, 그때 `src/**` 주석의 범위 밖 기호(2026-09 실측 `≥`·`δ`·`∞`
+// 3자)가 [A] red 로 뜬다 — 오차단이며 회복은 그 정규식을 문자 클래스 밖으로 빼는 것이다.
+// 정규식과 나눗셈의 구별은 파서 없이 닫히지 않으므로 여기서 멈춘다. 주석 기호가 몰려 있는
+// CJK 구두점만은 `unicode-range` 가 덮어 가장 흔한 형태를 미리 뺐다.
 
-import { readFileSync, readdirSync, writeSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { brotliDecompressSync } from 'node:zlib';
@@ -180,6 +181,8 @@ function readUIntBase128(buf, pos) {
 
 function extractCmapTable(buf) {
   if (buf.readUInt32BE(0) !== 0x774f4632) throw new Error('woff2 시그니처가 아니다');
+  // 컬렉션은 디렉터리 뒤에 CollectionDirectory 가 더 붙어 오프셋이 어긋난다 — 조용히 오독하느니 거부한다.
+  if (buf.readUInt32BE(4) === 0x74746366) throw new Error('woff2 폰트 컬렉션(ttcf)은 이 파서가 읽지 않는다');
   const numTables = buf.readUInt16BE(12);
   let pos = 48;
   const entries = [];
@@ -194,7 +197,8 @@ function extractCmapTable(buf) {
     if (transformed) [length, pos] = readUIntBase128(buf, pos);
     entries.push({ index, length });
   }
-  const data = brotliDecompressSync(buf.subarray(pos));
+  // 압축 스트림 뒤에 metadata·private 블록이 붙을 수 있으므로 헤더가 적은 길이만 넘긴다.
+  const data = brotliDecompressSync(buf.subarray(pos, pos + buf.readUInt32BE(20)));
   let offset = 0;
   for (const e of entries) {
     if (e.index === WOFF2_CMAP) return data.subarray(offset, offset + e.length);
@@ -264,6 +268,18 @@ function fontCodepoints(absPath) {
   return cps;
 }
 
+/* ── 3-b. 자산 참조 ────────────────────────────────────────────────────── */
+
+/** 아이콘은 id 로만 참조되므로 파일이 사라져도 코드가 조용하다 — 참조 해소를 여기서 문다 (REQ-931). */
+function brokenAssetRefs(html) {
+  const clean = stripCssComments(stripHtmlComments(html));
+  const refs = new Set([
+    ...[...clean.matchAll(/url\(['"]?(assets\/[^'")]+)['"]?\)/g)].map((m) => m[1]),
+    ...[...clean.matchAll(/(?:href|src)="(assets\/[^"]+)"/g)].map((m) => m[1]),
+  ]);
+  return [...refs].sort().filter((rel) => !existsSync(join(ROOT, rel)));
+}
+
 /* ── 4. 게이트 ─────────────────────────────────────────────────────────── */
 
 // `process.exit()` 는 파이프로 나가는 비동기 쓰기를 버린다 — red 사유가 유일한 산출물이라
@@ -293,6 +309,14 @@ function run() {
     return 0;
   }
 
+  const broken = brokenAssetRefs(html);
+  if (broken.length > 0) {
+    fail(`::error::[D] index.html 이 가리키는 자산이 없다 (${broken.length}건) — 아이콘은 id 로만 참조되므로 코드는 조용하다 (REQ-931)`);
+    for (const rel of broken) fail(`    ${rel}`);
+    fail('    조치: 파일을 그 경로에 두거나, index.html 의 참조를 실파일 이름으로 맞춘다.');
+    return 1;
+  }
+
   const faces = parseFontFaces(html);
   const declared = [];
   const missing = [];
@@ -303,6 +327,7 @@ function run() {
     } catch (err) {
       fail(`::error::[C] ${face.file} 을 읽을 수 없다 — ${err.message}`);
       fail('    조치: index.html 의 @font-face src 경로와 assets/fonts/ 의 실파일을 대조하고, 없으면 bash scripts/subset-fonts.sh 로 다시 만든다.');
+      fail(`    그 면의 담당 글자가 0건이면(현재 ${countIn(used, face.ranges)}건) 서브셋이 비어 만들어진 것이다 — 재실행이 아니라 그 @font-face 를 지운다.`);
       return 1;
     }
     declared.push(...face.ranges);

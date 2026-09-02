@@ -44,6 +44,10 @@ for f in "$F1_REGULAR" "$F1_EXTRABOLD" "$NOTO_SERIF_KR_VF"; do
   [ -f "$f" ] || { echo "원본 폰트가 없다: $f (헤더의 내려받기 절차 참조)" >&2; exit 1; }
 done
 
+# 산출물이 커밋되는 바이너리라 실행 시각이 섞이면 내용 무변경에도 diff 가 난다 — fontTools 가
+# 읽는 이 변수로 타임스탬프를 못박아 재실행이 같은 바이트를 내게 한다.
+export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-0}"
+
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
@@ -54,18 +58,18 @@ emit() { node "$ROOT/scripts/check-font-coverage.mjs" --emit-charset "assets/fon
 # F1 은 나눔명조 정적 TTF 2벌이라 weight 고정이 필요 없다.
 for w in 400 800; do
   emit "NanumMyeongjo-subset-$w.woff2"
-  src="$F1_REGULAR"; [ "$w" = 800 ] && src="$F1_EXTRABOLD"
+  if [ "$w" = 800 ]; then src="$F1_EXTRABOLD"; else src="$F1_REGULAR"; fi
   pyftsubset "$src" --output-file="$WORK/NanumMyeongjo-subset-$w.woff2" --flavor=woff2 \
     --layout-features='' --no-hinting \
     --text-file="$WORK/NanumMyeongjo-subset-$w.woff2.txt" --unicodes="$F1_STATIC_RANGES"
 done
 
 # F2 는 가변 폰트를 먼저 한자로 좁힌 뒤 weight 를 고정한다 (22MB 를 그대로 instancing 하지 않으려고).
-emit 'NotoSerifKR-hanja-400.woff2'
+# 두 weight 의 담당 범위가 같으므로 좁히기 입력은 한 벌이면 된다.
+for w in 400 800; do emit "NotoSerifKR-hanja-$w.woff2"; done
 pyftsubset "$NOTO_SERIF_KR_VF" --output-file="$WORK/f2-vf.otf" \
   --layout-features='' --no-hinting --text-file="$WORK/NotoSerifKR-hanja-400.woff2.txt"
 for w in 400 800; do
-  emit "NotoSerifKR-hanja-$w.woff2"
   fonttools varLib.instancer -q -o "$WORK/f2-$w.otf" "$WORK/f2-vf.otf" "wght=$w"
   pyftsubset "$WORK/f2-$w.otf" --output-file="$WORK/NotoSerifKR-hanja-$w.woff2" --flavor=woff2 \
     --layout-features='' --no-hinting --desubroutinize \

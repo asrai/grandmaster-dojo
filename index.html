@@ -11,10 +11,9 @@
 <link rel="preload" href="assets/fonts/NotoSerifKR-hanja-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="assets/fonts/NotoSerifKR-hanja-800.woff2" as="font" type="font/woff2" crossorigin>
 <style>
-/* 서체는 명조 단일 계열이고, 한글·라틴(F1)과 한자(F2)는 같은 패밀리 안에서 unicode-range 로
-   갈린다 — 그래서 한자 병기에 별도 font-family 를 걸 자리가 없다 (REQ-812).
-   woff2 는 사용 글자 기반 서브셋이며 `scripts/subset-fonts.sh` 가 만든다 (REQ-803 · REQ-930).
-   font-display:block 은 폴백 산세리프가 잠깐이라도 표면에 뜨는 것을 막는다. */
+/* 한글·라틴(F1)과 한자(F2)가 같은 패밀리 안에서 unicode-range 로 갈리므로, 한자 병기에 별도
+   font-family 를 걸 자리가 없다 — 그래서 `font-display: block` 이 폴백 산세리프가 잠깐이라도
+   표면에 뜨는 것을 막는 유일한 수단이다 (REQ-812). woff2 는 `scripts/subset-fonts.sh` 산출물. */
 @font-face {
   font-family: 'Dojo'; src: url('assets/fonts/NanumMyeongjo-subset-400.woff2') format('woff2');
   font-weight: 400; font-display: block;
@@ -151,6 +150,7 @@ button.ghost { background: transparent; }
   flex: 1; display: flex; gap: 6px; align-items: center;
   text-align: left; background: transparent; border: 0; padding: 0;
 }
+/* 서브셋 원본인 나눔명조에 작은 삼각(U+25B8/25BE)이 없어 큰 삼각을 쓰고 크기로 줄인다 (REQ-804). */
 .row-name::before { content: '\25B6'; color: var(--dim); font-size: 11px; }
 .row.open .row-name::before { content: '\25BC'; }
 .meter-line { display: flex; gap: 8px; align-items: center; }
