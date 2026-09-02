@@ -27,6 +27,7 @@ import {
   composeHooks, dispatchWiring, duelWiring, trainWiring,
 } from '../src/ui/wiring.mjs';
 import { ATTR_VIEW, EXTREME_GRADES, GRADE_VIEW, TRAIN_DONE_VIEW } from '../src/ui/theme.mjs';
+import { TABLET, tabletStates } from '../src/ui/tablet-state.mjs';
 import { BOT_UNREACHABLE, KILL, killVerdicts, readout } from './kill-readout.mjs';
 import {
   accrueDiscipleStyle, accrueRank, applyDiscipleTraining, applyEffectiveSuccess, applyOutcome,
@@ -1654,6 +1655,71 @@ suite('후보 필터 입력기 (REQ-102·103·105·106·108·109)', () => {
   const rearm = harnessInput({ pool: [yuunBo] });
   rearm.input.arm([yuunBo, jeokUn]);
   deepEq(rearm.ids(), ['yuun-bo', 'jeok-un'], 'arm(pool) 이 후보 집합을 갱신');
+});
+
+// ------------- 10-a. 케이스 3·4 — 죽간 상태 전이 (REQ-824·825·826)
+
+suite('케이스 3·4 — 죽간 상태 전이 (REQ-824·825·826)', () => {
+  const state = (prev, next) => tabletStates(prev, next).map((t) => `${t.id}:${t.state}`);
+
+  // 매수 자체가 「좁혀진다」의 표현이라, 살아남은 매와 탈락한 매가 한 번에 갈린다.
+  deepEq(state([], ['a', 'b', 'c', 'd']), ['a:enter', 'b:enter', 'c:enter', 'd:enter'],
+    '첫 렌더의 네 매는 전부 enter');
+  deepEq(state(['a', 'b', 'c', 'd'], ['b', 'd']), ['a:exit', 'b:hold', 'c:exit', 'd:hold'],
+    '탈락한 매는 자기가 있던 자리에서 exit — 살아남은 매가 그 자리를 건너뛰지 않는다');
+  deepEq(state(['b', 'd'], ['d']), ['b:exit', 'd:only'], '1매 = 확정이라 only 가 hold 를 덮는다');
+  deepEq(state(['d'], ['d']), ['d:only'], '확정 상태는 재렌더에도 그대로다 (금테가 깜빡이지 않는다)');
+  deepEq(state([], ['d']), ['d:only'], '갓 등장한 1매도 enter 가 아니라 확정이다');
+  deepEq(state(['d'], ['a', 'b', 'c', 'd']), ['a:enter', 'b:enter', 'c:enter', 'd:hold'],
+    '다음 초의 arm 은 남아 있던 매를 유지하고 나머지만 새로 세운다');
+  deepEq(state(['a'], []), ['a:exit'], '후보가 비면 남은 매는 지워지지 않고 가라앉는다');
+
+  // 실제 입력기가 좁히는 경로를 그대로 태운다 — 상태 계산이 후보 목록과 갈리면 여기서 죽는다.
+  // 두 초식이 마지막 키에서만 갈리는 구성이라, 그 키 하나가 확정과 완주를 겸한다 (REQ-826).
+  const pool = [
+    { id: 's1', attr: 'fast', seq: ['D', 'R', 'U'], gugyeol: '', hanja: '', name: 's1' },
+    { id: 's2', attr: 'hard', seq: ['D', 'R', 'L', 'U'], gugyeol: '', hanja: '', name: 's2' },
+    { id: 's3', attr: 'fine', seq: ['D', 'L', 'R'], gugyeol: '', hanja: '', name: 's3' },
+    { id: 's4', attr: 'fast', seq: ['D', 'U', 'R'], gugyeol: '', hanja: '', name: 's4' },
+  ];
+  const input = createSequenceInput({
+    pool,
+    rankOf: () => 1,
+    hintDelayMs: BALANCE.hintDelayMs.duel,
+    now: () => 0,
+    remainingRatio: () => 1,
+    log: () => {},
+  });
+  input.arm();
+
+  const ids = () => input.candidates.map((st) => st.id);
+  let drawn = [];
+  const step = (dir) => {
+    const result = dir === null ? { fired: null } : input.press(dir, 'keyboard');
+    const next = ids();
+    const drew = tabletStates(drawn, next);
+    drawn = next;
+    return { drew, fired: result.fired };
+  };
+
+  const armed = step(null);
+  eq(armed.drew.length, 4, '장착 4식이 4매로 선다');
+  ok(armed.drew.every((t) => t.state === TABLET.ENTER), '첫 장은 전부 enter');
+
+  const first = step('D');
+  eq(first.drew.filter((t) => t.state === TABLET.HOLD).length, 4, '공통 접두어 ↓ 는 아무도 떨구지 않는다');
+
+  const narrowed = step('R');
+  eq(narrowed.drew.filter((t) => t.state === TABLET.EXIT).length, 2, '→ 로 두 매가 탈락한다');
+  deepEq(narrowed.drew.filter((t) => t.state === TABLET.HOLD).map((t) => t.id), ['s1', 's2'],
+    '4매 → 2매 — 남은 후보만 hold 로 이어진다 (spec 수용 케이스 3)');
+  eq(narrowed.fired, null, '2매 구간에서는 아직 발동하지 않는다');
+
+  const confirmed = step('U');
+  deepEq(confirmed.drew, [{ id: 's1', state: TABLET.ONLY }, { id: 's2', state: TABLET.EXIT }],
+    '2매 → 1매 — 마지막 키가 확정과 완주를 겸해도 그 매는 only 로 그려진다 (spec 수용 케이스 4)');
+  ok(confirmed.fired !== null && confirmed.fired.style.id === 's1',
+    '같은 키가 초식을 발동시킨다 — 그래서 확정 연출에 최소 표시 시간이 필요하다 (REQ-826)');
 });
 
 // --------------------------------- 11. 케이스 4 — 딜레이드 힌트 페이스 (REQ-108·308)

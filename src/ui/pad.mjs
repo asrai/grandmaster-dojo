@@ -23,7 +23,7 @@ export function createPad() {
   const tablets = createTablets({ soloEmphasis: true });
   const seqEl = el('div', { class: 'pad-trail' });
   const undoBtn = el('button', {
-    class: 'undo', 'aria-label': '입력 되돌리기', title: '입력 되돌리기 (Space)',
+    class: 'undo', 'aria-label': '되돌리기', title: '되돌리기 (Space)',
   }, [
     // 아이콘은 파일 경로가 아니라 id 로 온다 — 경로는 index.html 의 `icon-<id>` 표에만 있다 (REQ-931).
     el('span', { class: 'icon icon-reset', 'aria-hidden': 'true' }),

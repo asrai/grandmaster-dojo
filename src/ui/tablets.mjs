@@ -102,7 +102,7 @@ export function createTablets({ soloEmphasis = false } = {}) {
         const slip = live.get(id) ?? sinking.get(id);
         if (slip) node.appendChild(slip.node);
       }
-      // 폭은 매수가 정한다 — 4매 84 → 2매 132 → 1매 172 의 계단이 원장에 있다 (REQ-824).
+      // 폭은 매수가 정한다 — 좁혀짐의 계단은 원장이 갖고 여기는 그 매수만 건넨다 (REQ-824).
       node.dataset.n = String(next.length);
       drawn = next;
 
