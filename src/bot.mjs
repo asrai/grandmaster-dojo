@@ -44,9 +44,12 @@ export function createPace(random = Math.random, seed = BALANCE.bot) {
   };
 }
 
-/** 이 창에 낼 초식 — 화면이 상시 병기하는 「이기는 색」을 그대로 따르는 선택이다 (REQ-206). */
+/**
+ * 이 창에 낼 초식 — 화면이 상시 병기하는 「이기는 색」을 그대로 따르는 선택이다 (REQ-206).
+ * 사람의 손을 흉내내는 자리라 선택 이유는 버린다 — 그것을 읽는 것은 관전 화면뿐이다 (REQ-852).
+ */
 const chooseStyle = (input, foeStyle, rankOf) =>
-  selectDiscipleStyle({ styles: input.candidates, foeStyle, rankOf });
+  selectDiscipleStyle({ styles: input.candidates, foeStyle, rankOf })?.style ?? null;
 
 /**
  * 키우는 손의 우선순위 — 「이기는 색」이 같은 후보가 둘이면 **덜 여문** 초식을 낸다. 적립은 실제로
@@ -156,19 +159,24 @@ export function createDiscipleHand({ session, styles, fire }) {
   let done = false;
   return {
     arm() { done = false; },
-    /** 창의 60% 시점에 반드시 실행하므로 선기 잔여는 상수다. 지시가 있으면 그 초만 대체한다. */
+    /**
+     * 창의 60% 시점에 반드시 실행하므로 선기 잔여는 상수다. 지시가 있으면 그 초만 대체한다.
+     * @returns {?{style: object, reason: ?string, byUser: boolean}} 아직 실행 시점이 아니면 null
+     *   — 지시받은 초에는 제자가 판단하지 않았으므로 `reason` 이 없다 (REQ-852).
+     */
     tick(view, instructed = null) {
       if (done || view.ratio > 1 - BALANCE.discipleFireRatio) return null;
       done = true;
-      const style = instructed ?? selectDiscipleStyle({
+      const judged = instructed ? null : selectDiscipleStyle({
         styles,
         foeStyle: view.telegraphed,
         rankOf: (s) => discipleStyleRank(session.disciple, ART_ID, s.id),
       });
+      const style = instructed ?? judged?.style ?? null;
       if (!style) throw new Error('제자가 낼 초식이 없다 — 전수된 무공이 비었다');
       logEvent(session, 'select', { styleId: style.id, byUser: Boolean(instructed) });
       fire({ style, oneTap: false, r: 1 - BALANCE.discipleFireRatio });
-      return style;
+      return { style, reason: judged?.reason ?? null, byUser: Boolean(instructed) };
     },
   };
 }

@@ -17,6 +17,7 @@ export const ARROW = { U: '↑', D: '↓', L: '←', R: '→' };
  * 유운검법 4식 (REQ-501). 첫 키 `↓` 공유 + 2번째 키 분기 = prefix-free.
  * `counters` = 이 초식이 파하는 상대 초식 — 유저·도전자 양 테이블에서 같은 방향이다.
  * `founder` = 창안자 (REQ-891) — UI 를 바꾸지 않고 값만 바뀌는 확장점이라 표시 계층이 이 필드만 읽는다.
+ * `gugyeol` = 방향 한 개당 한 구절 (REQ-841) — 구결이 곧 시퀀스라는 것을 데이터가 진다.
  */
 export const STYLES = [
   {
@@ -24,28 +25,28 @@ export const STYLES = [
     name: '유운보', hanja: '流雲步', attr: 'fast',
     seq: ['D', 'R', 'U'], d: 10, counters: 'alpha',
     founder: { name: '운허자', hanja: '雲虛子' },
-    gugyeol: '무거운 것이 내려오거든 맞서지 말고 앞질러 흘려라',
+    gugyeol: ['무거운 것이 내려오거든', '맞서지 말고 앞질러', '흘려라'],
   },
   {
     id: 'jeok-un', set: 'yuun-geom', order: 2,
     name: '적운압정', hanja: '積雲壓頂', attr: 'hard',
     seq: ['D', 'L', 'R'], d: 10, counters: 'beta',
     founder: { name: '중산객', hanja: '重山客' },
-    gugyeol: '기교를 부리는 손은 쌓인 구름의 무게로 눌러라',
+    gugyeol: ['기교를 부리는 손은', '쌓인 구름의', '무게로 눌러라'],
   },
   {
     id: 'haeng-un', set: 'yuun-geom', order: 3,
     name: '행운유수', hanja: '行雲流水', attr: 'fine',
     seq: ['D', 'U', 'R', 'L'], d: 14, counters: 'gamma',
     founder: { name: '석계자', hanja: '石溪子' },
-    gugyeol: '빠른 것은 막지 말고 흐름을 읽어 흘려보내라',
+    gugyeol: ['빠른 것은', '막지 말고', '흐름을 읽어', '흘려보내라'],
   },
   {
     id: 'pa-un', set: 'yuun-geom', order: 4,
     name: '파운현월', hanja: '破雲見月', attr: 'fast',
     seq: ['D', 'D', 'R', 'L', 'U'], d: 20, counters: 'delta',
     founder: { name: '월현옹', hanja: '月玄翁' },
-    gugyeol: '끝을 내려는 한 수, 구름을 갈라 달을 드러내라',
+    gugyeol: ['끝을', '내려는 한 수,', '구름을 갈라', '달을', '드러내라'],
   },
 ];
 

@@ -69,6 +69,28 @@ export function assertCounterIntegrity(styles, universe = styles) {
   return true;
 }
 
+/** 구결 한 구절이 방향 한 개다 (REQ-841) — 수가 어긋나면 점등이 시퀀스와 다른 것을 가리킨다. */
+export function assertGugyeol(styles) {
+  for (const s of styles) {
+    if (s.gugyeol.length !== s.seq.length) {
+      throw new Error(`구결 구절 수 불일치: ${s.id} — 구결 ${s.gugyeol.length} · 시퀀스 ${s.seq.length}`);
+    }
+    if (s.gugyeol.some((verse) => !String(verse).trim())) throw new Error(`빈 구결 구절: ${s.id}`);
+  }
+  return true;
+}
+
+/**
+ * 한 무공은 세 속성을 다 갖는다 (REQ-403) — 제자는 무공을 통째로 물려받으므로, 빠진 속성이
+ * 하나라도 있으면 어떤 예고에는 우세도 상쇄도 낼 수 없는 초가 생긴다.
+ */
+export function assertAttrCoverage(styles) {
+  const held = new Set(styles.map((s) => s.attr));
+  const missing = Object.keys(ATTRS).filter((id) => !held.has(id));
+  if (missing.length) throw new Error(`무공이 덮지 못한 속성: ${missing.join(' · ')}`);
+  return true;
+}
+
 // ------------------------------------------------------------------ 한 초의 산술
 
 /** 응수 창 (REQ-201). `len` = 그 초에 노출된 초식 길이 — 실전은 상대 예고, 수련은 자기 초식. */
@@ -508,11 +530,23 @@ export function applyDiscipleTraining(disciple, setId, styleId, elapsedMs) {
 }
 
 /**
- * 제자 초식 자동 선택 (REQ-403) — 우세 → 상쇄 → 잔여, 예고된 절초의 파해 대상은 제외.
+ * 제자가 그 초식을 고른 이유 (REQ-853) — 관전 화면의 문구가 이 값에 매핑되므로, 계열이 늘면
+ * 매핑이 빈 자리를 즉시 드러낸다. 화면 밖(대련 봇의 후보 필터)에서도 같은 값이 나온다.
+ */
+export const SELECT_REASON = {
+  ADVANTAGE: 'advantage',
+  CLASH: 'clash',
+  AVOID_REVERSAL: 'avoid-reversal',
+};
+
+/**
+ * 제자 초식 자동 선택 (REQ-403·853) — 우세 → 상쇄 → 잔여, 예고된 절초의 파해 대상은 제외.
+ * 이유를 함께 내는 것은 관전의 콘텐츠가 결과가 아니라 판단이기 때문이다 (REQ-852).
  * @param {object} p
  * @param {object[]} p.styles    제자 보유 초식 (배열 순서 = 슬롯 순)
  * @param {?object} [p.foeStyle] 예고된 상대 초식 (상대 빈틈이면 null)
  * @param {(style: object) => number} [p.rankOf]
+ * @returns {?{style: object, reason: string}} 보유 초식이 없으면 null
  */
 export function selectDiscipleStyle({ styles, foeStyle = null, rankOf: rankFn = () => 0 }) {
   if (!styles.length) return null;
@@ -524,16 +558,28 @@ export function selectDiscipleStyle({ styles, foeStyle = null, rankOf: rankFn = 
   const bySlot = (a, b) => pool.indexOf(a) - pool.indexOf(b);
   const byRank = (a, b) => rankFn(b) - rankFn(a) || bySlot(a, b);
 
-  // 상대 빈틈에는 속성 비교의 상대가 없고 아무 완주나 완파 취급이라 위력만 남는다.
-  if (!foeStyle) return pool.slice().sort((a, b) => b.d - a.d || byRank(a, b))[0];
+  const pick = (from) => {
+    // 상대 빈틈에는 속성 비교의 상대가 없고 아무 완주나 완파 취급이라 위력만 남는다.
+    if (!foeStyle) return { style: from.slice().sort((a, b) => b.d - a.d || byRank(a, b))[0], reason: SELECT_REASON.ADVANTAGE };
+    const beats = from.filter((s) => ATTRS[s.attr].beats === foeStyle.attr);
+    if (beats.length) return { style: beats.sort(byRank)[0], reason: SELECT_REASON.ADVANTAGE };
+    const same = from.filter((s) => s.attr === foeStyle.attr);
+    if (same.length) return { style: same.sort(byRank)[0], reason: SELECT_REASON.CLASH };
+    // 잔여(열세)도 상쇄 계열로 접는다 — 무공이 세 속성을 덮으므로(assertAttrCoverage) 제자의
+    // 전 초식을 넘기는 파견에서는 서지 않고, 후보가 이미 좁혀진 대련 봇에서만 닿는다.
+    return { style: from.slice().sort(byRank)[0], reason: SELECT_REASON.CLASH };
+  };
 
-  const beats = pool.filter((s) => ATTRS[s.attr].beats === foeStyle.attr);
-  if (beats.length) return beats.sort(byRank)[0];
-  const same = pool.filter((s) => s.attr === foeStyle.attr);
-  if (same.length) return same.sort(byRank)[0];
-  return pool.slice().sort(byRank)[0];
+  const chosen = pick(pool);
+  // 배제가 실제로 선택을 바꿨을 때만 회피다 — 어차피 고르지 않았을 초식을 뺀 것은 회피가 아니다.
+  if (pool !== styles && pick(styles).style !== chosen.style) {
+    return { style: chosen.style, reason: SELECT_REASON.AVOID_REVERSAL };
+  }
+  return chosen;
 }
 
 const ALL_STYLES = [...STYLES, ...FOE_STYLES];
 assertPrefixFree(STYLES);
 assertCounterIntegrity(ALL_STYLES);
+assertGugyeol(STYLES);
+assertAttrCoverage(STYLES);
