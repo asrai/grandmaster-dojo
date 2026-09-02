@@ -322,7 +322,7 @@ function report(result) {
     + ` · 슬롯 교체 ${JSON.stringify(metrics.slot_by_challenger)} · 결정타 ${JSON.stringify(metrics.finish_by_style)}`
     + ` (의도 일치 ${pct(metrics.finish_intended_rate)}) · 8성 벽 ${metrics.rank_wall}회`);
   console.log(`    제자 축  파견 ${metrics.dispatch_by_stage.map((m) => `${m.stage}:${m.result}[${m.foe_set?.join('+') ?? '?'}]`).join(' · ') || '—'}`
-    + ` (승률 ${pct(metrics.dispatch_win_rate)} · 이탈 ${metrics.dispatch_aborts}건은 분모 밖)`
+    + ` (승률 ${pct(metrics.dispatch_win_rate)}${metrics.dispatch_aborts ? ` · 이탈 ${metrics.dispatch_aborts}건은 분모 밖` : ''})`
     + ` · 수련 ${metrics.disciple_train_events}회 ${metrics.disciple_train_ranks}성`
     + ` · 8성 벽 ${metrics.disciple_rank_wall}회 · 병렬 ${JSON.stringify(metrics.disciple_train_activity)}`);
   return { a, b, d, gate: g };
@@ -390,7 +390,7 @@ function main(argv) {
       + ' — 파생 지표(창 잔여·유효 성공률)는 현재 표 기준이다');
   }
   if (payload.log_violations.length) {
-    console.error(`✗ 로그 스키마 위반 ${payload.log_violations.length}건 — kill 산식 입력으로 쓸 수 없다`);
+    console.error(`✗ 로그 계약 위반 ${payload.log_violations.length}건 — kill 산식 입력으로 쓸 수 없다`);
     for (const v of payload.log_violations.slice(0, 5)) console.error(`    ${v.event}: ${v.reason}`);
     failures += 1;
   }

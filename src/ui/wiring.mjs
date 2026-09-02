@@ -6,7 +6,7 @@
 import { responseWindowMs, styleById } from '../core.mjs';
 import {
   beginBout, beginDuel, beginTrainVisit, claimBoutResult, equippedStyles, logEvent, logTimeout,
-  missionLockRankOf, recordDispatchVerdict, recordDuelVerdict, recordEffectiveSuccess,
+  missionLockRankOf, noteLogViolation, recordDispatchVerdict, recordDuelVerdict, recordEffectiveSuccess,
 } from './session.mjs';
 
 /**
@@ -64,7 +64,11 @@ export function logDispatchAbort(session, { mission }) {
 
 /** 판이 아직 결과를 내지 않았을 때만 남긴다 — 두 번째 결과 항목이 곧 판독 분모의 부풀림이다. */
 function logDispatchOutcome(session, mission, result) {
-  if (!claimBoutResult(session)) return null;
+  if (!claimBoutResult(session)) {
+    // 이탈의 거부는 설계된 침묵이지만 승패의 거부는 끝난 판이 분모에서 사라진 것이라 뜻이 반대다.
+    if (result !== 'abort') noteLogViolation(session, 'dispatch', `결과가 이미 실린 판의 ${result}`);
+    return null;
+  }
   return logEvent(session, 'dispatch', {
     stage: mission.label,
     foe_set: mission.foeSet.slice(),

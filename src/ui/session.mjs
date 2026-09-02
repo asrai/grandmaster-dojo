@@ -128,6 +128,15 @@ export const beginBout = (session, attempt = 0) => { session.bout = createBout(a
  * 이 판의 결과 항목을 낼 권리를 집는다 — 「한 판은 결과를 하나만 낸다」(REQ-744)를 화면 전이
  * 순서가 아니라 판의 상태로 문다. 두 번째 호출부터 `false` 이고, 다음 판은 `beginBout` 이 되돌린다.
  */
+/**
+ * 스키마는 지켰지만 계약을 어긴 적재 — 검증이 못 보는 층이라 같은 원장에 쌓아, 내보내기가
+ * 결손을 조용히 실어 나르지 않게 한다. 「한 판 한 결과」(REQ-744)가 그 첫 소비처다.
+ */
+export function noteLogViolation(session, event, reason) {
+  session.logViolations.push({ event, reason });
+  console.warn(`[로그 계약] ${event}: ${reason}`);
+}
+
 export function claimBoutResult(session) {
   if (session.bout.resultLogged) return false;
   session.bout.resultLogged = true;

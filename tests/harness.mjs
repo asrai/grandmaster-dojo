@@ -1542,10 +1542,10 @@ suite('파견 중도 이탈 = abort — 한 판 한 결과 · 승률 분모 밖 
   const dispatchesOf = () => session.log.entries.filter((e) => e.event === 'dispatch');
   const before = dispatchesOf().length;
 
-  // 구 판본 로그 = abort 가 하나도 없는 로그 — 계수는 0 이고 승률은 win/loss 만으로 선다.
+  // abort 가 한 건도 없는 로그 — 계수는 0 이고 승률은 그때도 win/loss 만으로 선다.
   const legacy = readout(exportPayload(session)).metrics;
   eq(legacy.dispatch_aborts, 0, 'abort 없는 로그에서도 판독이 죽지 않고 계수는 0 이다');
-  eq(legacy.dispatch_win_rate, 1, '구 판본 승률은 win/loss 만으로 산출된다');
+  eq(legacy.dispatch_win_rate, 1, 'abort 없는 로그의 승률도 win/loss 만으로 산출된다');
 
   // ① 관전 중 이탈 — 판을 연 뒤 결과 없이 나가면 그 판의 결과 항목이 abort 로 남는다.
   const mission = currentMission(session, { random: createSeededRandom(20260903) });
@@ -1568,8 +1568,17 @@ suite('파견 중도 이탈 = abort — 한 판 한 결과 · 승률 분모 밖 
     'dispatch_by_stage 에 이탈·완주가 일어난 순서로 실린다');
 
   // ④ 판 종료 후 이탈 — 결과 화면으로 넘어간 판을 뒤늦게 떠나도 abort 는 나지 않는다.
+  eq(session.logViolations.length, 0, '여기까지 계약 위반은 없다 — 아래 단정이 공허하지 않다');
   eq(logDispatchAbort(session, { mission }), null, '이미 결과를 낸 판의 이탈은 abort 가 아니다');
   eq(dispatchesOf().length, before + 2, '종료 후 이탈은 abort 0건이다');
+  eq(session.logViolations.length, 0, '이탈의 무기록은 설계된 침묵이라 위반이 아니다');
+
+  // ⑤ 반대로 **승패**가 거부되는 것은 끝난 판이 분모에서 사라진 것이라, 같은 침묵으로 접지 않는다.
+  eq(logDispatchResult(session, { mission, win: false }), null, '두 번째 승패도 항목을 늘리지 않는다');
+  eq(dispatchesOf().length, before + 2, '거부된 승패는 로그에 실리지 않는다');
+  eq(session.logViolations.length, 1, '거부된 승패는 내보내기가 싣는 계약 위반으로 남는다');
+  eq(session.logViolations.at(-1).event, 'dispatch', '위반이 그 이벤트 이름으로 귀속된다');
+  session.logViolations.length = 0;
 
   const { metrics } = readout(exportPayload(session));
   eq(metrics.dispatch_aborts, 1, '판독기가 이탈을 계수로 노출한다');
