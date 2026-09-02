@@ -86,7 +86,8 @@ export function createTablets({ soloEmphasis = false } = {}) {
     for (const { id, slip, left, width } of leaving) {
       live.delete(id);
       sinking.set(id, { slip, at: performance.now() });
-      slip.node.setAttribute('style', `left:${left}px;width:${width}px`);
+      slip.node.style.left = `${left}px`;
+      slip.node.style.width = `${width}px`;
       slip.node.className = 'slip out';
       slip.node.addEventListener('animationend', (e) => {
         // 자식의 애니메이션 종료도 여기까지 올라오므로 자기 것만 받는다.

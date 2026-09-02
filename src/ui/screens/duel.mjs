@@ -284,6 +284,8 @@ export function startDuel(ctx) {
       onTelegraph(view) {
         clear(teleEl).appendChild(telegraphView(view));
         verdict.hide();
+        // 성장 고지는 그 초 한정이다 — 남기면 다음 초의 판정 위에 계속 떠 있는다.
+        banner.className = 'toast';
         gaugeFill.style.width = '100%';
         renderHp(view);
         ctx.pad.render();
@@ -300,14 +302,15 @@ export function startDuel(ctx) {
       onVerdict(view, changes) {
         const { verdict: resolved } = view;
         lastFire = view.fire ?? null;
-        ctx.pad.render();
         renderHp(view);
         // 소리는 흔들림·글자와 한 덩어리로 읽혀야 해서 판정이 실제로 뜨는 순간에 맡긴다 —
         // 확정 연출을 기다리는 초에는 그만큼 함께 늦는다 (REQ-826).
+        // 죽간이 다시 그려지기 전에 예약한다 — 대기 시간은 지금 화면에 뜬 금테를 기준으로 잰다.
         verdict.showGrade(resolved.grade, {
           onShow: () => (resolved.grade === 'crush' ? SFX.crush
             : resolved.dmgIn > 0 ? SFX.hit : SFX.fire)(),
         });
+        ctx.pad.render();
 
         if (!changes) return;
         if (changes.rank) {

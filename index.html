@@ -362,7 +362,7 @@ button.ghost { background: transparent; }
 .hpbar i { display: block; height: 100%; background: linear-gradient(90deg, var(--c7), var(--c4)); transition: width .25s; }
 
 /* 판정 오버레이의 기준 상자 — 시각 층은 아레나 좌표계 안에 산다 (REQ-806). */
-/* 판정은 오버레이가 지므로 남는 세로는 빈 칸으로 남긴다 — 아래 절반의 자리를 그대로 유지한다. */
+/* 이식 전 레이아웃이라 아직 S3 수련·S4 파견이 쓴다 — 이식된 무대는 아래 `.scene` 이다. */
 .arena { position: relative; display: flex; flex-direction: column; flex: 1; }
 .arena .tg-slot { min-height: 74px; }
 .arena .arena-gap { flex: 1; }
@@ -373,8 +373,8 @@ button.ghost { background: transparent; }
 .window { height: 6px; background: var(--sunken); border-radius: 3px; overflow: hidden; margin: 8px 0; }
 .window i { display: block; height: 100%; background: var(--c6); }
 
-/* ══ 아레나 (REQ-821) ══ S1 대련이 세우고 S3 수련·S4 파견·S6 결과가 물려받는 무대 — 상속이 곧
-   서사라 화면마다 바뀌는 것은 무대 높이·사람이 서는 자리·그 사람의 자세뿐이다 (REQ-850·875). */
+/* ══ 아레나 (REQ-821) ══ 이식된 무대. 상속이 곧 서사이므로(REQ-850·875) 화면이 갈아 끼우는
+   축은 무대 높이·사람이 서는 자리·그 사람의 자세 셋뿐이고, 나머지 좌표는 여기 고정이다. */
 .scene { position: relative; flex: none; height: var(--scene-h); overflow: hidden; }
 .scene .layer, .scene .scenery { position: absolute; inset: 0; pointer-events: none; }
 .scene .sky { background: var(--scene-sky); }

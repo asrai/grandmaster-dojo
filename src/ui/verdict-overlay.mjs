@@ -47,7 +47,7 @@ function shakeShell() {
  * @param {object} [p]
  * @param {() => ?number} [p.heldSince] 죽간 금테 확대가 뜬 시각 — 마지막 키가 「후보 1개 도달」과
  *   「시퀀스 완주」를 겸하면 확정 연출이 한 프레임도 안 보이므로, 이 값이 있으면 최소 표시 시간을
- *   채울 때까지 판정을 미룬다 (REQ-826). 확정 연출이 없는 화면은 넘기지 않는다.
+ *   채울 때까지 판정을 미룬다 (REQ-826). 넘기지 않는 화면은 대기가 늘 0 인 화면이다.
  * @returns {{node: HTMLElement, show: Function, showGrade: Function, hide: () => void}}
  */
 export function createVerdictOverlay({ heldSince = () => null } = {}) {
