@@ -98,8 +98,37 @@ export function createSession({ now = () => Date.now() } = {}) {
     mission: null,
     cheat: createCheatState(),
     botRunning: false,
+    // 한 판의 원장 — 진입(대련·임무)에서 비워지고 그 판의 판정·성 변화만 담는다 (REQ-872·873).
+    bout: createBout(),
   };
 }
+
+/**
+ * 한 판의 원장 (REQ-872·873) — 결과 화면이 「이 판에서 무엇이 일어났는가」를 말하려면 판의 경계
+ * 안에서만 센 수가 있어야 한다. 통합 로그는 세션 전체라 그 슬라이스를 되찾을 수 없으므로,
+ * 판정과 성 변화가 지나는 자리에서 함께 쌓는다.
+ */
+const createBout = () => ({ verdicts: {}, gains: {} });
+
+/** 판의 시작 — 대련 진입과 임무 확정 둘뿐이고, 화면과 헤드리스가 그 두 자리를 공유한다. */
+const beginBout = (session) => { session.bout = createBout(); };
+
+/**
+ * 그 판에 오른 성 한 건 — 같은 초식이 한 판에 여러 번 오르면 시작은 첫 값, 끝은 마지막 값이라
+ * 결과 화면의 `8성 -> 9성` 이 그 판 전체의 이동을 말한다.
+ * @param {?{style: string, from: number, to: number}} change 성 변화 없음이면 null
+ */
+function noteGain(session, change) {
+  if (!change) return;
+  const seen = session.bout.gains[change.style];
+  session.bout.gains[change.style] = { from: seen ? seen.from : change.from, to: change.to };
+}
+
+/** 그 판의 판정 분포·성 변화 스냅샷 — 결과 화면이 읽는 유일한 형태다 (REQ-871). */
+export const boutLedger = (session) => ({
+  verdicts: { ...session.bout.verdicts },
+  gains: Object.entries(session.bout.gains).map(([style, move]) => ({ style, ...move })),
+});
 
 /**
  * 화면 전이의 계측 지점 — `cycle{phase}` 의 유일한 출처이자, 걸어 둔 제자 수련이 「사부가 그동안
@@ -219,6 +248,7 @@ export const nextChallengerEntry = (session) => challengerEntry(session, challen
  * 마지막 회차(대개 포기한 그 판)가 통째로 빠지기 때문이다.
  */
 export function beginDuel(session, challengerId) {
+  beginBout(session);
   const foeRank = duelFoeRank(session, challengerId);
   const attemptN = duelAttemptOf(session, challengerId);
   if (attemptN > 1) {
@@ -417,6 +447,7 @@ export const canDispatch = (session) => session.transmitted
  * 매 임무 새로 뽑아 눌러앉기를 구조로 막는다. 난이도는 성으로만 오른다 (파견 무대는 하나다).
  */
 export function beginMission(session, { random = Math.random } = {}) {
+  beginBout(session);
   const stage = session.dispatchStage;
   const foeSet = stage <= 1 ? DISPATCH_CHALLENGER.styles.slice() : missionFoeSet(random);
   session.mission = {
@@ -473,6 +504,8 @@ export function logSessionMeta(session, { testerRole = 'self', device = 'keyboar
 
 /** `opening` 이 스키마의 `state` 자리 — grade 만으로는 빈틈 발생률을 역산할 수 없다. */
 export function logVerdict(session, verdict, who) {
+  // 분포는 판정이 나는 자리에서만 는다 — 6단을 뒤늦게 로그에서 세면 판의 경계를 잃는다 (REQ-872).
+  session.bout.verdicts[verdict.grade] = (session.bout.verdicts[verdict.grade] ?? 0) + 1;
   logEvent(session, 'verdict', {
     grade: verdict.grade,
     dmg_out: verdict.dmgOut,
@@ -507,6 +540,10 @@ export function recordDuelVerdict(session, view) {
   });
   const accrued = isEffectiveSuccess(view.verdict.grade)
     ? recordEffectiveSuccess(session, styleId, 'duel') : null;
+  // 원장은 공방 판정을 지나는 성 변화만 담는다 — 적립 자리(`emitMasterChanges`)에서 세면
+  // 판 밖의 수련분까지 들어와 결과 화면이 이 판에서 벌지 않은 칸을 발광시킨다 (REQ-873).
+  noteGain(session, promoted.rank);
+  noteGain(session, accrued?.rank);
   return promoted.rank ? promoted : accrued;
 }
 
@@ -526,7 +563,10 @@ function logFinish(session, view, styleId) {
 export function recordDispatchVerdict(session, view) {
   logVerdict(session, view.verdict, 'disciple');
   if (!view.fire || !isEffectiveSuccess(view.verdict.grade)) return null;
-  return accrueDiscipleRank(session, view.fire.style.id);
+  const styleId = view.fire.style.id;
+  const accrued = accrueDiscipleRank(session, styleId);
+  noteGain(session, accrued && { style: styleId, ...accrued });
+  return accrued;
 }
 
 // ---------------------------------------------------------- 개발자 치트 (REQ-781~783)
@@ -606,6 +646,31 @@ export function settleDispatch(session, { win }) {
   // 임무는 한 판에 소비된다 — 남겨 두면 다음 진입이 지난 차수의 조합으로 싸운다.
   session.mission = null;
   return { reward: win ? BALANCE.reward.dispatchWin : 0 };
+}
+
+/**
+ * 결과 화면 진입 정산 (#70) — 상태를 움직이는 것은 한 진입에 한 번이고, 같은 진입을 다시
+ * 렌더하면 같은 값이 그대로 돌아온다. 메모가 **진입 파라미터**에 사는 것이 그 「한 번」의 정의다:
+ * `go()` 가 화면마다 새 객체를 만들므로 그 객체의 수명이 곧 한 진입이고, 정산을 부르는 주체가
+ * 렌더 자신이라 진입 경로가 늘어도 정산이 통째로 빠지는 갈래가 생기지 않는다.
+ * 원장 스냅샷을 정산보다 **먼저** 뜨는 것은 `settleDispatch` 가 임무를 비우기 때문이다.
+ * @param {{kind: string, win: boolean, stage?: number}} params `go('result', …)` 가 만든 그 객체
+ */
+export function settleResult(session, params) {
+  if (params.settled) return params.settled;
+  const ledger = boutLedger(session);
+  const moved = params.kind === 'duel'
+    ? settleDuel(session, params) : settleDispatch(session, params);
+  params.settled = {
+    kind: params.kind,
+    win: Boolean(params.win),
+    rematch: Boolean(moved.rematch),
+    reward: moved.reward,
+    unlocked: moved.unlocked ?? null,
+    cleared: Boolean(moved.cleared),
+    ...ledger,
+  };
+  return params.settled;
 }
 
 /**
