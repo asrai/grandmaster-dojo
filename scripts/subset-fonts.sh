@@ -27,15 +27,19 @@ F1_EXTRABOLD="$MOCKUPS/NanumMyeongjo-ExtraBold.ttf"
 NOTO_SERIF_KR_VF="${NOTO_SERIF_KR_VF:-$MOCKUPS/NotoSerifKR-VF.otf}"
 
 # 방향 화살표는 성 계단 안내·이관 행이 쓰므로 사용 글자와 무관하게 통째로 싣는다 (REQ-803).
-# ASCII 는 로그·수치 표기가 언제든 새 글자를 꺼내므로 전량이 기준선이다.
-F1_STATIC_RANGES='U+0020-007E,U+2190-21FF'
+# ASCII 는 로그·수치 표기가 언제든 새 글자를 꺼내고, CJK 구두점은 주석 전용 기호가 몰려 있어
+# 수집기가 과수집해도 게이트가 red 로 번지지 않게 한다.
+F1_STATIC_RANGES='U+0020-007E,U+2190-21FF,U+3000-303F'
 
 need() { command -v "$1" >/dev/null 2>&1 || { echo "필요한 도구가 없다: $1 (헤더의 venv 설치 절차 참조)" >&2; exit 1; }; }
 need node
 need pyftsubset
 need fonttools
-python3 -c 'import brotli' 2>/dev/null || {
-  echo "brotli 모듈이 없다 — woff2 로 저장할 수 없다 (pip install brotli)" >&2; exit 1; }
+# brotli 는 pyftsubset 을 실제로 돌리는 인터프리터에 있어야 한다 — PATH 의 python3 이 그것과 다를 수 있다.
+PYFT_PYTHON="$(sed -n '1s|^#!\([^ ]*\).*|\1|p' "$(command -v pyftsubset)")"
+[ -x "${PYFT_PYTHON:-}" ] || PYFT_PYTHON=python3
+"$PYFT_PYTHON" -c 'import brotli' 2>/dev/null || {
+  echo "brotli 모듈이 없다 ($PYFT_PYTHON) — woff2 로 저장할 수 없다 (pip install brotli)" >&2; exit 1; }
 for f in "$F1_REGULAR" "$F1_EXTRABOLD" "$NOTO_SERIF_KR_VF"; do
   [ -f "$f" ] || { echo "원본 폰트가 없다: $f (헤더의 내려받기 절차 참조)" >&2; exit 1; }
 done
@@ -43,28 +47,34 @@ done
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-# 한자만 F2 로 가른다 — index.html 의 unicode-range 분할과 같은 경계다.
-node "$ROOT/scripts/check-font-coverage.mjs" --emit-charset > "$WORK/all.txt"
-node -e '
-const fs = require("node:fs");
-const all = [...fs.readFileSync(process.argv[1], "utf8")];
-const isHanja = (c) => { const o = c.codePointAt(0); return (o >= 0x3400 && o <= 0x9fff) || (o >= 0xf900 && o <= 0xfaff); };
-fs.writeFileSync(process.argv[2], all.filter((c) => !isHanja(c)).join(""));
-fs.writeFileSync(process.argv[3], all.filter(isHanja).join(""));
-' "$WORK/all.txt" "$WORK/f1.txt" "$WORK/f2.txt"
-echo "문자 집합 — 본문 $(node -e 'process.stdout.write(String([...require("node:fs").readFileSync(process.argv[1],"utf8")].length))' "$WORK/f1.txt")자 · 한자 $(node -e 'process.stdout.write(String([...require("node:fs").readFileSync(process.argv[1],"utf8")].length))' "$WORK/f2.txt")자"
+# 면이 담당하는 글자는 index.html 의 unicode-range 가 정한다 — 한자 경계를 여기서 다시 적으면
+# 두 곳이 조용히 어긋난다.
+emit() { node "$ROOT/scripts/check-font-coverage.mjs" --emit-charset "assets/fonts/$1" > "$WORK/$1.txt"; }
 
-subset() { pyftsubset "$1" --output-file="$2" --flavor=woff2 --layout-features='' --no-hinting "${@:3}"; }
-
-# F1 — 나눔명조는 정적 TTF 2벌이라 weight 고정이 필요 없다.
-subset "$F1_REGULAR"   "$OUT/NanumMyeongjo-subset-400.woff2" --text-file="$WORK/f1.txt" --unicodes="$F1_STATIC_RANGES"
-subset "$F1_EXTRABOLD" "$OUT/NanumMyeongjo-subset-800.woff2" --text-file="$WORK/f1.txt" --unicodes="$F1_STATIC_RANGES"
-
-# F2 — 가변 폰트를 먼저 한자로 좁힌 뒤 weight 를 고정한다 (22MB 를 그대로 instancing 하지 않으려고).
-pyftsubset "$NOTO_SERIF_KR_VF" --output-file="$WORK/f2-vf.otf" --text-file="$WORK/f2.txt" --layout-features='' --no-hinting
+# F1 은 나눔명조 정적 TTF 2벌이라 weight 고정이 필요 없다.
 for w in 400 800; do
+  emit "NanumMyeongjo-subset-$w.woff2"
+  src="$F1_REGULAR"; [ "$w" = 800 ] && src="$F1_EXTRABOLD"
+  pyftsubset "$src" --output-file="$WORK/NanumMyeongjo-subset-$w.woff2" --flavor=woff2 \
+    --layout-features='' --no-hinting \
+    --text-file="$WORK/NanumMyeongjo-subset-$w.woff2.txt" --unicodes="$F1_STATIC_RANGES"
+done
+
+# F2 는 가변 폰트를 먼저 한자로 좁힌 뒤 weight 를 고정한다 (22MB 를 그대로 instancing 하지 않으려고).
+emit 'NotoSerifKR-hanja-400.woff2'
+pyftsubset "$NOTO_SERIF_KR_VF" --output-file="$WORK/f2-vf.otf" \
+  --layout-features='' --no-hinting --text-file="$WORK/NotoSerifKR-hanja-400.woff2.txt"
+for w in 400 800; do
+  emit "NotoSerifKR-hanja-$w.woff2"
   fonttools varLib.instancer -q -o "$WORK/f2-$w.otf" "$WORK/f2-vf.otf" "wght=$w"
-  subset "$WORK/f2-$w.otf" "$OUT/NotoSerifKR-hanja-$w.woff2" --text-file="$WORK/f2.txt" --desubroutinize
+  pyftsubset "$WORK/f2-$w.otf" --output-file="$WORK/NotoSerifKR-hanja-$w.woff2" --flavor=woff2 \
+    --layout-features='' --no-hinting --desubroutinize \
+    --text-file="$WORK/NotoSerifKR-hanja-$w.woff2.txt"
+done
+
+# 4벌이 다 만들어진 뒤에야 옮긴다 — 중간에 죽으면 새 F1 과 낡은 F2 가 섞인 트리가 남는다.
+for f in NanumMyeongjo-subset-400 NanumMyeongjo-subset-800 NotoSerifKR-hanja-400 NotoSerifKR-hanja-800; do
+  mv "$WORK/$f.woff2" "$OUT/$f.woff2"
 done
 
 ls -l "$OUT"/*.woff2

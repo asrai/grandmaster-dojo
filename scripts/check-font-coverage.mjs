@@ -4,14 +4,22 @@
 // 새 문구가 조용히 두부(□)로 렌더되는 것을 막을 층이 이것뿐이다.
 //
 // 사용법:
-//   node scripts/check-font-coverage.mjs                 게이트 — 미커버 글자를 열거하고 비-0 종료
-//   node scripts/check-font-coverage.mjs --emit-charset  수집한 글자를 stdout 에 (subset-fonts.sh 입력)
+//   node scripts/check-font-coverage.mjs                        게이트 — 미커버 글자를 열거하고 비-0 종료
+//   node scripts/check-font-coverage.mjs --emit-charset         수집한 글자 전량을 stdout 에
+//   node scripts/check-font-coverage.mjs --emit-charset <면 파일>  그 면이 담당하는 글자만
 //
-// 문자 수집과 서브셋 생성이 같은 함수를 쓰므로 둘이 어긋날 수 없다 — `subset-fonts.sh` 는
-// `--emit-charset` 산출을 그대로 pyftsubset 에 넘긴다.
+// 문자 수집과 서브셋 생성이 같은 수집기를 쓰므로 둘이 어긋날 수 없다 — `subset-fonts.sh` 가
+// 면별 `--emit-charset` 산출을 그대로 pyftsubset 에 넘기고, 면의 담당 범위는 `index.html` 의
+// `unicode-range` 한 곳에서만 정해진다.
+
+// 수집기의 선언된 한계 (best-effort, 넓히지 않는다): 주석 제거는 따옴표·템플릿 보간까지만
+// 모델링하고 정규식 리터럴은 모르므로, 따옴표를 품은 정규식이 생기면 그 뒤 주석이 남아
+// 과수집된다. JS 정규식과 나눗셈의 구별은 파서 없이는 닫히지 않아 배제 목록을 늘리는 방향으로
+// 가지 않는다 — 대신 주석 전용 기호가 몰려 있는 CJK 구두점을 `unicode-range` 가 이미 덮어
+// 과수집이 red 로 번지지 않게 한다.
 
 import { readFileSync, readdirSync, writeSync } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { brotliDecompressSync } from 'node:zlib';
 
@@ -23,8 +31,9 @@ const ENTRY_HTML = 'index.html';
 /** 주석은 렌더되지 않으므로 뺀다 — 넣으면 읽히지도 않을 글리프로 서브셋이 부푼다. */
 function stripJsComments(src) {
   const out = [];
-  const stack = [];
+  const frames = [];
   let state = 'code';
+  let depth = 0;
   let i = 0;
   while (i < src.length) {
     const c = src[i];
@@ -32,24 +41,31 @@ function stripJsComments(src) {
     if (state === 'code') {
       if (c === '/' && d === '/') { state = 'line'; i += 2; continue; }
       if (c === '/' && d === '*') { state = 'block'; i += 2; continue; }
-      if (c === "'" || c === '"' || c === '`') { stack.push(state); state = c; }
-      // 템플릿 보간은 다시 코드라, 그 안의 주석도 주석이다.
-      else if (c === '}' && stack.length > 0) { state = stack.pop(); }
+      if (c === "'" || c === '"' || c === '`') { frames.push({ state, depth }); state = c; }
+      else if (c === '{') depth += 1;
+      else if (c === '}') {
+        // 보간 구간의 닫는 중괄호만이 템플릿으로 되돌리는 신호다 — 그 안의 객체 리터럴이 아니라.
+        if (depth > 0) depth -= 1;
+        else if (frames.length > 0) ({ state, depth } = frames.pop());
+      }
       out.push(c); i += 1; continue;
     }
     if (state === 'line') { if (c === '\n') { state = 'code'; out.push(c); } i += 1; continue; }
     if (state === 'block') { if (c === '*' && d === '/') { state = 'code'; i += 2; } else i += 1; continue; }
     if (c === '\\') { out.push(c, d ?? ''); i += 2; continue; }
-    if (state === '`' && c === '$' && d === '{') { stack.push(state); state = 'code'; out.push(c, d); i += 2; continue; }
-    if (c === state) { state = stack.pop() ?? 'code'; }
+    if (state === '`' && c === '$' && d === '{') {
+      frames.push({ state, depth }); state = 'code'; depth = 0; out.push(c, d); i += 2; continue;
+    }
+    if (c === state) ({ state, depth } = frames.pop() ?? { state: 'code', depth });
     out.push(c); i += 1;
   }
   return out.join('');
 }
 
 const stripCssComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, ' ');
+const stripHtmlComments = (src) => src.replace(/<!--[\s\S]*?-->/g, ' ');
 
-/** CSS `content` 의 `\25B8` 는 소스에 ASCII 로 적히지만 화면에는 글리프로 나온다. */
+/** CSS `content` 의 `\25B6` 는 소스에 ASCII 로 적히지만 화면에는 글리프로 나온다. */
 function decodeCssEscapes(css) {
   const cps = [];
   for (const m of css.matchAll(/\\([0-9a-fA-F]{1,6})[ \t\r\n]?/g)) {
@@ -59,18 +75,19 @@ function decodeCssEscapes(css) {
   return cps.join('');
 }
 
+const BLOCK_RE = /<(style|script)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+
 /** `<style>`·`<script>` 는 언어가 달라 주석 문법도 다르다 — 블록별로 갈라 벗긴다. */
 function renderableTextFromHtml(html) {
-  const body = html.replace(/<!--[\s\S]*?-->/g, ' ');
+  const body = stripHtmlComments(html);
   const parts = [];
-  const re = /<(style|script)\b[^>]*>([\s\S]*?)<\/\1>/gi;
   let last = 0;
-  for (const m of body.matchAll(re)) {
+  for (const m of body.matchAll(BLOCK_RE)) {
     parts.push(body.slice(last, m.index));
-    const inner = m[1].toLowerCase() === 'style'
-      ? (() => { const css = stripCssComments(m[2]); return css + decodeCssEscapes(css); })()
-      : stripJsComments(m[2]);
-    parts.push(inner);
+    if (m[1].toLowerCase() === 'style') {
+      const css = stripCssComments(m[2]);
+      parts.push(css, decodeCssEscapes(css));
+    } else parts.push(stripJsComments(m[2]));
     last = m.index + m[0].length;
   }
   parts.push(body.slice(last));
@@ -78,7 +95,8 @@ function renderableTextFromHtml(html) {
 }
 
 function walk(dir, out = []) {
-  for (const e of readdirSync(join(ROOT, dir), { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+  const entries = readdirSync(join(ROOT, dir), { withFileTypes: true });
+  for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
     const rel = `${dir}/${e.name}`;
     if (e.isDirectory()) walk(rel, out);
     else if (/\.(mjs|json)$/.test(e.name)) out.push(rel);
@@ -88,18 +106,24 @@ function walk(dir, out = []) {
 
 /** 출하되는 것만 본다 — `docs/`·`tests/`·`scripts/` 는 브라우저에 실리지 않는다. */
 function sourceFiles() {
-  return [ENTRY_HTML, ...walk('src')];
+  const files = [ENTRY_HTML, ...walk('src')];
+  // 대상이 진입 문서 하나뿐이면 통과가 아니라 수집기가 사라진 것이다 (구문 검사 스텝과 같은 원칙).
+  if (!files.includes(ENTRY_HTML) || !files.some((f) => f.startsWith('src/'))) {
+    throw new Error(`검사 대상이 온전하지 않다 — ${ENTRY_HTML} 과 src/ 모듈이 모두 있어야 한다 (실측 ${files.length}건)`);
+  }
+  return files;
 }
 
-function collectUsedChars() {
+function collectUsedChars(files) {
   const used = new Set();
-  for (const rel of sourceFiles()) {
+  for (const rel of files) {
     const raw = readFileSync(join(ROOT, rel), 'utf8');
     const text = rel === ENTRY_HTML ? renderableTextFromHtml(raw)
       : rel.endsWith('.mjs') ? stripJsComments(raw)
         : raw;
     for (const ch of text) if (ch.codePointAt(0) > 0x20) used.add(ch);
   }
+  if (used.size === 0) throw new Error('수집한 글자가 0건이다 — 통과가 아니라 수집기 고장이다');
   return used;
 }
 
@@ -118,9 +142,10 @@ function parseUnicodeRange(spec) {
 
 const inRanges = (cp, ranges) => ranges.some(([lo, hi]) => cp >= lo && cp <= hi);
 
+/** 주석 처리된 선언은 살아 있는 면이 아니다 — 수집기와 같은 전처리를 거쳐야 둘이 같은 문서를 본다. */
 function parseFontFaces(html) {
   const faces = [];
-  for (const m of html.matchAll(/@font-face\s*\{([\s\S]*?)\}/g)) {
+  for (const m of stripCssComments(stripHtmlComments(html)).matchAll(/@font-face\s*\{([\s\S]*?)\}/g)) {
     const block = m[1];
     const src = block.match(/url\(['"]?([^'")]+)['"]?\)/);
     const range = block.match(/unicode-range\s*:\s*([^;}]+)/);
@@ -129,12 +154,14 @@ function parseFontFaces(html) {
     if (!range) throw new Error(`@font-face 에 unicode-range 가 없다 (${src[1]}) — 범위 없는 면은 커버리지를 판정할 수 없다`);
     faces.push({ file: src[1], ranges: parseUnicodeRange(range[1]), weight: weight ? weight[1].trim() : '?' });
   }
+  if (faces.length === 0) throw new Error(`${ENTRY_HTML} 에 @font-face 가 하나도 없다 — 표면이 통째로 시스템 폰트로 떨어진다 (REQ-812)`);
   return faces;
 }
 
 /* ── 3. woff2 글리프 커버리지 ──────────────────────────────────────────── */
 
-// WOFF2 의 known-table 색인 (스펙 표) — 여기서는 `cmap`(0)·`glyf`(10)·`loca`(11) 만 쓴다.
+// WOFF2 known-table 색인 중 이 파서가 이름을 아는 것 — cmap 은 변환 대상이 아니라 그대로 실린다.
+const WOFF2_CMAP = 0;
 const WOFF2_GLYF = 10;
 const WOFF2_LOCA = 11;
 
@@ -142,14 +169,15 @@ function readUIntBase128(buf, pos) {
   let value = 0;
   for (let n = 0; n < 5; n += 1) {
     const b = buf[pos + n];
-    if (b === undefined) throw new Error('UIntBase128 가 잘렸다');
+    if (b === undefined) throw new Error('UIntBase128 이 잘렸다');
+    if (n === 0 && b === 0x80) throw new Error('UIntBase128 선행 0 은 스펙 위반이다');
     value = value * 128 + (b & 0x7f);
+    if (value > 0xffffffff) throw new Error('UIntBase128 이 2^32 를 넘는다');
     if ((b & 0x80) === 0) return [value, pos + n + 1];
   }
-  throw new Error('UIntBase128 가 5바이트를 넘는다');
+  throw new Error('UIntBase128 이 5바이트를 넘는다');
 }
 
-/** woff2 컨테이너를 풀어 `cmap` 테이블만 꺼낸다 — cmap 은 변환 대상이 아니라 그대로 실려 있다. */
 function extractCmapTable(buf) {
   if (buf.readUInt32BE(0) !== 0x774f4632) throw new Error('woff2 시그니처가 아니다');
   const numTables = buf.readUInt16BE(12);
@@ -158,20 +186,18 @@ function extractCmapTable(buf) {
   for (let i = 0; i < numTables; i += 1) {
     const flags = buf[pos]; pos += 1;
     const index = flags & 0x3f;
-    let tag;
-    if (index === 0x3f) { tag = buf.toString('latin1', pos, pos + 4); pos += 4; }
-    else { tag = index === 0 ? 'cmap' : `#${index}`; }
+    if (index === 0x3f) pos += 4;
     let origLength; [origLength, pos] = readUIntBase128(buf, pos);
     const version = (flags >> 6) & 0x03;
     const transformed = (index === WOFF2_GLYF || index === WOFF2_LOCA) ? version === 0 : version !== 0;
     let length = origLength;
     if (transformed) [length, pos] = readUIntBase128(buf, pos);
-    entries.push({ tag, length });
+    entries.push({ index, length });
   }
   const data = brotliDecompressSync(buf.subarray(pos));
   let offset = 0;
   for (const e of entries) {
-    if (e.tag === 'cmap') return data.subarray(offset, offset + e.length);
+    if (e.index === WOFF2_CMAP) return data.subarray(offset, offset + e.length);
     offset += e.length;
   }
   throw new Error('woff2 에 cmap 테이블이 없다');
@@ -185,12 +211,11 @@ function codepointsFromCmap(cmap) {
     const platform = cmap.readUInt16BE(rec);
     const encoding = cmap.readUInt16BE(rec + 2);
     const offset = cmap.readUInt32BE(rec + 4);
-    const unicode = platform === 0 || (platform === 3 && (encoding === 1 || encoding === 10));
-    if (!unicode) continue;
+    if (!(platform === 0 || (platform === 3 && (encoding === 1 || encoding === 10)))) continue;
     const format = cmap.readUInt16BE(offset);
     // format 12 는 BMP 밖까지 담으므로, 둘 다 있으면 그쪽이 상위 집합이다.
-    if (format === 12 || (format === 4 && !best)) best = { format, offset };
-    if (format === 12) break;
+    if (format === 12) { best = { format, offset }; break; }
+    if (format === 4 && !best) best = { format, offset };
   }
   if (!best) throw new Error('cmap 에 유니코드 서브테이블(format 4/12)이 없다');
   const cps = new Set();
@@ -200,8 +225,9 @@ function codepointsFromCmap(cmap) {
       const p = best.offset + 16 + g * 12;
       const start = cmap.readUInt32BE(p);
       const end = cmap.readUInt32BE(p + 4);
-      if (cmap.readUInt32BE(p + 8) === 0) continue;
-      for (let cp = start; cp <= end; cp += 1) cps.add(cp);
+      const startGid = cmap.readUInt32BE(p + 8);
+      // gid 0 은 .notdef 이라 그 코드포인트만 빠진다 — 그룹 전체가 아니다 (format 4 와 같은 판정).
+      for (let cp = start; cp <= end; cp += 1) if (startGid + (cp - start) !== 0) cps.add(cp);
     }
     return cps;
   }
@@ -249,20 +275,25 @@ const label = (ch) => `${ch} (U+${ch.codePointAt(0).toString(16).toUpperCase().p
 const sortChars = (chars) => [...chars].sort((a, b) => a.codePointAt(0) - b.codePointAt(0));
 const countIn = (used, ranges) => [...used].filter((ch) => inRanges(ch.codePointAt(0), ranges)).length;
 
-function main() {
-  const used = collectUsedChars();
-  if (process.argv.includes('--emit-charset')) {
-    writeSync(1, sortChars(used).join(''));
+function run() {
+  const files = sourceFiles();
+  const used = collectUsedChars(files);
+  const html = readFileSync(join(ROOT, ENTRY_HTML), 'utf8');
+
+  const emitAt = process.argv.indexOf('--emit-charset');
+  if (emitAt !== -1) {
+    const target = process.argv[emitAt + 1];
+    let chars = [...used];
+    if (target) {
+      const face = parseFontFaces(html).find((f) => f.file === target);
+      if (!face) throw new Error(`${ENTRY_HTML} 에 그 @font-face 가 없다: ${target}`);
+      chars = chars.filter((ch) => inRanges(ch.codePointAt(0), face.ranges));
+    }
+    writeSync(1, sortChars(chars).join(''));
     return 0;
   }
 
-  const html = readFileSync(join(ROOT, ENTRY_HTML), 'utf8');
   const faces = parseFontFaces(html);
-  if (faces.length === 0) {
-    fail('::error::index.html 에 @font-face 가 하나도 없다 — 표면이 통째로 시스템 폰트로 떨어진다 (REQ-812)');
-    return 1;
-  }
-
   const declared = [];
   const missing = [];
   for (const face of faces) {
@@ -280,7 +311,7 @@ function main() {
     say(`${face.file} (weight ${face.weight}) — 글리프 ${cps.size}건 · 담당 글자 ${countIn(used, face.ranges)}건`);
   }
   const unranged = sortChars([...used].filter((ch) => !inRanges(ch.codePointAt(0), declared)));
-  say(`빌드 사용 글자 ${used.size}건 · @font-face ${faces.length}벌 · 검사 파일 ${sourceFiles().length}건`);
+  say(`빌드 사용 글자 ${used.size}건 · @font-face ${faces.length}벌 · 검사 파일 ${files.length}건`);
 
   if (unranged.length === 0 && missing.length === 0) {
     say('폰트 커버리지 OK — 미커버 글자 0건');
@@ -291,7 +322,7 @@ function main() {
   if (unranged.length > 0) {
     fail(`[A] 어느 @font-face 의 unicode-range 에도 들지 않는다 — 시스템 폰트 폴백 (${unranged.length}건)`);
     fail(`    ${unranged.map(label).join(' ')}`);
-    fail('    조치: index.html 의 unicode-range 와 scripts/subset-fonts.sh 의 대응 범위를 함께 넓힌 뒤 재실행 — 또는 그 글자를 쓰지 않는 문구로 바꾼다.');
+    fail('    조치: index.html 의 unicode-range 를 넓힌 뒤 scripts/subset-fonts.sh 를 재실행 — 또는 그 글자를 쓰지 않는 문구로 바꾼다.');
   }
   for (const { face, gaps } of missing) {
     fail(`[B] ${face.file} 에 글리프가 없다 — 두부(□) (${gaps.length}건)`);
@@ -300,8 +331,19 @@ function main() {
   if (missing.length > 0) {
     fail('    조치: bash scripts/subset-fonts.sh 를 재실행해 assets/fonts/ 의 woff2 를 갱신하고 같은 커밋에 담는다.');
     fail('    서브셋은 「현재 빌드에 있는 글자」만 덮으므로, 새 문구를 넣은 커밋마다 이 재실행이 필요한 것이 정상 동작이다 — 게이트를 우회하지 마라.');
+    fail('    재실행해도 같은 글자가 남으면 원본 폰트 자체에 그 글리프가 없다는 뜻이다 — 그때는 문구를 바꾼다.');
   }
   return 1;
+}
+
+function main() {
+  try {
+    return run();
+  } catch (err) {
+    // 여기서 새는 예외는 스택 트레이스만 남겨 red 사유를 잃는다 — 게이트의 산출물은 사유다.
+    fail(`::error::폰트 커버리지 게이트가 판정을 내지 못했다 — ${err.message}`);
+    return 1;
+  }
 }
 
 process.exit(main());
