@@ -1,7 +1,7 @@
 // 헤드리스 회귀 하네스 — 의존성 0, `node tests/harness.mjs` 로 실행한다.
 // 기대값은 BALANCE 키에서 직접 산출하므로 파라미터 개명·판정표 변경은 즉시 red 다.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import {
   ART_SETS, ATTRS, BALANCE, BALANCE_REV, CHALLENGERS, DISCIPLE, FOE_STYLES, STYLES,
   validateBalance, validateStyleContent, valueDigest,
@@ -2351,6 +2351,53 @@ suite('계측 배선 공유 (#11)', () => {
     deepEq(INSTRUMENTS.filter((name) => imports.includes(name)), [],
       `${path} 는 계측 함수를 직접 쥐지 않는다 — 배선은 한 벌이어야 한다`);
   }
+});
+
+// --------------------------------- 12-a-2. 원장 판독 층 (#132)
+
+suite('원장 ms 판독은 한 벌 (#132)', () => {
+  // 수기 열거는 새로 생긴 모듈을 조용히 놓치므로 트리를 훑는다 — 모양이 아니라 전량이 모집단이다.
+  const walk = (rel) => readdirSync(new URL(`../${rel}`, import.meta.url), { withFileTypes: true })
+    .flatMap((e) => (e.isDirectory() ? walk(`${rel}/${e.name}`) : [`${rel}/${e.name}`]))
+    .filter((path) => path.endsWith('.mjs'));
+  const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+
+  const srcFiles = walk('src').sort();
+  // 훑기가 비면 아래 집합·⊆ 단정이 전부 공허하게 통과한다 — 하한이 그 갈래를 막는다.
+  ok(srcFiles.length >= 20, `src/ 의 .mjs 를 실제로 훑었다 — ${srcFiles.length}개`);
+
+  // (I1) 커스텀 속성은 `getPropertyValue` 로만 읽히므로 이 토큰이 판독기의 전 모집단이다.
+  const readers = srcFiles.filter((path) => read(path).includes('getPropertyValue'));
+  deepEq(readers, ['src/ui/dom.mjs'], '원장 판독기는 dom.mjs 한 벌뿐이다');
+  // 부재 단정만 두면 「전부 지웠다」도 통과한다 — 건수 1 이 그 공허 통과를 막는 양성 대조다.
+  const readCount = srcFiles
+    .reduce((n, path) => n + (read(path).match(/getPropertyValue/g) ?? []).length, 0);
+  eq(readCount, 1, '그 한 벌이 실재한다 — 판독 출현 건수');
+
+  // 조용한 0 으로 접히는 폴백이 정본으로 되돌아오면 무음 실패의 원천이 되살아난다.
+  const domSource = read('src/ui/dom.mjs');
+  ok(!/\|\|\s*0/.test(domSource), 'dom.mjs 판독에 `|| 0` 폴백이 없다');
+  ok(/throw new Error\(`\$\{name\} 이 ms 값이 아니다/.test(domSource), '형식 위반이 그 자리에서 죽는다');
+
+  // (I1′) 부팅 전건 검사의 모집단은 이 목록이라, 목록 밖 토큰은 검사받지 않은 채 연출에서 읽힌다.
+  const listedBlock = domSource.match(/export const LEDGER_MS = \[([^\]]*)\]/);
+  ok(listedBlock, 'dom.mjs 가 LEDGER_MS 목록을 리터럴 배열로 export 한다');
+  const listed = [...(listedBlock?.[1] ?? '').matchAll(/'(--[\w-]+)'/g)].map((m) => m[1]);
+  deepEq(listed, ['--juice-hitstop', '--only-hold', '--slip-exit', '--tm-follow-delay'],
+    'JS 가 읽는 원장 ms 토큰 목록');
+
+  const called = srcFiles
+    .filter((path) => path.startsWith('src/ui/'))
+    .flatMap((path) => [...read(path).matchAll(/\bledgerMs\('(--[\w-]+)'\)/g)].map((m) => m[1]));
+  // ⊆ 는 호출 0건에서도 참이다 — 호출 실재가 그 짝의 양성 대조다.
+  ok(called.length >= 3, `이름을 박은 판독 호출이 실재한다 — ${called.length}건`);
+  deepEq([...new Set(called)].filter((name) => !listed.includes(name)), [],
+    '목록 밖 토큰을 읽는 호출이 없다');
+
+  // 목록은 부팅 단정이 실제로 소비해야 뜻이 있다 — 미소비 목록은 위 ⊆ 를 장식으로 만든다.
+  const appSource = read('src/ui/app.mjs');
+  ok(/LEDGER_MS\.map\(\(name\) => \[name, ledgerMs\(name\)\]\)/.test(appSource),
+    '부팅이 LEDGER_MS 전건을 ledgerMs 로 읽는다');
 });
 
 // ------------------------- 12-b. 결과 진입 1회 정산 · 판 원장 (#70 · REQ-871~873)
