@@ -73,7 +73,7 @@ function refreshTop() {
 /**
  * 재렌더가 지금 밟고 선 자리 (#133) — 조립이 노드를 파기하기 전에만 읽을 수 있다. 순번은
  * `focusables` 목록의 첨자라 채집과 복원이 같은 정의를 본다. 목록 밖(본문·`<main>`)이면
- * 되돌릴 자리가 없다는 뜻이라 `null` 이고, 조립은 종전대로 본문에 포커스를 둔다.
+ * 되돌릴 자리가 없다는 뜻이라 `null` 이고, 그때는 조립이 본문에 포커스를 둔다.
  */
 function captureFocusHint() {
   const seats = focusables(ctx.root);

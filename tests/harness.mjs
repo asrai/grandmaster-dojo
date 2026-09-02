@@ -2421,6 +2421,60 @@ suite('원장 ms 판독은 한 벌 (#132)', () => {
   }
 });
 
+// ------------------------- 12-a-3. 크롬 조립 계약 — 띠 원장 · 히트 축 · 포커스 소유 (#133)
+
+suite('크롬 원장은 한 토큰 한 값 · 포커스 소유는 조립 한 곳 (#133)', () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+
+  // (I2) 두 띠가 같은 토큰을 쓰는가. 규칙 블록을 떼어내지 못하면 아래 부재 단정이 전부 공허하게
+  // 참이 되므로, 블록 실재 → 토큰 실재 → px 리터럴 부재 순으로 물린다.
+  for (const sel of ['.top-band', '.stage-band']) {
+    const block = html.match(new RegExp(`^\\${sel} \\{([\\s\\S]*?)\\n\\}`, 'm'))?.[1];
+    ok(block, `${sel} 규칙 블록을 실제로 떼어냈다`);
+    ok(/height:\s*var\(--band-h\)/.test(block ?? ''), `${sel} 의 높이가 --band-h 다`);
+    ok(!/height:\s*\d/.test(block ?? 'height: 1'), `${sel} 에 px 리터럴 높이가 없다`);
+  }
+
+  // (I3) 히트 축 44 의 정본은 `--hit-min` 하나다. 경계 인식이 없으면 `-144px` 같은 부분 문자열이
+  // 히트로 잡혀, 이름 열거 예외 목록을 달게 되고 그 목록이 토큰마다 낡는다.
+  const HIT44 = /(?<![\d-])44px/g;
+  const rootAt = html.match(/^:root \{[\s\S]*?\n\}/m);
+  ok(rootAt, ':root 블록을 실제로 떼어냈다');
+  const rootBlock = rootAt?.[0] ?? '';
+  // 양성 대조 — 모집단이 0 으로 접히면 이 계수가 먼저 무너진다. 셋은 원장 토큰의 정의부다.
+  eq((rootBlock.match(HIT44) ?? []).length, 3, ':root 안 44px 리터럴 — 경계 인식 검색이 실재 히트를 센다');
+  // 그 경계가 실제로 무는지 — `--watch-y` 는 44px 리터럴이 아닌데 부분 문자열로는 걸린다.
+  ok(/--watch-y:\s*-144px/.test(rootBlock), '-144px 토큰이 :root 에 실재한다');
+  eq((rootBlock.match(/44px/g) ?? []).length, 4,
+    ':root 안 부분 문자열 히트는 4건 — 경계 인식이 그중 -144px 하나를 뺀다');
+
+  const outside = html.slice(0, rootAt.index) + html.slice(rootAt.index + rootBlock.length);
+  ok(outside.length > 1000, `:root 밖 모집단이 실재한다 — ${outside.length}자`);
+  deepEq(outside.match(HIT44) ?? [], [], ':root 밖에 44px 리터럴이 없다');
+  // 부재만 두면 「그 규칙을 통째로 지웠다」도 통과한다 — 치환이 실제로 앉았음을 함께 문다.
+  ok((outside.match(/var\(--hit-min\)/g) ?? []).length >= 3,
+    ':root 밖 히트 축이 --hit-min 을 부른다 — 치환 실재');
+
+  // (I4) 재렌더 포커스의 소유는 `dom.mjs` 의 `composeScreen` 한 곳이다. 화면이 자기 손으로
+  // 되돌리면 id 가 전이하는 경로에서 헛돌고, 그 헛돎이 화면마다 따로 재발한다.
+  // 모집단은 화면 모듈뿐 — `composeScreen` 의 소유 호출은 이 계약의 정본이라 의도적으로 밖이다.
+  const screensDir = new URL('../src/ui/screens/', import.meta.url);
+  const screens = readdirSync(screensDir).filter((name) => name.endsWith('.mjs')).sort();
+  ok(screens.length >= 7, `화면 모듈을 실제로 훑었다 — ${screens.length}개`);
+  // 주석의 언급은 조작이 아니다. 과다 제거는 아래 건수 단정이 0 으로 무너뜨려 잡는다.
+  const read = (name) => readFileSync(new URL(name, screensDir), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  // 옵셔널 체이닝 유무와 무관하게 물어야 한다 — `node.focus()` 로 쓴 복원은 `?.focus()` 패턴을
+  // 그대로 빠져나간다. 계약의 정본(`main.focus(...)`)이 바로 그 형태다.
+  const TOUCH = /\.focus\(|activeElement/g;
+  const touched = screens.filter((name) => (read(name).match(TOUCH) ?? []).length > 0);
+  deepEq(touched.map((name) => `src/ui/screens/${name}`), ['src/ui/screens/select.mjs'],
+    '포커스를 직접 조작하는 화면은 select 하나뿐이다');
+  // 집합은 파일 단위로 접히므로 한 파일 안의 재발을 못 본다 — 출현 건수가 그 짝의 양성 대조다.
+  const touches = screens.reduce((n, name) => n + (read(name).match(TOUCH) ?? []).length, 0);
+  eq(touches, 2, '그 한 곳이 실재한다 — 조작 출현 건수(activeElement 1 · focus 1)');
+});
+
 // ------------------------- 12-b. 결과 진입 1회 정산 · 판 원장 (#70 · REQ-871~873)
 
 suite('판 원장 — 그 판의 판정 분포·성 변화·결정타 (REQ-872·873·708)', () => {
