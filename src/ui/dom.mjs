@@ -97,11 +97,6 @@ export function topBand(session, artName, { onLeave = null } = {}) {
   return { node, paint };
 }
 
-export function hpBar(hp, max) {
-  const pct = Math.max(0, Math.min(1, hp / max)) * 100;
-  return el('div', { class: 'hpbar' }, [el('i', { style: `width:${pct}%` })]);
-}
-
 /**
  * 시퀀스 화살표 줄 — `revealed` 개까지만 실제 방향을 보이고 나머지는 가린다 (REQ-108).
  * @param {string[]} seq 초식 시퀀스

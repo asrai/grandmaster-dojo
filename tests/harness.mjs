@@ -26,12 +26,14 @@ import {
 import {
   composeHooks, dispatchWiring, duelWiring, trainWiring,
 } from '../src/ui/wiring.mjs';
-import { ATTR_VIEW, EXTREME_GRADES, GRADE_VIEW, TRAIN_DONE_VIEW } from '../src/ui/theme.mjs';
+import { ATTR_VIEW, EXTREME_GRADES, GRADE_VIEW, REASON_VIEW, TRAIN_DONE_VIEW } from '../src/ui/theme.mjs';
 import { TABLET, tabletStates } from '../src/ui/tablet-state.mjs';
 import { BOT_UNREACHABLE, KILL, killVerdicts, readout } from './kill-readout.mjs';
 import {
+  SELECT_REASON,
   accrueDiscipleStyle, accrueRank, applyDiscipleTraining, applyEffectiveSuccess, applyOutcome,
-  artById, artStyles, assertCounterIntegrity, assertPrefixFree, canEquipRank, canLearn, canTransmit,
+  artById, artStyles, assertAttrCoverage, assertCounterIntegrity, assertGugyeol, assertPrefixFree,
+  canEquipRank, canLearn, canTransmit,
   challengerById, createDisciple, createProgress, createRankState, discipleMinRank,
   discipleStyleRank, discipleStyles, discipleTrainMsPerRank, discipleTrainSteps, finisherOf,
   foePowerOf, foeRankOf, foeStyleById, initiativeOf, isEffectiveSuccess, isFirstEncounter,
@@ -39,7 +41,7 @@ import {
   isOneTapRank, judge, ladderBandAt, learn, missionFoeRank, missionFoeSet, missionLockRank,
   missionShortfall, powerOf, promoteByOutcome, rematchFoeRank, resolveMatch, responseWindowMs,
   reversalDecayFactor, selectDiscipleStyle, setStyleRank, styleById, styleRank, trainAccrualCap,
-  trainHitsToNext, transmit,
+  trainHitsToNext, trainVisitSpan, transmit,
 } from '../src/core.mjs';
 
 /** 성 축 재설계가 폐기한 BALANCE 키 (#64) — 잔존 참조 1개가 판정 수식을 조용히 오염시킨다. */
@@ -170,13 +172,20 @@ suite('데이터 무결성 (REQ-501·502·503·505)', () => {
     { id: 'x', counters: 'z' }, { id: 'y', counters: 'z' }, { id: 'z', counters: null },
   ]), '한 초식을 둘이 파하면 1:1 위반', '파해 1:1 위반');
   throws(() => assertCounterIntegrity([{ id: 'x', counters: 'nope' }]), '미존재 파해 대상은 위반', '파해 대상 미존재');
+  throws(() => assertGugyeol([{ id: 'x', seq: ['D', 'R'], gugyeol: ['한 구절'] }]),
+    '구결 구절 수가 시퀀스와 다르면 위반', '구결 구절 수 불일치');
+  throws(() => assertGugyeol([{ id: 'x', seq: ['D'], gugyeol: ['  '] }]), '빈 구절은 위반', '빈 구결 구절');
+  throws(() => assertAttrCoverage([{ id: 'x', attr: 'fast' }]),
+    '세 속성을 못 덮는 무공은 위반', '무공이 덮지 못한 속성');
+  ok(assertGugyeol(STYLES) && assertAttrCoverage(STYLES), '유운검법은 두 단정을 통과한다');
 
   eq(STYLES.length, 4, '유운검법 초식 수');
   const columns = ['id', 'set', 'order', 'name', 'hanja', 'attr', 'seq', 'd', 'counters', 'gugyeol'];
   for (const s of STYLES) {
     for (const c of columns) ok(s[c] !== undefined, `${s.id} 컬럼 ${c} 존재`);
     ok(String(s.name).length > 0 && String(s.hanja).length > 0, `${s.id} 이름·한자 비어있지 않음`);
-    ok(String(s.gugyeol).length > 0, `${s.id} 구결 존재`);
+    ok(Array.isArray(s.gugyeol) && s.gugyeol.length === s.seq.length,
+      `${s.id} 구결 구절이 방향 한 개씩에 1:1 대응`);
     ok(Number.isInteger(s.d) && s.d > 0, `${s.id} D 가 정수`);
   }
   deepEq(STYLES.map((s) => [s.attr, s.seq.join('')]), [
@@ -470,6 +479,11 @@ suite('성 계단 사다리 (REQ-702)', () => {
   eq(trainHitsToNext({ rank: 1, pts: 0 }), 3, '1성에서 다음 계단까지 수련 3회');
   eq(trainHitsToNext({ rank: 1, pts: LADDER.gain.train }), 2, '한 번 채우면 2회 남는다');
   eq(trainHitsToNext({ rank: LOW.maxRank, pts: 0 }), null, '수련 무효 구간에는 남은 횟수가 없다');
+
+  // 화면이 3 을 상수로 갖지 않는다 — 칸 수가 계단 비용에서 파생돼야 비용 튜닝이 계단을 따라온다 (REQ-845).
+  deepEq(trainVisitSpan({ rank: 1, pts: 0 }), { done: 0, total: 3 }, '갓 오른 성의 수련 계단은 3칸 전부 빈다');
+  deepEq(trainVisitSpan({ rank: 1, pts: LADDER.gain.train }), { done: 1, total: 3 }, '한 번 채우면 한 칸이 찬다');
+  eq(trainVisitSpan({ rank: LOW.maxRank, pts: 0 }), null, '수련 무효 구간에는 계단 자체가 없다');
 
   throws(() => accrue(createRankState(), 'nope'), '알 수 없는 적립 모드는 throw', '알 수 없는 적립 모드');
 });
@@ -944,43 +958,90 @@ suite('예고 화면 슬롯 교체 · 봇 무대 선택 (REQ-731·736)', () => {
 
 // -------------------------------------- 8. 제자 자동 선택 (REQ-403)
 
-suite('제자 자동 선택 (REQ-403)', () => {
+suite('제자 자동 선택 (REQ-403·853)', () => {
   const all = STYLES.filter((s) => s.id !== 'pa-un');
   const delta = foeStyleById('delta');
   const pick = (opts) => selectDiscipleStyle({ styles: all, ...opts });
 
-  eq(pick({ foeStyle: foeStyleById('alpha') }).id, 'yuun-bo', 'α(강) 에는 쾌로 우세');
-  eq(pick({ foeStyle: foeStyleById('gamma') }).id, 'haeng-un', 'γ(쾌) 에는 정으로 우세');
-  eq(pick({ foeStyle: delta }).id, 'jeok-un', 'δ(정) 에는 강으로 우세');
+  eq(pick({ foeStyle: foeStyleById('alpha') }).style.id, 'yuun-bo', 'α(강) 에는 쾌로 우세');
+  eq(pick({ foeStyle: foeStyleById('gamma') }).style.id, 'haeng-un', 'γ(쾌) 에는 정으로 우세');
+  eq(pick({ foeStyle: delta }).style.id, 'jeok-un', 'δ(정) 에는 강으로 우세');
 
-  // 역파 회피는 절초가 예고된 수에만 걸린다 — 그 밖의 수에서 완파를 버리지 않는다.
-  eq(judge({ selfStyle: pick({ foeStyle: foeStyleById('alpha') }), foeStyle: foeStyleById('alpha'), selfRank: 1, foeRank: 1 }).grade,
-    'crush', 'δ 를 가진 도전자라도 α 예고 수에는 완파가 나온다');
+  // 역파 회피는 절초가 예고된 초에만 걸린다 — 그 밖의 초에서 완파를 버리지 않는다.
+  eq(judge({ selfStyle: pick({ foeStyle: foeStyleById('alpha') }).style, foeStyle: foeStyleById('alpha'), selfRank: 1, foeRank: 1 }).grade,
+    'crush', 'δ 를 가진 도전자라도 α 예고 초에는 완파가 나온다');
   const fakeFinisher = { id: 'fake', attr: 'fine', d: 20, finisher: true, counters: 'jeok-un' };
-  eq(pick({ foeStyle: fakeFinisher }).id, 'haeng-un', '우세 후보가 예고된 절초의 파해 대상이면 상쇄로 내려간다');
+  eq(pick({ foeStyle: fakeFinisher }).style.id, 'haeng-un', '우세 후보가 예고된 절초의 파해 대상이면 상쇄로 내려간다');
   const fakePlain = { ...fakeFinisher, id: 'fake-plain', finisher: false };
-  eq(pick({ foeStyle: fakePlain }).id, 'jeok-un', '절초가 아니면 파해 대상이어도 제외하지 않는다');
+  eq(pick({ foeStyle: fakePlain }).style.id, 'jeok-un', '절초가 아니면 파해 대상이어도 제외하지 않는다');
 
   // 우세 없음 → 상쇄, 상쇄도 없음 → 잔여.
-  eq(selectDiscipleStyle({ styles: [styleById('haeng-un')], foeStyle: foeStyleById('beta') }).id,
+  eq(selectDiscipleStyle({ styles: [styleById('haeng-un')], foeStyle: foeStyleById('beta') }).style.id,
     'haeng-un', '우세가 없으면 상쇄');
-  eq(selectDiscipleStyle({ styles: [styleById('yuun-bo')], foeStyle: foeStyleById('beta') }).id,
+  eq(selectDiscipleStyle({ styles: [styleById('yuun-bo')], foeStyle: foeStyleById('beta') }).style.id,
     'yuun-bo', '우세·상쇄가 모두 없으면 잔여');
 
   // 상대 빈틈에는 예고가 없어 위력만 남고, 역파 위험도 없다.
-  eq(pick({ foeStyle: null }).id, 'haeng-un', '상대 빈틈에는 최대 위력 초식');
+  eq(pick({ foeStyle: null }).style.id, 'haeng-un', '상대 빈틈에는 최대 위력 초식');
 
   // 동률은 성으로, 성도 동률이면 슬롯 순으로 결정된다.
   const twoFast = [styleById('yuun-bo'), { ...styleById('pa-un'), attr: 'fast' }];
   eq(selectDiscipleStyle({
     styles: twoFast, foeStyle: foeStyleById('alpha'), rankOf: (s) => (s.id === 'pa-un' ? 5 : 1),
-  }).id, 'pa-un', '우세 후보 중 성 높은 것');
-  eq(selectDiscipleStyle({ styles: twoFast, foeStyle: foeStyleById('alpha') }).id, 'yuun-bo',
+  }).style.id, 'pa-un', '우세 후보 중 성 높은 것');
+  eq(selectDiscipleStyle({ styles: twoFast, foeStyle: foeStyleById('alpha') }).style.id, 'yuun-bo',
     '성 동률이면 슬롯 순');
 
-  eq(selectDiscipleStyle({ styles: [styleById('yuun-bo')], foeStyle: delta }).id, 'yuun-bo',
+  eq(selectDiscipleStyle({ styles: [styleById('yuun-bo')], foeStyle: delta }).style.id, 'yuun-bo',
     '전부 배제되면 역파를 감수한다');
   eq(selectDiscipleStyle({ styles: [] }), null, '보유 초식이 없으면 null');
+
+  // 이유 3계열 — 화면 문구가 이 값에 매핑되므로 각 계열이 실제로 발화하는 입력이 있어야 한다 (REQ-853).
+  eq(pick({ foeStyle: foeStyleById('alpha') }).reason, SELECT_REASON.ADVANTAGE, '우세 후보를 냈으면 우세 계열');
+  eq(pick({ foeStyle: null }).reason, SELECT_REASON.ADVANTAGE, '빈틈은 어떤 완주든 완파라 우세 계열');
+  eq(selectDiscipleStyle({ styles: [styleById('haeng-un')], foeStyle: foeStyleById('beta') }).reason,
+    SELECT_REASON.CLASH, '우세가 없어 같은 속성으로 맞섰으면 상쇄 계열');
+  eq(pick({ foeStyle: fakeFinisher }).reason, SELECT_REASON.AVOID_REVERSAL,
+    '배제가 우세 후보를 걷어내 선택이 바뀌었으면 역파 회피 계열');
+  eq(pick({ foeStyle: delta }).reason, SELECT_REASON.ADVANTAGE,
+    '배제해도 같은 초식을 골랐으면 회피가 아니다 — 유운보는 δ 에 우세 후보가 아니었다');
+  eq(selectDiscipleStyle({ styles: [styleById('yuun-bo')], foeStyle: delta }).reason,
+    SELECT_REASON.CLASH, '전부 배제돼 역파를 감수한 초는 회피가 아니다');
+  // 배제 여부 판정은 배제된 초식이 슬롯 뒤에 있을 때 갈린다 — 정렬 기준이 넘어온 목록이 아니라
+  // 걸러낸 목록에 매여 있으면 배제분이 인덱스 -1 로 앞서 「바뀌지 않은 선택」이 회피로 오라벨된다.
+  const twoHard = [
+    { ...styleById('jeok-un'), id: 'hard-front' },
+    { ...styleById('jeok-un'), id: 'hard-back' },
+  ];
+  const finisherOnBack = { id: 'fake-back', attr: 'fine', d: 20, finisher: true, counters: 'hard-back' };
+  const behind = selectDiscipleStyle({ styles: twoHard, foeStyle: finisherOnBack });
+  eq(behind.style.id, 'hard-front', '배제분이 뒤 슬롯이면 앞 슬롯이 그대로 뽑힌다');
+  eq(behind.reason, SELECT_REASON.ADVANTAGE, '선택이 바뀌지 않았으므로 회피가 아니다');
+
+  deepEq([...new Set(Object.values(SELECT_REASON))].length, 3, '이유 계열은 3종이고 값이 겹치지 않는다');
+  // 화면 문구가 계열마다 있어야 한다 — 없으면 그 초의 판단이 빈칸으로 뜬다 (theme.mjs 부팅 단정의 짝).
+  for (const reason of Object.values(SELECT_REASON)) {
+    ok(typeof REASON_VIEW[reason] === 'string' && REASON_VIEW[reason].length > 0,
+      `${reason} 에 화면 문구가 있다`);
+  }
+
+  // 제자의 손이 내보내는 형태 — 지시받은 초에는 판단이 없으므로 이유가 비고 그 사실이 `byUser` 로 선다.
+  const handSession = createSession({ now: () => 0 });
+  handSession.disciple = transmit(masteredProgress, createDisciple(), ART_ID);
+  const handStyles = discipleStyles(handSession.disciple, ART_ID);
+  const shots = [];
+  const hand = createDiscipleHand({ session: handSession, styles: handStyles, fire: (f) => shots.push(f) });
+  const atFire = { ratio: 1 - BALANCE.discipleFireRatio - 0.01, telegraphed: foeStyleById('alpha') };
+  hand.arm();
+  const auto = hand.tick(atFire);
+  eq(auto.byUser, false, '지시가 없으면 제자가 판단한다');
+  ok(Object.values(SELECT_REASON).includes(auto.reason), '자동 선택에는 이유 계열이 실린다');
+  hand.arm();
+  const told = hand.tick(atFire, styleById('haeng-un'));
+  eq(told.style.id, 'haeng-un', '지시는 그 초의 선택을 대체한다');
+  eq(told.byUser, true, '지시받은 초는 byUser 다');
+  eq(told.reason, null, '판단하지 않은 초에는 이유가 없다 — 화면이 그것으로 문구를 가른다');
+  eq(shots.length, 2, '두 초 모두 실제로 발동했다');
 });
 
 // ----------------------- 9. 케이스 8 — B 밸런스 게이트 시뮬 (REQ-402·403·506)
@@ -1677,10 +1738,10 @@ suite('케이스 3·4 — 죽간 상태 전이 (REQ-824·825·826)', () => {
   // 실제 입력기가 좁히는 경로를 그대로 태운다 — 상태 계산이 후보 목록과 갈리면 여기서 죽는다.
   // 두 초식이 마지막 키에서만 갈리는 구성이라, 그 키 하나가 확정과 완주를 겸한다 (REQ-826).
   const pool = [
-    { id: 's1', attr: 'fast', seq: ['D', 'R', 'U'], gugyeol: '', hanja: '', name: 's1' },
-    { id: 's2', attr: 'hard', seq: ['D', 'R', 'L', 'U'], gugyeol: '', hanja: '', name: 's2' },
-    { id: 's3', attr: 'fine', seq: ['D', 'L', 'R'], gugyeol: '', hanja: '', name: 's3' },
-    { id: 's4', attr: 'fast', seq: ['D', 'U', 'R'], gugyeol: '', hanja: '', name: 's4' },
+    { id: 's1', attr: 'fast', seq: ['D', 'R', 'U'], gugyeol: [], hanja: '', name: 's1' },
+    { id: 's2', attr: 'hard', seq: ['D', 'R', 'L', 'U'], gugyeol: [], hanja: '', name: 's2' },
+    { id: 's3', attr: 'fine', seq: ['D', 'L', 'R'], gugyeol: [], hanja: '', name: 's3' },
+    { id: 's4', attr: 'fast', seq: ['D', 'U', 'R'], gugyeol: [], hanja: '', name: 's4' },
   ];
   const input = createSequenceInput({
     pool,

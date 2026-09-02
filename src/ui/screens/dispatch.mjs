@@ -1,14 +1,18 @@
-// 도전자 예고 화면 + 파견 관전 (REQ-403~407·504). 2막의 본체는 손을 놓고 보는 것이라,
-// 유저의 유일한 개입 수단은 그 초 한정의 지시 탭이다.
+// 도전자 예고 화면 + 파견 관전 (REQ-403~407·504·850~857). 2막의 본체는 손을 놓고 보는 것이라,
+// 유저의 유일한 개입 수단은 그 초 한정의 지시 탭이다. 관전은 S1 아레나를 통째로 상속하고
+// 아레나에 서는 사람만 갈아 끼우며(사부 → 제자), 손이 있던 하단 362px 은 십자 대신 제자의
+// 판단으로 채운다 — 상속이 곧 서사다.
 
 import { BALANCE } from '../../balance.mjs';
 import { createDiscipleHand } from '../../bot.mjs';
 import { discipleStyleRank, discipleStyles, finisherOf, foeStyleById } from '../../core.mjs';
-import { clear, composeScreen, el, hpBar, topBand } from '../dom.mjs';
-import { attrLabel, winAttrOf } from '../theme.mjs';
+import { clear, composeScreen, el, topBand } from '../dom.mjs';
+import { stageBand } from '../band.mjs';
+import { REASON_VIEW, attrLabel, winAttrOf } from '../theme.mjs';
 import { attrMark, attrTone } from '../components/attr-mark.mjs';
 import { hanja } from '../components/hanja.mjs';
 import { SFX } from '../audio.mjs';
+import { SPOT, createArena } from '../arena.mjs';
 import { createMatch } from '../match.mjs';
 import {
   ART_ID, ART_NAME, DISPATCH_CHALLENGER, canDispatch, currentMission,
@@ -101,7 +105,7 @@ export function renderPreview(ctx) {
 }
 
 export function startDispatch(ctx) {
-  const { session, root } = ctx;
+  const { session } = ctx;
   // 자격은 진입 함수가 진다 — 버튼 비활성은 표현일 뿐이라 그것만으로는 우회 경로가 닫히지 않는다 (REQ-743).
   if (!canDispatch(session)) return renderPreview(ctx);
   const mission = currentMission(session);
@@ -109,61 +113,112 @@ export function startDispatch(ctx) {
   const styles = discipleStyles(session.disciple, ART_ID);
 
   const verdict = createVerdictOverlay();
+  // 아레나에 서는 사람만 바뀐다 — 좌표도 세간도 대련 그대로다 (REQ-850). 사부는 무대 밖 앞
+  // 구석에서 잘린 뒷모습으로 지켜보고, 그 잘림이 카메라가 곧 사부의 시선임을 말한다 (REQ-854).
+  const arena = createArena({
+    figures: [
+      { spot: SPOT.FAR, id: 'sil_challenger', pose: 'stance' },
+      { spot: SPOT.NEAR, id: 'sil_disciple', pose: 'stance' },
+    ],
+    watcher: { id: 'sil_master', pose: 'watch' },
+    bout: { [SPOT.FAR]: '적', [SPOT.NEAR]: '제자' },
+  });
+  arena.node.appendChild(verdict.node);
+
+  let exchanges = 0;
+  const band = stageBand({
+    onLeave: () => ctx.go('dojo'),
+    name: challenger.name,
+    hanja: challenger.hanja,
+    seal: `${session.dispatchStage}차`,
+    count: { value: () => exchanges + 1, unit: '초째' },
+  });
+
   // 관전 화면에는 십자 키패드가 없다 — 죽간만 따로 장착하는 경로다 (REQ-805·851).
+  // 이 죽간은 손으로 고르는 지시 목록이지 시퀀스가 좁힌 후보가 아니라 확정이라는 어휘가 없다.
   const tablets = createTablets();
-  const foeHpEl = el('div', {});
-  const selfHpEl = el('div', {});
-  const telegraphEl = el('div', { class: 'tg-slot' });
-  const windowFill = el('i', {});
+  const colorEl = el('div', { class: 'pad-color none' });
+  const judgeNow = el('p', { class: 'judge-now' });
+  const judgePrev = el('p', { class: 'judge-prev' });
+  const deck = el('footer', { class: 'deck' }, [
+    colorEl,
+    el('div', { class: 'slip-row' }, [tablets.node]),
+    // 관전의 콘텐츠는 결과가 아니라 제자의 판단 그 자체다 (REQ-852).
+    el('div', { class: 'judge' }, [
+      el('span', { class: 'judge-cap', text: '제자의 판단' }), judgeNow, judgePrev,
+    ]),
+    // 선택이라는 사실은 바닥에 조용히 있어야 관전을 재촉하지 않는다 (REQ-857 · REQ-407).
+    el('div', { class: 'handoff' }, [
+      el('span', { text: '죽간을 탭하면 ' }), el('b', { text: '이 초' }), el('span', { text: '만 지시한다' }),
+    ]),
+  ]);
 
   composeScreen(ctx, {
-    top: topBand(session, ART_NAME, { onLeave: () => ctx.go('dojo') }),
-    body: el('section', { class: 'card arena' }, [
-      el('div', { class: 'head' }, [
-        el('b', { text: challenger.name }),
-        hanja(challenger.hanja),
-        el('span', { class: 'dim', text: '관전 — 지시는 선택이다' }),
-      ]),
-      foeHpEl,
-      telegraphEl,
-      el('div', { class: 'arena-gap' }),
-      el('div', { class: 'window' }, [windowFill]),
-      el('div', { class: 'head' }, [el('b', { text: '제자' }), el('span', { class: 'dim', text: ART_NAME })]),
-      selfHpEl,
-      tablets.node,
-      // 시각 오버레이는 아레나 좌표계 안에 살고 이 화면과 함께 사라진다 (REQ-806).
-      verdict.node,
-    ]),
+    top: band,
+    body: arena.node,
+    bottom: deck,
+    // 아레나는 풀블리드 레이어라 여백이 붙으면 3단 고정이 어긋난다 (REQ-802·820).
+    padded: false,
   });
 
   let instructed = null;
   let fired = false;
+  let shown = null;
+  let prevText = '';
   const disciple = createDiscipleHand({ session, styles, fire: (shot) => match.fire(shot) });
 
-  function renderTablets(view, { flash = false } = {}) {
-    // 그 초 예고의 파해를 제자가 보유하면 한 번 반짝여 지시를 유도한다 (강제 아님).
+  /** 진행형 색 띠 — 이 초에 누가 정해졌는지가 없으면 색도 없다 (REQ-828). */
+  const paintColor = (style) => {
+    colorEl.className = `pad-color${style ? '' : ' none'}`;
+    colorEl.style.color = style ? attrTone(style.attr) : '';
+  };
+
+  /**
+   * 지시받은 초에는 제자가 판단하지 않았으므로 이유가 없다 — 그 사실을 문구로 갈라 적는다.
+   * 이유 문구의 표는 원장(`theme.mjs`)이 지고 계열 누락은 부팅 단정이 문다 (REQ-853).
+   */
+  function showJudgement(judged) {
+    const text = judged.byUser ? '지시를 따랐다' : REASON_VIEW[judged.reason];
+    clear(judgeNow).append(
+      el('span', { text: `${text} — ` }),
+      el('b', { text: judged.style.name }),
+      attrMark(judged.style.attr),
+    );
+    // 관전의 콘텐츠가 판단 그 자체라, 시각 층에만 두면 비시각 사용자에게는 관전이 통째로 빈다.
+    verdict.announce(`${text} — ${judged.style.name}`);
+    judgePrev.textContent = prevText ? `지난 초 · ${prevText}` : '';
+    prevText = text;
+  }
+
+  function renderTablets(view) {
+    // 그 초 예고의 파해를 제자가 보유하면 그 죽간만 금색으로 맥동해 지시를 유도한다 (강제 아님).
     const hintId = view.telegraphed
       ? styles.find((s) => s.counters === view.telegraphed.id)?.id ?? null
       : null;
-    tablets.render(styles.map((style) => ({
+    tablets.render(styles.map((style) => {
+      // 유도는 지시 전까지의 예고다 — 유저가 이미 고른 뒤에도 다른 죽간이 계속 맥동하면
+      // 「그게 아니다」로 읽혀 관전을 재촉한다 (REQ-855 · REQ-407).
+      const beckons = !fired && !instructed && style.id === hintId;
+      return {
       style,
-      mods: [
-        style === instructed ? 'picked' : '',
-        flash && style.id === hintId ? 'flash' : '',
-      ].filter(Boolean).join(' '),
-      // 지시 여부를 외곽선 색만으로 두면 색각 이상에서 구분되지 않는다.
-      tags: style === instructed ? ['지시'] : [],
+      // 도장에서 키운 값이 싸우는 화면에서 읽혀야 수련의 보상이 닫힌다 (REQ-856).
+      rank: discipleStyleRank(session.disciple, ART_ID, style.id),
+      mods: [style === instructed ? 'picked' : '', beckons ? 'beckon' : ''].filter(Boolean).join(' '),
+      // 지시도 유도도 색·맥동만으로 두면 색각 이상과 낭독 양쪽에서 사라진다.
+      tags: [style === instructed ? '지시' : null, beckons ? '파해' : null].filter(Boolean),
       onTap: () => {
         if (fired) return;
         instructed = style;
+        paintColor(style);
         renderTablets(view);
       },
-    })));
+      };
+    }));
   }
 
   const renderHp = (view) => {
-    clear(foeHpEl).appendChild(hpBar(view.foeHp, view.foeHpMax));
-    clear(selfHpEl).appendChild(hpBar(view.selfHp, view.selfHpMax));
+    arena.setVital(SPOT.FAR, view.foeHp, view.foeHpMax);
+    arena.setVital(SPOT.NEAR, view.selfHp, view.selfHpMax);
   };
 
   const match = createMatch({
@@ -177,28 +232,24 @@ export function startDispatch(ctx) {
       onTelegraph(view) {
         instructed = null;
         fired = false;
+        shown = view;
         verdict.hide();
-        windowFill.style.width = '100%';
-        clear(telegraphEl).appendChild(view.foeOpen
-          ? el('div', { class: 'telegraph open', text: '빈틈! — 제자가 연환을 잇는다' })
-          : el('div', { class: 'telegraph', style: `--attr:${attrTone(view.telegraphed.attr)}` }, [
-            el('div', { class: 'tg-foe' }, [
-              attrMark(view.telegraphed.attr, { size: 'big' }),
-              el('b', { text: view.telegraphed.name }),
-              el('span', { class: 'dim', text: `${attrLabel(view.telegraphed.attr)} · ${view.telegraphed.len}수` }),
-            ]),
-            el('div', { class: 'tg-win', style: `--attr:${attrTone(winAttrOf(view.telegraphed.attr))}` }, [
-              el('span', { class: 'dim', text: '이기는 색' }),
-              attrMark(winAttrOf(view.telegraphed.attr), { size: 'big' }),
-            ]),
-          ]));
+        arena.setWindow(1);
+        paintColor(null);
+        judgeNow.textContent = '고르는 중';
+        arena.showTelegraph(view, '빈틈! — 제자가 연환을 잇는다');
         renderHp(view);
-        // 반짝임은 그 초의 예고에서 한 번뿐 — 지시 탭으로 다시 그릴 때는 재생하지 않는다.
-        renderTablets(view, { flash: true });
+        renderTablets(view);
+        exchanges = view.exchange;
+        ctx.refreshTop();
       },
       onTick(view, executed) {
-        windowFill.style.width = `${view.ratio * 100}%`;
-        if (executed) fired = true;
+        arena.setWindow(view.ratio);
+        if (!executed || fired) return;
+        fired = true;
+        showJudgement(executed);
+        paintColor(executed.style);
+        renderTablets(shown ?? view);
       },
       onVerdict(view, ranked) {
         renderHp(view);

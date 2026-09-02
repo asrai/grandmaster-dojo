@@ -3,7 +3,10 @@
 // 사람이 서는 자리 · 그 사람의 자세. 그 밖을 인자로 열면 상속이 포크로 갈린다.
 // 좌표·색은 전부 `index.html` 의 원장이 지므로 이 모듈에 수치가 없다.
 
-import { el } from './dom.mjs';
+import { clear, el } from './dom.mjs';
+import { attrLabel, winAttrOf } from './theme.mjs';
+import { attrMark, attrTone } from './components/attr-mark.mjs';
+import { hanja } from './components/hanja.mjs';
 
 /** 사람이 설 수 있는 두 자리 — 대각 대치가 성립하는 최소 집합이다 (REQ-821). */
 export const SPOT = { FAR: 'far', NEAR: 'near' };
@@ -35,14 +38,61 @@ const SCENERY = `
 </svg>`;
 
 /**
+ * 상대 예고 (REQ-822) — 아레나 최상단 가로 스트립이다. 중앙은 판정 오버레이의 자리라 예고가
+ * 점유하지 않고, 「이기는 색」이 그 옆에 붙어 판단이 한 눈에 닫힌다 (REQ-206).
+ * @param {string} openText 빈틈 문면 — 그 자리에 서는 사람이 누구냐로 갈리는 유일한 축이다
+ */
+function telegraphView(view, openText) {
+  if (view.foeOpen) return el('div', { class: 'tele open', text: openText });
+  const foe = view.telegraphed;
+  const win = winAttrOf(foe.attr);
+  return el('div', { class: 'tele', style: `--attr:${attrTone(foe.attr)}` }, [
+    el('div', { class: 'tele-attr' }, [
+      attrMark(foe.attr, { size: 'big' }),
+      el('span', { class: 'an', text: attrLabel(foe.attr) }),
+    ]),
+    el('div', { class: 'tele-id' }, [
+      el('b', { class: 'kr', text: foe.name }),
+      el('span', { class: 'sub' }, [hanja(foe.hanja), el('span', { class: 'dim', text: `${foe.len}수 초식` })]),
+    ]),
+    el('div', { class: 'tele-win', style: `--attr:${attrTone(win)}` }, [
+      el('span', { class: 'cap', text: '이기는 색' }),
+      el('span', { class: 'val' }, [attrMark(win), el('b', { text: attrLabel(win) })]),
+    ]),
+  ]);
+}
+
+/**
+ * 기력 한 줄 (REQ-850·856) — 누가 누구인지를 색 그라디언트에만 맡기지 않고 라벨로 못박는다.
+ * 자리(`SPOT`)가 곧 실루엣이 선 자리라, 대련의 사부와 파견의 제자가 같은 좌표를 쓴다.
+ */
+function vital(spot, label) {
+  const fill = el('i', { class: 'fill' });
+  const node = el('div', { class: `vital ${spot}` }, [
+    el('span', { class: 'lbl', text: label }),
+    el('span', { class: 'track' }, [fill]),
+  ]);
+  return {
+    node,
+    set(hp, max) { fill.style.width = `${Math.max(0, Math.min(1, hp / max)) * 100}%`; },
+  };
+}
+
+/**
  * @param {object} [p]
  * @param {?number} [p.height] 무대 높이(px) — 생략하면 원장의 기본값이고, 접어 쓰는 화면만 준다.
  * @param {{spot: string, id: string, pose: string}[]} [p.figures] 아레나에 서는 사람 —
  *   `id`·`pose` 는 파일 경로가 아니라 에셋 id·자세이고, 둘을 이은 이름이 곧 클래스다 —
  *   그 클래스에서 파일로 가는 표는 `index.html` 한 곳에만 있다 (REQ-931·932).
- * @returns {{node: HTMLElement, setFigure: (spot: string, fig: {id: string, pose: string}) => void}}
+ * @param {?{id: string, pose: string}} [p.watcher] 아레나 **밖** 앞 구석에서 지켜보는 사람
+ *   (REQ-854) — 서는 사람이 아니라 관객이라 역광 없이 앞에서 잘린다.
+ * @param {?{far: string, near: string}} [p.bout] 이 무대에서 실전이 벌어지면 그 세간(기력 2 ·
+ *   예고 슬롯 · 응수 창)이 같은 좌표로 함께 선다 (REQ-850·822·823). 값은 기력 두 줄의 라벨이다.
+ *   주지 않은 화면에는 `setVital`·`teleSlot`·`setWindow` 자체가 없다.
+ * @returns {{node: HTMLElement, setFigure: Function, setVital?: Function,
+ *   showTelegraph?: Function, setWindow?: (ratio: number) => void}}
  */
-export function createArena({ height = null, figures = [] } = {}) {
+export function createArena({ height = null, figures = [], watcher = null, bout = null } = {}) {
   const scenery = el('div', { class: 'scenery', 'aria-hidden': 'true' });
   scenery.innerHTML = SCENERY;
 
@@ -61,8 +111,10 @@ export function createArena({ height = null, figures = [] } = {}) {
 
   node.appendChild(el('div', { class: 'layer vignette' }));
   node.appendChild(el('div', { class: 'ground' }));
+  // 무대의 앞이라 비네트·바닥보다 뒤에 붙는다 — 그래야 잘린 뒷모습이 무대 위로 온다 (REQ-854).
+  if (watcher) node.appendChild(el('div', { class: `fig watcher ${watcher.id}_${watcher.pose}`, 'aria-hidden': 'true' }));
 
-  return {
+  const api = {
     node,
     /** 자세·인물 교체 — 결과 화면이 승패를 자세로 먼저 말하는 자리다 (REQ-875). */
     setFigure(spot, { id, pose }) {
@@ -72,4 +124,24 @@ export function createArena({ height = null, figures = [] } = {}) {
       fig.className = `fig ${spot} ${id}_${pose}`;
     },
   };
+  if (!bout) return api;
+
+  const vitals = new Map(Object.entries(bout).map(([spot, label]) => [spot, vital(spot, label)]));
+  for (const bar of vitals.values()) node.appendChild(bar.node);
+  const teleSlot = el('div', { class: 'tele-slot' });
+  const windowFill = el('i', {});
+  node.append(teleSlot, el('div', { class: 'gauge' }, [windowFill]));
+
+  api.setVital = (spot, hp, max) => {
+    const bar = vitals.get(spot);
+    if (!bar) throw new Error(`기력이 없는 자리: ${spot}`);
+    bar.set(hp, max);
+  };
+  /** @param {string} openText 빈틈 문면 — 그 초의 예고를 스트립에 갈아 끼운다 (REQ-822). */
+  api.showTelegraph = (view, openText) => {
+    clear(teleSlot).appendChild(telegraphView(view, openText));
+  };
+  /** 시간 압박은 아레나에 속한 정보라 실루엣을 보는 동안 주변시로 읽힌다 — 숫자 초는 없다 (REQ-823). */
+  api.setWindow = (ratio) => { windowFill.style.width = `${Math.max(0, Math.min(1, ratio)) * 100}%`; };
+  return api;
 }

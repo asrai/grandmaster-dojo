@@ -3,6 +3,7 @@
 // 시각 토큰 원장은 `index.html` 의 `:root` 한 곳이고 이 모듈은 그 이름을 JS 쪽에 내주는 접근 계층이다.
 
 import { ATTRS, BALANCE } from '../balance.mjs';
+import { SELECT_REASON } from '../core.mjs';
 
 /**
  * 색 원장 C1~C9 의 이름 (REQ-810) — 팔레트 색을 JS 에서 부르는 자리다. 역할 토큰(`--line`·`--dim`
@@ -40,8 +41,23 @@ export const GRADE_VIEW = {
   struck: { cls: 'struck', mark: '擊' },
 };
 
-/** 수련 성공은 등급이 아니라 판정 오버레이의 자리·조판만 빌린다 (#46 · REQ-846). */
-export const TRAIN_DONE_VIEW = { cls: 'train-done', label: '성공' };
+/**
+ * 수련 성공은 등급이 아니라 판정 오버레이의 자리·조판만 빌린다 (#46 · REQ-846). 6단의 낙관을
+ * 빌리면 그 판정으로 오학습되므로 자기 낙관을 새긴다.
+ */
+export const TRAIN_DONE_VIEW = { cls: 'train-done', mark: '成功', label: '성공' };
+
+/** 제자가 그 초식을 고른 이유의 화면 문구 (REQ-852) — 관전의 콘텐츠는 결과가 아니라 판단이다. */
+export const REASON_VIEW = {
+  [SELECT_REASON.ADVANTAGE]: '우세를 골랐다',
+  [SELECT_REASON.CLASH]: '상쇄를 골랐다',
+  [SELECT_REASON.AVOID_REVERSAL]: '역파를 피했다',
+};
+
+// 계열이 늘었는데 문구가 없으면 그 초의 판단이 조용히 빈칸으로 뜬다 — 부팅 때 문다 (REQ-853).
+for (const reason of Object.values(SELECT_REASON)) {
+  if (!REASON_VIEW[reason]) throw new Error(`선택 이유 문구가 없다: ${reason}`);
+}
 
 /** 흔들림·히트스톱이 붙는 등급 (REQ-815) — 크기 축의 극단 2등급과 같은 집합이다. */
 export const EXTREME_GRADES = new Set(['crush', 'reversal']);

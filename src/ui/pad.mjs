@@ -31,15 +31,18 @@ export function createPad() {
   const dirButtons = new Map(DIRS.map(([dir, label, glyph]) => [
     dir, el('button', { class: 'key', 'data-dir': dir, 'aria-label': label, text: glyph }),
   ]));
+  // 죽간이 한 매뿐인 화면은 그 옆이 비므로, 화면이 자기 곁판을 그 자리에 꽂는다 (REQ-843·844).
+  const slipRow = el('div', { class: 'slip-row' }, [tablets.node]);
   const root = el('footer', { class: 'pad' }, [
     colorEl,
-    tablets.node,
+    slipRow,
     seqEl,
     // 오조작 비용이 정반대인 두 조작을 한 flex 행에 묶지 않는다 — 되돌리기는 십자 밖 우측 끝에
     // 별개 그룹으로 선다 (REQ-829).
     el('div', { class: 'keys' }, [el('div', { class: 'cross' }, [...dirButtons.values()]), undoBtn]),
   ]);
   let active = null;
+  let aside = null;
   let structureSig = null;
   let arrowsFor = null;
   let botOwned = false;
@@ -110,7 +113,7 @@ export function createPad() {
         rank,
         mods: [style === top ? 'top' : '', oneTap ? 'onetap' : ''].filter(Boolean).join(' '),
         tags: oneTap ? ['원터치'] : [],
-        title: style.gugyeol,
+        title: style.gugyeol.join(' '),
         onTap: () => {
           if (!accepting() || locked()) return;
           const fired = input.tap(style);
@@ -182,9 +185,16 @@ export function createPad() {
       reset() { fromBot = true; try { reset(); } finally { fromBot = false; } },
     },
 
-    /** @param {{input: object, rankOf: Function, onFire: Function, onIgnore?: Function}} consumer */
+    /**
+     * @param {object} consumer
+     * @param {HTMLElement} [consumer.aside] 죽간 옆에 세울 곁판 — 후보 필터가 없는 화면의 자리다
+     * @returns {void}
+     */
     attach(consumer) {
       active = consumer;
+      aside?.remove();
+      aside = consumer.aside ?? null;
+      if (aside) slipRow.appendChild(aside);
       structureSig = null;
       arrowsFor = null;
       render();
@@ -192,6 +202,8 @@ export function createPad() {
     /** 소비자 파생 표시만 되돌린다 — 봇 점유는 화면을 넘어 이어지므로 여기서 끄지 않는다. */
     detach() {
       active = null;
+      aside?.remove();
+      aside = null;
       structureSig = null;
       arrowsFor = null;
       root.classList.remove('idle');

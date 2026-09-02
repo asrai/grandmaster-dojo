@@ -48,7 +48,8 @@ function shakeShell() {
  * @param {() => ?number} [p.heldSince] 죽간 금테 확대가 뜬 시각 — 마지막 키가 「후보 1개 도달」과
  *   「시퀀스 완주」를 겸하면 확정 연출이 한 프레임도 안 보이므로, 이 값이 있으면 최소 표시 시간을
  *   채울 때까지 판정을 미룬다 (REQ-826). 넘기지 않는 화면은 대기가 늘 0 인 화면이다.
- * @returns {{node: HTMLElement, show: Function, showGrade: Function, hide: () => void}}
+ * @returns {{node: HTMLElement, show: Function, showGrade: Function, announce: (text: string) => void,
+ *   hide: () => void}}
  */
 export function createVerdictOverlay({ heldSince = () => null } = {}) {
   // 마크는 라벨의 시각적 중복 표현이라, 낭독은 리전 한 곳으로만 나간다.
@@ -81,6 +82,11 @@ export function createVerdictOverlay({ heldSince = () => null } = {}) {
   return {
     node,
     show,
+    /**
+     * 시각 없이 낭독만 (REQ-807 · #51) — 시각 표시를 두지 않기로 한 사건(수련 실패)도 비시각
+     * 사용자에게는 관측되어야 하므로, 두 층 중 낭독만 따로 열어 둔다.
+     */
+    announce,
     /**
      * @param {string} grade 6단 판정 등급
      * @param {object} [p]
