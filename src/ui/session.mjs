@@ -6,7 +6,8 @@ import { createLogBuffer, validate } from '../log.mjs';
 import {
   accrueDiscipleStyle, applyDiscipleTraining, applyEffectiveSuccess, applyOutcome, artStyles,
   canEquipRank, canTransmit, createDisciple, createProgress, discipleStyleRank, discipleStyles,
-  discipleTrainMsPerRank, foeRankOf, isEffectiveSuccess, isMissionUnlocked, ladderBandAt, learn,
+  discipleTrainMsPerRank, foeRankOf, isEffectiveSuccess, isFirstEncounter, isMissionUnlocked,
+  ladderBandAt, learn,
   missionFoeRank, missionFoeSet, missionLockRank, missionShortfall, rematchFoeRank, setStyleRank,
   styleById, styleRank, trainHitsToNext, transmit,
 } from '../core.mjs';
@@ -40,7 +41,7 @@ export const DISPATCH_CHALLENGER = CHALLENGERS.find((c) => c.mode === 'dispatch'
 
 /**
  * 플레이 경로 로그 싱크. 적재는 비엄격이라 어떤 위반도 게임을 멈추지 않고(필드 오타 하나가
- * 이벤트 핸들러 안의 throw 가 되면 그 수에서 시연이 정지한다), 검증은 여기서 돌려 위반이
+ * 이벤트 핸들러 안의 throw 가 되면 그 초에서 시연이 정지한다), 검증은 여기서 돌려 위반이
  * 무음으로 지나가지 않게 한다. 검증되지 않는 쓰기 경로는 노출하지 않는다.
  */
 function createPlayLog(violations, now) {
@@ -169,7 +170,11 @@ export const duelWinsOf = (session, challengerId) => session.duelWins[challenger
  */
 export const duelAttemptOf = (session, challengerId) => duelWinsOf(session, challengerId) + 1;
 
-export const isRematch = (session, challengerId) => duelWinsOf(session, challengerId) > 0;
+/** 그 도전자와의 첫 대면인가 (REQ-894) — 재대련 회차 0 이 곧 첫 대면이라 별도 플래그가 없다. */
+export const isFirstEncounterOf = (session, challengerId) =>
+  isFirstEncounter(duelWinsOf(session, challengerId));
+
+export const isRematch = (session, challengerId) => !isFirstEncounterOf(session, challengerId);
 
 /** 그 대면의 도전자 성 — 재대련 강화가 실린 값이고 대련 루프·예고 화면이 같은 자리를 읽는다. */
 export const duelFoeRank = (session, challengerId) =>
@@ -457,18 +462,18 @@ export function logTimeout(session, input) {
 }
 
 /**
- * 한 수의 판정을 로그와 성장에 함께 반영한다 — 대련 화면과 헤드리스 봇이 이 한 자리를 공유한다.
+ * 한 초의 판정을 로그와 성장에 함께 반영한다 — 대련 화면과 헤드리스 봇이 이 한 자리를 공유한다.
  *
- * **계단을 적립보다 먼저 판정하는 것이 REQ-704 의 「한 수 최대 1계단」이다.** 두 판정은 그 수의
+ * **계단을 적립보다 먼저 판정하는 것이 REQ-704 의 「한 초 최대 1계단」이다.** 두 판정은 그 초의
  * *같은* 성을 봐야 하고, 계단은 적립이 멈춘 성(10·11)에서만 열리므로 순서를 그렇게 두면 둘 중
  * 하나만 발화하는 것이 구조로 보장된다. 반대로 두면 적립이 9→10 을 만든 뒤 결정타가 그 10 을
- * 보고 11 을 열어 한 수에 두 계단이 오른다.
+ * 보고 11 을 열어 한 초에 두 계단이 오른다.
  */
 export function recordDuelVerdict(session, view) {
   logVerdict(session, view.verdict, 'user');
   if (!view.fire) return null;
   const styleId = view.fire.style.id;
-  // 수 상한의 잔여 HP 비교승은 그 타격이 확정한 승리가 아니다 — 결정타는 상대를 쓰러뜨린 수뿐이다.
+  // 초 상한의 잔여 HP 비교승은 그 타격이 확정한 승리가 아니다 — 결정타는 상대를 쓰러뜨린 초뿐이다.
   const finish = view.outcome?.win === true && view.outcome.by === 'hp';
   if (finish) logFinish(session, view, styleId);
   const promoted = recordOutcomeRank(session, styleId, {
@@ -480,7 +485,7 @@ export function recordDuelVerdict(session, view) {
 }
 
 /**
- * 결정타 기록 (REQ-708) — 어느 초식이 끝냈는지의 인과를 남긴다. `intended` 는 그 수가 11성
+ * 결정타 기록 (REQ-708) — 어느 초식이 끝냈는지의 인과를 남긴다. `intended` 는 그 초가 11성
  * 계단을 노리던 초식에 떨어졌는가다: 결정타의 통제 불가는 의도된 난이도이고 재는 것은 배분이다.
  */
 function logFinish(session, view, styleId) {

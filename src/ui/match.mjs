@@ -1,4 +1,4 @@
-// 한 수의 타임라인 엔진 (REQ-201·204) — 사부 대련과 파견이 같은 부품을 쓴다.
+// 한 초의 타임라인 엔진 (REQ-201·204) — 사부 대련과 파견이 같은 부품을 쓴다.
 // 차이는 「창을 무엇이 닫는가」뿐이라, 발동 주체는 `fire()` 를 부르는 호출부가 정한다.
 
 import { BALANCE } from '../balance.mjs';
@@ -53,8 +53,8 @@ export function pumpToEnd(match, timer, { maxTicks = 20000 } = {}) {
  * @param {object} p.challenger  도전자 행 (예고 순환의 출처)
  * @param {number} [p.foeRank]   그 대면의 도전자 성 — 재대련 강화가 실린 값이 여기로 온다 (REQ-734)
  * @param {number} p.selfHpMax
- * @param {(style: object) => number} p.rankOf 그 수에 낸 초식의 성 — 대련 중에도 오를 수 있다 (REQ-721)
- * @param {() => number} p.openLen 상대 빈틈 수의 창 기준 길이 — 장착이 바뀌면 따라 바뀐다
+ * @param {(style: object) => number} p.rankOf 그 초에 낸 초식의 성 — 대련 중에도 오를 수 있다 (REQ-721)
+ * @param {() => number} p.openLen 상대 빈틈 초의 창 기준 길이 — 장착이 바뀌면 따라 바뀐다
  * @param {() => boolean} p.accessibility 접근성 창 확대 여부
  * @param {object} p.hooks onTelegraph · onWindow · onTick · onTimeout · onVerdict · onEnd
  * @param {object} [p.timer] 프레임 구동원 (now/schedule/cancel) — 헤드리스는 가상 시계를 준다
@@ -97,13 +97,13 @@ export function createMatch({
     windowMs: s.windowMs,
     verdict: s.verdict,
     challenger,
-    // 결정타 판정은 그 수의 성 계단 자격이라 판정과 같은 프레임에 필요하다 (REQ-704·708).
+    // 결정타 판정은 그 초의 성 계단 자격이라 판정과 같은 프레임에 필요하다 (REQ-704·708).
     outcome: s.outcome,
     ratio: s.phase === PHASE.WINDOW && s.windowMs ? Math.max(0, 1 - elapsed() / s.windowMs) : 0,
   });
 
   function enterTelegraph() {
-    // 빈틈 수에도 예고 순번은 전진한다 — 상대가 그 수를 잃는 것으로 본다.
+    // 빈틈 초에도 예고 순번은 전진한다 — 상대가 그 초를 잃는 것으로 본다.
     s.telegraphed = s.foeOpen ? null : foeStyleById(challenger.styles[s.exchange % challenger.styles.length]);
     s.phase = PHASE.TELEGRAPH;
     s.phaseStart = clock();

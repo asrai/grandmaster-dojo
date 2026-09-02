@@ -1,5 +1,5 @@
 // 도전자 예고 화면 + 파견 관전 (REQ-403~407·504). 2막의 본체는 손을 놓고 보는 것이라,
-// 유저의 유일한 개입 수단은 그 수 한정의 지시 탭이다.
+// 유저의 유일한 개입 수단은 그 초 한정의 지시 탭이다.
 
 import { BALANCE } from '../../balance.mjs';
 import { createDiscipleHand } from '../../bot.mjs';
@@ -67,12 +67,12 @@ export function renderPreview(ctx) {
   // 잠긴 차수는 조합을 뽑지 않는다 — 나갈 수 없는 상대를 미리 굴리면 그 판이 무엇이었는지가 흐려진다.
   const mission = unlocked ? currentMission(session) : null;
   const challenger = mission ? mission.challenger : DISPATCH_CHALLENGER;
-  const stageLabel = `B-${session.dispatchStage}`;
 
   composeScreen(ctx, {
     top: topBand(session, ART_NAME),
     body: el('section', { class: 'card' }, [
-    el('h2', { text: `임무 ${stageLabel} — ${challenger.name} ${challenger.hanja}` }),
+    // 차수는 대련과 같은 「N차」로 부른다 — 스펙 식별자(`B-n`)만 사라지고 데이터·로그에는 남는다 (REQ-895·896).
+    el('h2', { text: `임무 ${session.dispatchStage}차 — ${challenger.name} ${challenger.hanja}` }),
     el('p', {
       class: 'dim',
       text: session.dispatchStage <= 1
@@ -136,7 +136,7 @@ export function startDispatch(ctx) {
   const disciple = createDiscipleHand({ session, styles, fire: (shot) => match.fire(shot) });
 
   function renderTablets(view, { flash = false } = {}) {
-    // 그 수 예고의 파해를 제자가 보유하면 한 번 반짝여 지시를 유도한다 (강제 아님).
+    // 그 초 예고의 파해를 제자가 보유하면 한 번 반짝여 지시를 유도한다 (강제 아님).
     const hintId = view.telegraphed
       ? styles.find((s) => s.counters === view.telegraphed.id)?.id ?? null
       : null;
@@ -188,7 +188,7 @@ export function startDispatch(ctx) {
             ]),
           ]));
         renderHp(view);
-        // 반짝임은 그 수의 예고에서 한 번뿐 — 지시 탭으로 다시 그릴 때는 재생하지 않는다.
+        // 반짝임은 그 초의 예고에서 한 번뿐 — 지시 탭으로 다시 그릴 때는 재생하지 않는다.
         renderTablets(view, { flash: true });
       },
       onTick(view, executed) {

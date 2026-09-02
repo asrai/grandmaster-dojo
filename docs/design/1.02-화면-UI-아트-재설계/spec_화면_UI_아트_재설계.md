@@ -149,7 +149,7 @@ tags:
 - **REQ-871** *(Ubiquitous)*: The system shall 정산을 **「고정 3블록 → 구분선 → 조건부 블록」 2층**으로 고정한다 — 위(순서 불변): 판정 분포 · 결정타 · 재화. 아래(있을 때만): 성 변화 · 전리품 · 해금. 순서를 상황에 맡기면 매번 눈이 다시 훑어야 한다. *(depends: REQ-870)*
 - **REQ-872** *(Ubiquitous)*: The system shall **판정 분포**를 6열 1행(라벨 위 / 숫자 아래)으로 표시하며 S1 의 색 부호화를 그대로 쓴다 — 6단 판정별 횟수는 로그에 이미 있는 데이터이고, 6단 게임의 결과 화면이 당연히 답해야 할 질문이다. *(depends: REQ-814, REQ-871)*
 - **REQ-873** *(Ubiquitous)*: The system shall **성 변화**를 초식마다 12칸 계단 + `8성 → 9성` 으로 표시하고, **이번 판에 오른 칸만 발광**시킨다(REQ-406). 발광한 칸이 이 판에서 번 것의 전부이자 정확한 양이다. *(depends: REQ-817, REQ-818, REQ-871)*
-- **REQ-874** *(Ubiquitous)*: The system shall **판정 낙인을 104px** 로 조판한다 — 한 수의 결론(판정 오버레이 96px)보다 한 판의 결론이 작으면 위계가 뒤집힌다. 조판 규약은 판정 오버레이와 같다. *(depends: REQ-813, REQ-814)*
+- **REQ-874** *(Ubiquitous)*: The system shall **판정 낙인을 104px** 로 조판한다 — 한 초의 결론(판정 오버레이 96px)보다 한 판의 결론이 작으면 위계가 뒤집힌다. 조판 규약은 판정 오버레이와 같다. *(depends: REQ-813, REQ-814)*
 - **REQ-875** *(Ubiquitous)*: The system shall S1 아레나를 360px 로 접어 무대로 쓰고 **승패를 자세로 먼저 말한다** — 선 실루엣 / 엎드린 실루엣. 패배 시 서 있는 쪽이 도전자, 쓰러진 쪽이 사부로 **위치를 맞바꾼다**. 엎드린 자세는 선 자세의 회전이 아니라 별도 자세이며, 역광이 닿지 않는 쪽이라 윤곽선으로 형태를 살린다. *(depends: REQ-821, REQ-870)*
 - **REQ-876** *(State-driven)*: While 결과가 패배인 동안, the system shall **성 변화와 판정 분포를 그대로** 표시하고 재화를 「없음」으로, 전리품·해금은 아예 붙이지 않는다 — 적립 단위가 유효 성공(REQ-703)이라 져도 성은 오르며, 그 사실을 숨기면 유저는 패배를 순손실로 학습하고 재도전을 멈춘다. *(depends: REQ-872, REQ-873)*
 - **REQ-877** *(State-driven)*: While 결과가 재대련인 동안, the system shall 재화 줄을 **「재대련은 재화를 주지 않는다」 문장**으로 대체하고 전리품 블록도 붙이지 않는다(REQ-734 + D-6) — 보상이 없다는 사실을 빈칸이 아니라 문장으로 말해야 파밍 차단이 규칙으로 읽힌다. *(depends: REQ-871, REQ-892)*
@@ -176,7 +176,7 @@ tags:
 
 #### 요구사항 (EARS)
 
-- **REQ-890** *(Ubiquitous)*: The system shall 재화 단위를 `元` 에서 **「냥」** 으로 바꾼다(표기 `260 냥`) — 한자 단독 표기 금지(REQ-813)에 걸려 `元` 은 남을 수 없고, 「위안」은 현대 중국 화폐로 읽혀 무협 톤을 깬다. 교체 대상: `glossary.md` · `spec_프로토타입_v2_통합_PRD.md` · 코드 4곳(`index.html`·`app.mjs`·`dojo.mjs`·`result.mjs`) · `docs/screenshots/README.md`. *(depends: REQ-813)*
+- **REQ-890** *(Ubiquitous)*: The system shall 재화 단위를 `元` 에서 **「냥」** 으로 바꾼다(표기 `260 냥`) — 한자 단독 표기 금지(REQ-813)에 걸려 `元` 은 남을 수 없고, 「위안」은 현대 중국 화폐로 읽혀 무협 톤을 깬다. 교체 대상: `glossary.md` · `spec_프로토타입_v2_통합_PRD.md` · 코드 4곳 · `docs/balance-log.md` · `docs/screenshots/README.md` (`docs/PRD.md` 는 v0 판본 기록이라 제외). *(depends: REQ-813)*
 - **REQ-891** *(Ubiquitous)*: The system shall 초식 데이터에 **창안자 필드**를 신설하고 기성 4종의 창안자를 확정하며(현행 「운객(雲客)」은 플레이스홀더), 수련 화면 해설의 「창안」 줄이 그 값을 표시하게 한다. 창안 시스템·전수 시 창안자 승계·멀티플레이 닉네임 노출은 Phase 2 다 — 이 필드는 UI 를 바꾸지 않고 값만 바뀌는 확장점이다.
 - **REQ-892** *(Ubiquitous)*: The system shall 결과 화면에 **전리품 블록의 자리와 노출 조건**을 정의한다 — 획득처는 대련과 파견 둘 다이고 **재대련은 재화도 전리품도 주지 않는다**. 전리품의 종류·용도·수급 곡선은 M2 이며, M1 은 표시 자리와 조건부 노출 규칙까지다(현행 시안의 「비급 조각 2 · 영약 1」은 플레이스홀더). *(depends: REQ-871)*
 - **REQ-893** *(Ubiquitous)*: The system shall 공방 한 판의 단위를 **「초(招)」** 로 부르고(`3초째`, `12초 상한`), **「수」를 초식 시퀀스 길이 전용**으로 남긴다(`3수 초식`). 교체 대상은 **공방 단위뿐**이다 — `glossary.md` 표제어(「수 | exchange」 → 「초 | exchange」) · `spec_프로토타입_v2_통합_PRD.md` 12건 · `result.mjs` 2건 · `core.mjs`/`session.mjs` 주석 · `balance-log.md`. 비대상: `3수 초식` · 영문 식별자 · brief 문서(라운드 이력 소급 금지).

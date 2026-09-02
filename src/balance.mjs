@@ -16,30 +16,35 @@ export const ARROW = { U: '↑', D: '↓', L: '←', R: '→' };
 /**
  * 유운검법 4식 (REQ-501). 첫 키 `↓` 공유 + 2번째 키 분기 = prefix-free.
  * `counters` = 이 초식이 파하는 상대 초식 — 유저·도전자 양 테이블에서 같은 방향이다.
+ * `founder` = 창안자 (REQ-891) — UI 를 바꾸지 않고 값만 바뀌는 확장점이라 표시 계층이 이 필드만 읽는다.
  */
 export const STYLES = [
   {
     id: 'yuun-bo', set: 'yuun-geom', order: 1,
     name: '유운보', hanja: '流雲步', attr: 'fast',
     seq: ['D', 'R', 'U'], d: 10, counters: 'alpha',
+    founder: { name: '운허자', hanja: '雲虛子' },
     gugyeol: '무거운 것이 내려오거든 맞서지 말고 앞질러 흘려라',
   },
   {
     id: 'jeok-un', set: 'yuun-geom', order: 2,
     name: '적운압정', hanja: '積雲壓頂', attr: 'hard',
     seq: ['D', 'L', 'R'], d: 10, counters: 'beta',
+    founder: { name: '중산객', hanja: '重山客' },
     gugyeol: '기교를 부리는 손은 쌓인 구름의 무게로 눌러라',
   },
   {
     id: 'haeng-un', set: 'yuun-geom', order: 3,
     name: '행운유수', hanja: '行雲流水', attr: 'fine',
     seq: ['D', 'U', 'R', 'L'], d: 14, counters: 'gamma',
+    founder: { name: '석계자', hanja: '石溪子' },
     gugyeol: '빠른 것은 막지 말고 흐름을 읽어 흘려보내라',
   },
   {
     id: 'pa-un', set: 'yuun-geom', order: 4,
     name: '파운현월', hanja: '破雲見月', attr: 'fast',
     seq: ['D', 'D', 'R', 'L', 'U'], d: 20, counters: 'delta',
+    founder: { name: '월현옹', hanja: '月玄翁' },
     gugyeol: '끝을 내려는 한 수, 구름을 갈라 달을 드러내라',
   },
 ];
@@ -66,7 +71,7 @@ export const FOE_STYLES = [
   { id: 'delta', name: '월영자', hanja: '月影刺', attr: 'fine', len: 5, d: 20, finisher: true,  counters: 'yuun-bo' },
 ];
 
-/** 도전자 (REQ-503). `styles` 순서 = 수마다 순환하는 예고 순서. */
+/** 도전자 (REQ-503). `styles` 순서 = 초마다 순환하는 예고 순서. */
 export const CHALLENGERS = [
   { id: 'A-1', group: 'A', name: '떠돌이 무인', hanja: '流浪武人', mode: 'duel', stage: 1, styles: ['alpha'] },
   { id: 'A-2', group: 'A', name: '떠돌이 무인', hanja: '流浪武人', mode: 'duel', stage: 2, styles: ['alpha', 'beta'] },
@@ -78,6 +83,7 @@ export const CHALLENGERS = [
 // ------------------------------------------------------- 수치 정본 로더 (#45)
 
 const SOURCE = 'src/balance.data.json';
+const CONTENT_SOURCE = 'src/balance.mjs';
 
 /**
  * 수치 정본의 형(型) 표 — 값은 JSON 이 지고 이 표는 필드 집합과 의미 제약만 진다.
@@ -132,6 +138,8 @@ const GRADE_OPENINGS = [null, 'foe', 'self'];
 const BOT_RANGES = ['reactionMs', 'keyMs', 'navMs'];
 const BOT_RATIOS = ['missRate', 'misHitRate'];
 const LADDER_BAND_FIELDS = ['maxRank', 'cost', 'train'];
+/** 창안자 (REQ-891) — 이름과 한자를 함께 진다: 해설 줄이 한자를 보조 표기로 나란히 쓴다. */
+const FOUNDER_FIELDS = ['name', 'hanja'];
 
 /** 소비처가 키로 직접 인덱싱하는 map — 키가 빠지면 값이 undefined 로 흘러 수식이 조용히 NaN 이 된다. */
 const REQUIRED_MAP_KEYS = {
@@ -427,11 +435,34 @@ export function validateBalance(raw) {
   return { rev, values };
 }
 
+/**
+ * 콘텐츠 테이블 자체의 검증 (REQ-891) — 정본이 이 파일이라 `validateBalance` 와 문면의 출처가
+ * 다르고, 인자로 받은 JSON 만 보는 그쪽의 순수성도 깨지 않게 갈라 둔다. 창안자는 표시 전용이라
+ * 값이 비어도 해설 줄이 `undefined` 로 그려질 뿐 아무것도 죽지 않는데, 그 무음이 이 검사의 존재
+ * 이유다 — 수치와 같은 fail-loud 계약 아래 둔다.
+ */
+export function validateStyleContent(styles = STYLES) {
+  const errors = [];
+  const bad = (path, message) => { errors.push(`${path}: ${message}`); };
+  for (const style of styles) {
+    const f = style.founder;
+    if (!isPlain(f)) { bad(`STYLES.${style.id}.founder`, `${show(f)} 는 창안자 객체가 아니다`); continue; }
+    for (const k of Object.keys(f)) if (!FOUNDER_FIELDS.includes(k)) bad(`STYLES.${style.id}.founder.${k}`, '창안자 스키마에 없는 필드');
+    for (const k of FOUNDER_FIELDS) {
+      if (typeof f[k] !== 'string' || f[k] === '') bad(`STYLES.${style.id}.founder.${k}`, `${show(f[k])} 는 비어 있지 않은 문자열이 아니다`);
+    }
+  }
+  if (errors.length > 0) {
+    throw new Error(`초식 콘텐츠 불량 — ${CONTENT_SOURCE} ${errors.length}건:\n${errors.map((e) => `  ${e}`).join('\n')}`);
+  }
+}
+
 function deepFreeze(value) {
   if (value && typeof value === 'object') for (const v of Object.values(value)) deepFreeze(v);
   return Object.freeze(value);
 }
 
+validateStyleContent();
 const loaded = validateBalance(data);
 
 /** 실험 변형 지문 — 내보낸 로그의 밸런스 digest 에 실려 회차 귀속을 가능하게 한다. */

@@ -9,7 +9,7 @@ import { PHASE, createMatch } from '../match.mjs';
 import { createSequenceInput } from '../sequence-input.mjs';
 import {
   ART_NAME, canEquip, challengerOfStage, duelAttemptOf, equip, equippedStyles,
-  logEvent, rankOfStyle, rematchBonusOf,
+  isFirstEncounterOf, logEvent, rankOfStyle, rematchBonusOf,
 } from '../session.mjs';
 import { createVerdictOverlay } from '../verdict-overlay.mjs';
 import { composeHooks, duelWiring, logDuelStart } from '../wiring.mjs';
@@ -34,11 +34,18 @@ function telegraphView(view) {
 }
 
 /**
- * 절초 파해 공개 (REQ-732) — 역파 벌칙을 가진 유일한 초식이라 그것만 예외로 답을 가르친다.
- * 감쇠는 맞았을 때의 성장 보상이고 1차 해법은 회피이므로, 여기서 파해를 숨기면 첫 A-4 의
- * 연속 피격이 「갑자기 어려워졌다」로 읽혀 kill (b) 를 오염시킨다.
+ * 절초 공개 (REQ-732 개정 · REQ-883·894) — 역파 벌칙을 가진 유일한 초식이라 그것만 예외로
+ * 답을 가르치되, 공개 수위를 대면 이력이 가른다. 첫 대면이 존재만 아는 것은 싸워 본 적 없는
+ * 상대의 초식을 아는 것이 성립하지 않기 때문이고, 그렇다고 전면 비공개로 두지 않는 것은
+ * 그러면 첫 대면이 반드시 역파를 맞고 시작해 「갑자기 어려워졌다」로 읽히기 때문이다.
  */
-function finisherNotice(session, finisher) {
+function finisherNotice(session, finisher, firstEncounter) {
+  if (firstEncounter) {
+    return el('div', { class: 'card' }, [
+      el('p', {}, [el('b', { text: '이 상대는 절초를 쓴다고 한다' })]),
+      el('p', { class: 'dim', text: '이름도 파해도 알려진 바 없다 — 한 번 이겨 두면 다음 대면에 드러난다.' }),
+    ]);
+  }
   const answer = styleById(finisher.counters);
   const equipped = session.slots.includes(answer.id);
   return el('div', { class: 'card' }, [
@@ -51,13 +58,23 @@ function finisherNotice(session, finisher) {
       el('b', { text: answer.name }),
       el('span', { class: 'tag', text: equipped ? '장착됨' : '미장착' }),
     ]),
-    el('p', { class: 'dim', text: '그 초식을 내지 않으면 역파는 일어나지 않는다. 예고된 수에 파해를 내면 완파다.' }),
+    el('p', { class: 'dim', text: '그 초식을 내지 않으면 역파는 일어나지 않는다. 예고된 초에 파해를 내면 완파다.' }),
   ]);
 }
 
-/** 예고 순서대로의 도전자 초식 — 어떤 색이 몇 번 오는지가 슬롯 판단의 입력이다. */
-const foeLineup = (challenger) => el('div', { class: 'icons' }, challenger.styles.map((id) => {
+/**
+ * 예고 순서대로의 도전자 초식 — 어떤 색이 몇 번 오는지가 슬롯 판단의 입력이다. 첫 대면의
+ * 절초만 「미상」으로 접는다 (REQ-883) — 같은 화면에서 소문 고지와 이름이 함께 뜨면 소문 층이
+ * 무효가 되고, 나머지 초식까지 접으면 첫 대면에 슬롯 판단의 입력 자체가 사라진다.
+ */
+const foeLineup = (challenger, firstEncounter) => el('div', { class: 'icons' }, challenger.styles.map((id) => {
   const foe = foeStyleById(id);
+  if (firstEncounter && foe.finisher) {
+    return el('div', { class: 'cand', style: '--attr:var(--line)' }, [
+      el('span', { class: 'cand-name', text: '미상' }),
+      el('span', { class: 'tag', text: '절초' }),
+    ]);
+  }
   return el('div', { class: 'cand', style: `--attr:${ATTR_VIEW[foe.attr].color}` }, [
     attrMark(foe.attr),
     el('span', { class: 'cand-name', text: foe.name }),
@@ -76,6 +93,8 @@ export function renderDuelPreview(ctx) {
   const finisher = finisherOf(challenger);
   const attempt = duelAttemptOf(session, challenger.id);
   const bonus = rematchBonusOf(session, challenger.id);
+  // 대면 이력을 한 자리에서 읽는다 — 안내 문구와 절초 공개가 각자 파생하면 한쪽만 바뀌어도 화면이 모순된다.
+  const firstEncounter = isFirstEncounterOf(session, challenger.id);
 
   // 슬롯을 먼저 고르고 후보를 고른다 — 두 번의 탭이 곧 「무엇을 빼고 무엇을 넣는가」다.
   let picked = session.slots.findIndex((id) => id === null);
@@ -126,11 +145,11 @@ export function renderDuelPreview(ctx) {
     top: topBand(session, ART_NAME),
     body: el('section', { class: 'card' }, [
     el('h2', { text: `도전자 예고 — ${challenger.name} ${challenger.stage}차` }),
-    el('p', { class: 'dim', text: attempt > 1
-      ? `${attempt}번째 대면 — 상대가 성 +${bonus} 만큼 여물었고 재대련 승리에 재화는 없다.`
-      : `${challenger.hanja} · 처음 만나는 상대다.` }),
-    foeLineup(challenger),
-    finisher ? finisherNotice(session, finisher) : null,
+    el('p', { class: 'dim', text: firstEncounter
+      ? `${challenger.hanja} · 아직 이겨 본 적 없는 상대다.`
+      : `${attempt}번째 대면 — 상대가 성 +${bonus} 만큼 여물었고 재대련 승리에 재화는 없다.` }),
+    foeLineup(challenger, firstEncounter),
+    finisher ? finisherNotice(session, finisher, firstEncounter) : null,
     el('h2', { text: '실전 슬롯' }),
     el('p', { class: 'dim', text: '슬롯을 고르고 아래 초식을 누르면 그 자리에서 바뀐다.' }),
     slotsEl,
@@ -178,7 +197,7 @@ export function startDuel(ctx) {
     bottom: ctx.pad.node,
   });
 
-  // 결과 화면이 「어느 초식이 끝냈는가」를 말하려면 그 수의 발동을 여기서 붙잡아 두어야 한다 (REQ-708).
+  // 결과 화면이 「어느 초식이 끝냈는가」를 말하려면 그 초의 발동을 여기서 붙잡아 두어야 한다 (REQ-708).
   let lastFire = null;
   const finisher = () => lastFire?.style.id ?? null;
 
@@ -257,7 +276,7 @@ export function startDuel(ctx) {
     input,
     rankOf: (style) => rankOfStyle(session, style.id),
     accepting: () => match.phase === PHASE.WINDOW,
-    // 봇이 「이기는 색」을 화면과 같은 근거로 고를 수 있게 그 수의 예고를 함께 건넨다 (REQ-605).
+    // 봇이 「이기는 색」을 화면과 같은 근거로 고를 수 있게 그 초의 예고를 함께 건넨다 (REQ-605).
     foeStyle: () => match.view().telegraphed,
     onFire: (fired) => { SFX.fire(); match.fire(fired); },
   });

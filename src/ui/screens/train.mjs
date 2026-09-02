@@ -35,6 +35,8 @@ export function startTrain(ctx) {
       el('div', { class: 'telegraph', style: `--attr:${ATTR_VIEW[style.attr].color}` }, [
         el('div', { class: 'tg-foe' }, [attrMark(style.attr, { size: 'big' }), el('span', { text: style.gugyeol })]),
       ]),
+      // 수련은 그 초식만 보는 유일한 화면이라 해설의 제자리다 (REQ-844·891).
+      el('p', { class: 'dim', text: `창안 — ${style.founder.name} ${style.founder.hanja}` }),
       arrowRow(style.seq, 0, style.seq.length),
       el('div', { class: 'window' }, [windowFill]),
       progressEl,

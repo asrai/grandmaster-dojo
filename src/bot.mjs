@@ -63,8 +63,8 @@ const atLadderStep = (rank) =>
 /**
  * 계단을 미는 손 (REQ-704) — 11·12성은 적립이 아니라 결정타·완파로만 열리므로, 사람은 그
  * 계단에 선 초식을 골라 낸다. 봇이 이 선택을 하지 않으면 사이클이 그 계단에서 영영 멈춘다.
- * 미는 조건이 「그 수에 완파가 성립한다」인 것은 두 계단 모두에 맞다 — 완파는 12성의 정의이고,
- * 결정타는 상대를 쓰러뜨린 수라 그 창의 최대 피해가 곧 최선이다. 조건 없이 밀면 계단에 선
+ * 미는 조건이 「그 초에 완파가 성립한다」인 것은 두 계단 모두에 맞다 — 완파는 12성의 정의이고,
+ * 결정타는 상대를 쓰러뜨린 초라 그 창의 최대 피해가 곧 최선이다. 조건 없이 밀면 계단에 선
  * 초식 하나가 매 창을 독점해 나머지 초식의 적립이 굶는다.
  */
 export function preferLadderPush(session) {
@@ -156,7 +156,7 @@ export function createDiscipleHand({ session, styles, fire }) {
   let done = false;
   return {
     arm() { done = false; },
-    /** 창의 60% 시점에 반드시 실행하므로 선기 잔여는 상수다. 지시가 있으면 그 수만 대체한다. */
+    /** 창의 60% 시점에 반드시 실행하므로 선기 잔여는 상수다. 지시가 있으면 그 초만 대체한다. */
     tick(view, instructed = null) {
       if (done || view.ratio > 1 - BALANCE.discipleFireRatio) return null;
       done = true;
