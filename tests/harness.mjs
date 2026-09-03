@@ -2613,6 +2613,74 @@ suite('실루엣 규칙은 background 단축을 쓰지 않는다 (#137)', () => 
   }
 });
 
+// ------------------------- 12-a-5. 죽간 탈락 좌표의 기준 상자 (#138)
+
+suite('흐름에서 뺀 죽간은 매수 불변 상자를 기준으로 선다 (#138)', () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'))
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => [m[1].trim(), m[2]]);
+  const heads = (sel) => rules.filter(([s]) => s === sel).length;
+  const body = (sel) => rules.find(([s]) => s === sel)?.[1] ?? null;
+
+  // ① 모집단 — 흐름 밖으로 나가는 매가 실재해야 아래 좌표 단정이 공허하지 않다.
+  const narrowed = tabletStates(['a', 'b', 'c'], ['a']);
+  deepEq(narrowed.map((t) => `${t.id}:${t.state}`), ['a:only', 'b:exit', 'c:exit'],
+    '3매에서 한 매만 남으면 두 매가 자기 자리에서 흐름 밖으로 나간다');
+
+  // ② 그 두 매가 서는 좌표계를 이루는 규칙이 실재한다. 추출이 빗나가면 아래가 전부 공허해진다.
+  for (const sel of ['.slip-row', '.tablets', '.slip', '.slip.out']) {
+    ok(body(sel), `${sel} 규칙 블록을 실제로 떼어냈다`);
+    eq(heads(sel), 1, `${sel} 규칙 머리가 하나뿐이다 — 뒤에 온 재정의가 없다`);
+  }
+  ok(/position:\s*absolute/.test(body('.slip.out') ?? ''), '가라앉는 매는 흐름 밖으로 나간다');
+
+  // ③ 기준 상자 대조 — absolute 의 포함 블록은 가장 가까운 positioned **조상**이므로, 모집단은
+  // `.slip.out` 자신이 아니라 그 위 사슬(`.slip-row` > `.tablets`)이다. 죽간 줄 쪽은 이름이 아니라
+  // **선택자 매칭**으로 잡는다 — 합성·그룹 선택자(`.pad.bot .tablets`)로 한 줄 들어와도 기준이
+  // 그 줄로 돌아가는데, 완전 일치 조회는 그 갈래를 통째로 못 본다.
+  const POSITIONED = /(^|[;{\s])position\s*:\s*(relative|absolute|fixed|sticky)/i;
+  const tabletsRules = rules.filter(([sel]) => /(^|[\s,>+~])\.tablets\b/.test(sel));
+  ok(tabletsRules.length >= 2, `죽간 줄을 겨누는 규칙을 실제로 떼어냈다 — ${tabletsRules.length}건`);
+  deepEq(tabletsRules.filter(([, b]) => POSITIONED.test(b)).map(([sel]) => sel), [],
+    '죽간 줄을 positioned 로 만드는 규칙이 없다');
+  ok(POSITIONED.test(body('.slip-row') ?? ''), '탈락 매의 기준 상자는 .slip-row 다');
+
+  // 포함 블록을 만드는 축은 `position` 하나가 아니다 — `transform` 계열이 붙으면 CSS 어디에도
+  // `position` 이 없는 채로 포함 블록만 죽간 줄로 되돌아가고, JS 가 재는 기준은 그대로라 같은
+  // 어긋남이 재발한다. 그 재발은 이름으로 찾을 단서가 없어 여기서 문다.
+  const CONTAINING = /(^|[;{\s])(transform|filter|backdrop-filter|will-change|contain)\s*:/i;
+  deepEq(tabletsRules.filter(([, b]) => CONTAINING.test(b)).map(([sel]) => sel), [],
+    '죽간 줄에 포함 블록을 만드는 속성이 없다');
+
+  // ④ 차이 단정 — 죽간 줄은 매수마다 폭이 갈리고, 가운데 정렬이라 그 차이의 절반이 곧 원점 이동이다.
+  // 그것이 이 줄을 좌표 기준에서 뺀 이유다. 값은 시각 원장(:root)에서 읽어 계단이 바뀌면 함께 움직인다.
+  const rootBlock = css.match(/^:root \{[\s\S]*?\n\}/m)?.[0];
+  ok(rootBlock, ':root 블록을 실제로 떼어냈다');
+  const px = (name) => Number(rootBlock?.match(new RegExp(`${name}:\\s*(\\d+)px`))?.[1]);
+  const gap = px('--slip-gap');
+  const stepW = [1, 2, 3].map((n) => px(`--slip-w${n}`));
+  ok([gap, ...stepW].every(Number.isFinite), `폭 계단과 간격을 원장에서 실제로 읽었다 — ${stepW} / ${gap}`);
+  const rowW = (n) => n * stepW[n - 1] + (n - 1) * gap;
+  eq(new Set([1, 2, 3].map(rowW)).size, 3, '매수마다 죽간 줄의 폭이 갈린다 — 원점이 매수를 따라 움직인다');
+  // 이동량 자체는 원장이 정하므로 값을 박지 않는다 — 박으면 죽간 폭을 조정한 무관한 PR 이 red 가 된다.
+  ok((rowW(3) - rowW(1)) / 2 > 0, `3매 → 1매에서 죽간 줄의 원점이 ${(rowW(3) - rowW(1)) / 2}px 움직인다`);
+
+  // ⑤ 동일 단정 (회귀) — 기준 상자를 옮겨도 3매의 시각 결과는 그대로여야 한다. 그 결과를 정하는
+  // 것은 폭 계단과 두 겹의 가운데 정렬뿐이므로, 셋이 제자리에 있으면 3매 화면은 변하지 않는다.
+  for (const sel of ['.slip-row', '.tablets']) {
+    ok(/justify-content:\s*center/.test(body(sel) ?? ''), `${sel} 이 자기 내용을 가운데로 모은다`);
+  }
+  ok(!/(^|[;{\s])width:/.test(body('.tablets') ?? ''), '죽간 줄은 자기 폭을 박지 않는다 — 폭은 매수의 것이다');
+  for (const n of [1, 2, 3]) {
+    eq(heads(`.tablets[data-n="${n}"] .slip`), 1, `${n}매의 폭 계단 규칙이 하나 있다`);
+  }
+  // 기준 상자가 매수 축을 다시 물면 같은 결함이 되돌아온다 — 그 축을 읽는 선택자가 이 행에 없다.
+  deepEq(rules.map(([sel]) => sel).filter((sel) => /\[data-n=/.test(sel) && /\.slip-row/.test(sel)), [],
+    '매수를 읽는 선택자가 .slip-row 를 겨누지 않는다');
+  ok(!/--slip-w/.test(body('.slip-row') ?? ''), '.slip-row 의 폭 결정자에 매수 계단이 없다');
+});
+
 // ------------------------- 12-b. 결과 진입 1회 정산 · 판 원장 (#70 · REQ-871~873)
 
 suite('판 원장 — 그 판의 판정 분포·성 변화·결정타 (REQ-872·873·708)', () => {

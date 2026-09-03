@@ -813,15 +813,18 @@ button.ghost { background: transparent; }
 /* 연출 중의 건너뛰기는 출구가 아니라 대기의 단축이라, 금테를 쓰지 않는다 (REQ-865). */
 .acts button.primary.weak { border-color: var(--line); background: var(--raised); color: var(--dim); }
 
-/* 죽간과 그 곁판이 나눠 쓰는 행 — 죽간이 1매뿐인 화면에서 비는 자리가 곁판의 것이다 (REQ-843·844). */
+/* 죽간과 그 곁판이 나눠 쓰는 행 — 죽간이 1매뿐인 화면에서 비는 자리가 곁판의 것이다 (REQ-843·844).
+   흐름에서 뺀 매의 기준 상자이기도 하다 — 매수가 변해도 이 행의 폭·원점은 그대로다 (#138). */
 .slip-row {
+  position: relative;
   flex: none; height: var(--slip-h); display: flex; align-items: stretch;
   justify-content: center; gap: var(--slip-gap);
 }
 
-/* 죽간 줄 (REQ-824) — 매수가 곧 폭이고, 그 계단이 「후보가 좁혀진다」의 표현이다. */
+/* 죽간 줄 (REQ-824) — 매수가 곧 폭이고, 그 계단이 「후보가 좁혀진다」의 표현이다. 그래서 이 줄은
+   기준 상자가 될 수 없다 — 스스로 줄어들며 원점이 함께 움직인다 (#138). */
 .tablets {
-  position: relative; flex: none; display: flex; justify-content: center; align-items: stretch;
+  flex: none; display: flex; justify-content: center; align-items: stretch;
   gap: var(--slip-gap); height: var(--slip-h);
 }
 .slip {
@@ -869,7 +872,8 @@ button.ghost { background: transparent; }
 /* 등장·탈락 (REQ-825) — 탈락한 매를 즉시 지우면 필터링 과정이 화면에서 사라진다. */
 .slip.enter { animation: slip-in var(--slip-exit) ease-out both; }
 /* 가라앉는 매는 흐름 밖으로 나간다 — 줄에 남으면 살아남은 매가 새 폭 계단으로 자랄 때 줄이
-   넘쳐 금테 매가 중앙에서 밀린다. 좌표·폭은 떼어내는 순간 JS 가 인라인으로 박는다. */
+   넘쳐 금테 매가 중앙에서 밀린다. 좌표·폭은 떼어내는 순간 JS 가 인라인으로 박고, 그 좌표가
+   서는 자리는 매수와 무관하게 불변인 `.slip-row` 다 (#138). */
 .slip.out {
   position: absolute; top: 0; pointer-events: none;
   animation: slip-out var(--slip-exit) ease-in forwards;
