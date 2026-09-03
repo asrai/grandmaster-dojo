@@ -234,9 +234,11 @@
      사부 어깨는 x·y 가 모두 달라 한 토큰을 나눠 쓸 수 없다 (#171). */
   --tm-pupil-arm-origin: 52% 28%;
   --tm-follow-angle: 26deg;
-  /* 시범을 보는 시간과 팔이 맞아떨어지는 시간 — 한 연출의 두 구간이라 같은 자리에 둔다. */
+  /* 연출 전체 길이와 팔이 맞아떨어지는 시간 — 한 연출의 두 구간이라 같은 자리에 둔다.
+     행 등장은 앞의 값을 초식 수로 나눠 쓰므로 별도 간격 토큰을 두지 않는다 (#172). */
   --tm-follow-delay: 1400ms;
   --tm-follow-dur: 640ms;
+  --tm-row-in: 120ms;
   --sigil-y: 26px;
   --sigil-size: 24px;
 }
@@ -751,6 +753,15 @@ button.ghost { background: transparent; }
 .mv .from { font-size: 13px; font-weight: 800; color: var(--gold); }
 .mv .arrow { font-size: 13px; color: var(--dim); }
 .mv .to { font-size: 13px; font-weight: 800; color: var(--c6); }
+/* 도착을 알리는 것은 등장 자체이므로 전이는 붙는 행에만 건다 — 즉시 채워진 행은 흔들지 않는다.
+   `.flat` 은 저프레임 강등 스위치가 `.scene` 에만 붙어 이 무대(`.hall`)에는 아직 닿지 않는,
+   그 스위치가 넓어질 때의 선언이다 (#172). */
+.mv.arrive { animation: mv-arrive var(--tm-row-in) ease-out; }
+@keyframes mv-arrive { from { opacity: 0 } to { opacity: 1 } }
+.flat .mv.arrive { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .mv.arrive { animation: none; }
+}
 
 /* ══ S6 결과 (REQ-870~878·892) ══ 상단 띠를 쓰지 않는 유일한 화면이라 무대가 y=0 에서 시작한다.
    정산부만 스크롤하고 확정 버튼은 그 패널 **밖**의 형제라, 유일한 출구가 잘리지 않는다 (REQ-878). */

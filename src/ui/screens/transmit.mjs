@@ -27,7 +27,6 @@ const figure = (id, cls) => el('div', { class: `fig ${cls}`, 'aria-hidden': 'tru
 /**
  * 이관 행 (REQ-864) — 두 컬럼 diff 가 아니라 초식마다 한 줄이다. 위가 이름과 두 성, 아래가
  * 시퀀스와 제자 계단이라, 건너간 것이 무엇이고 제자가 어디서 시작하는지가 한 줄에서 닫힌다.
- * @param {?number} discipleRank 전수 전에는 null — 그 자리를 「아직 없다」로 비운다
  */
 function transferRow(style, masterRank, discipleRank) {
   return el('div', { class: 'mv', style: `--attr:${attrTone(style.attr)}` }, [
@@ -38,12 +37,12 @@ function transferRow(style, masterRank, discipleRank) {
       el('span', { class: 'rk' }, [
         el('span', { class: 'from', text: `${masterRank}성` }),
         el('span', { class: 'arrow', text: '→' }),
-        el('span', { class: 'to', text: discipleRank === null ? '—' : `${discipleRank}성` }),
+        el('span', { class: 'to', text: `${discipleRank}성` }),
       ]),
     ]),
     el('div', { class: 'mv-bot' }, [
       el('span', { class: 'seq' }, style.seq.map((dir) => el('i', { text: ARROW[dir] }))),
-      rankStair({ rank: discipleRank ?? 0, tone: STAIR_TONE.TRANSFERRED }),
+      rankStair({ rank: discipleRank, tone: STAIR_TONE.TRANSFERRED }),
     ]),
   ]);
 }
@@ -62,25 +61,22 @@ export function renderTransmit(ctx) {
   const mastered = artStyles(ART_ID);
   // 사부의 성은 초식마다 다르므로 행마다 그 초식의 값을 읽는다 (REQ-864).
   const masterRanks = Object.fromEntries(mastered.map((s) => [s.id, rankOfStyle(session, s.id)]));
-  // 무공이 건너가는 것은 진입 1회이고 연출은 그 사실의 표현이다 — 렌더는 세션을 움직이지 않는다.
-  enterTransmit(session);
-  const discipleRanks = Object.fromEntries(
-    mastered.map((s) => [s.id, discipleStyleRank(session.disciple, ART_ID, s.id)]),
-  );
 
   const master = figure('sil_master_demo', 'master');
   const pupil = figure('sil_disciple_follow', 'pupil following');
   const rows = el('div', { class: 'moves' });
-  // 연출의 첫 프레임은 「아직 익히지 못했다」 — 제자의 성 자리가 비어 있어야 전이가 성립한다.
-  const paintRows = (learned) => {
-    rows.replaceChildren(...mastered.map((style) => transferRow(
-      style, masterRanks[style.id], learned ? discipleRanks[style.id] : null,
-    )));
+  let shown = 0;
+  // 제자의 성은 전수가 실행된 뒤에야 존재하므로 행을 붙이는 그 시점에 읽는다 (REQ-761).
+  const appendRow = (arriving) => {
+    const style = mastered[shown];
+    shown += 1;
+    const row = transferRow(style, masterRanks[style.id], discipleStyleRank(session.disciple, ART_ID, style.id));
+    if (arriving) row.classList.add('arrive');
+    rows.append(row);
   };
-  paintRows(false);
 
-  // 연출 중에도 바닥은 비지 않는다 — 빈 바닥은 의도와 무관하게 결손으로 읽힌다 (REQ-865).
-  const action = el('button', { class: 'primary weak', text: '건너뛰기' });
+  // 바닥은 단계마다 뜻만 바뀌고 자리는 지킨다 — 빈 바닥은 결손으로 읽힌다 (REQ-865).
+  const action = el('button', { class: 'primary', text: '전수하기' });
 
   composeScreen(ctx, {
     top: stageBand({ onLeave: () => ctx.go('dojo'), cap: '전수', name: ART_NAME, hanja: ART_HANJA }),
@@ -103,23 +99,51 @@ export function renderTransmit(ctx) {
     padded: false,
   });
 
-  /** 연출의 종점 — 건너뛰기와 자연 종료가 같은 자리로 모인다. 세션은 이미 진입에서 움직였다. */
-  let learned = false;
+  let phase = 'before';
   let timer = 0;
-  function land() {
-    if (learned) return;
-    learned = true;
+  let rowTimer = 0;
+  /** 연출의 결과 상태 — 건너뛰기·자연 종료·전수 뒤 재진입이 같은 자리로 모인다. */
+  function settle() {
+    phase = 'after';
     clearTimeout(timer);
-    play(CUE.TRANSMIT);
-    // 팔이 사부와 나란해지는 것이 「익혔다」의 전부다 (REQ-861).
+    clearInterval(rowTimer);
     pupil.classList.remove('following');
-    paintRows(true);
+    while (shown < mastered.length) appendRow(false);
     action.className = 'primary';
     action.textContent = '도장으로';
   }
-  // 바닥의 버튼은 자리를 지키고 뜻만 바뀐다 — 연출 중에는 건너뛰기, 완료 후에는 출구다 (REQ-865).
-  action.addEventListener('click', () => (learned ? ctx.go('dojo') : land()));
+  function land() {
+    if (phase === 'after') return;
+    settle();
+    play(CUE.TRANSMIT);
+  }
+  /** 유저가 이 버튼을 누른 순간이 전수의 실행이다 — 화면 진입이 아니라 (REQ-761). */
+  function begin() {
+    if (!enterTransmit(session)) return;
+    phase = 'during';
+    // 팔이 사부와 나란해지는 것이 「익혔다」의 전부다 (REQ-861).
+    pupil.classList.remove('following');
+    action.className = 'primary weak';
+    action.textContent = '건너뛰기';
+    // 첫 행은 즉시 — 누른 손에 응답이 없으면 실행이 일어난 것을 알 수 없다.
+    appendRow(true);
+    const span = ledgerMs('--tm-follow-delay');
+    rowTimer = setInterval(() => {
+      appendRow(true);
+      if (shown >= mastered.length) clearInterval(rowTimer);
+    }, span / mastered.length);
+    timer = setTimeout(land, span);
+  }
+  action.addEventListener('click', () => {
+    if (phase === 'before') begin();
+    else if (phase === 'during') land();
+    else ctx.go('dojo');
+  });
+  // 무공은 한 번만 건너간다 (#70) — 이미 받은 제자에게는 연출이 아니라 그 결과만 연다.
+  if (session.transmitted) settle();
 
-  timer = setTimeout(land, ledgerMs('--tm-follow-delay'));
-  return () => clearTimeout(timer);
+  return () => {
+    clearTimeout(timer);
+    clearInterval(rowTimer);
+  };
 }
