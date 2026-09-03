@@ -4,7 +4,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import {
   ART_SETS, ATTRS, BALANCE, BALANCE_REV, CHALLENGERS, DISCIPLE, FOE_STYLES, STYLES,
-  validateBalance, validateStyleContent, valueDigest,
+  reversalArenas, validateBalance, validateStyleContent, valueDigest,
 } from '../src/balance.mjs';
 import {
   FRAME_SCENES, LOG_SCHEMA, SCREEN_IDS, TIME_FIELD, createLogBuffer, validate,
@@ -982,17 +982,21 @@ suite('역파 성 차 감쇠 · 관통 하한 (REQ-771)', () => {
    * 하한이 정의역 안에서 실제로 물리는가 (REQ-771). 역파는 절초 보유 도전자에게서만 나므로
    * 그 무대의 최대 성 차가 감쇠의 정의역 상계이고, 하한이 그보다 뒤에서 물리면 하한은 死表다.
    */
-  const arenas = CHALLENGERS.filter((c) => finisherOf(c)).map((c) => ({
-    id: c.id,
-    spread: (c.mode === 'duel' ? BALANCE.rankMax : BALANCE.discipleRankMax) - foeRankOf(c.id),
-  }));
-  deepEq(arenas.map((a) => a.id), ['A-4', 'B'], '역파 무대는 A-4(사부) 와 B(제자) 다 (REQ-772)');
+  // 무대 목록은 프로덕션 검증기와 같은 산출을 쓴다 — 여기서 다시 세면 그 사본이 낡아 사각이 된다.
+  const arenas = reversalArenas(BALANCE).map((a) => ({ ...a, spread: a.selfMax - foeRankOf(a.id) }));
+  deepEq(arenas.map((a) => `${a.id}/${a.who}`), ['A-4/사부', 'A-4/제자'],
+    '역파 무대는 A-4 를 사부가 칠 때와 제자가 칠 때 둘이다 (REQ-772)');
   for (const arena of arenas) {
     ok(bindAt <= arena.spread,
-      `${arena.id} — 하한이 물리는 성 차 ${bindAt} 가 무대 상계 ${arena.spread} 안에 있다`);
-    eq(factor(foeRankOf(arena.id) + arena.spread, foeRankOf(arena.id)), pierceFloor,
-      `${arena.id} — 가장 여문 초식이 맞으면 정확히 관통 하한이다`);
+      `${arena.id} ${arena.who} — 하한이 물리는 성 차 ${bindAt} 가 무대 상계 ${arena.spread} 안에 있다`);
+    ok(factor(foeRankOf(arena.id) + arena.spread, foeRankOf(arena.id)) <= pierceFloor + 1e-9,
+      `${arena.id} ${arena.who} — 가장 여문 초식이 맞으면 관통 하한까지 내려간다`);
   }
+  // 결속 무대는 성 상한이 낮은 제자 쪽이고 여유가 0 이다 — 이 등호가 `perRank` 를 그 값에 묶는다.
+  const bind = arenas.find((a) => a.who === '제자');
+  eq(bind.spread, bindAt, '제자 무대의 상계가 곧 하한 결속점이다 — 여유 0');
+  eq(factor(foeRankOf(bind.id) + bind.spread, foeRankOf(bind.id)), pierceFloor,
+    '그 상계에서 정확히 관통 하한이다');
 
   // 감쇠는 피해량 축이지 등급 축이 아니다 — 성 차가 아무리 벌어져도 판정과 빈틈은 그대로다.
   const at = (selfRank) => judge({
@@ -1304,6 +1308,8 @@ suite('B-1 고정 · B-2 이긴 도전자 추출 (REQ-741·742)', () => {
 });
 
 suite('로스터 전원 1성 제자 무패 보장 (REQ-741)', () => {
+  // 재는 성은 각 도전자의 **초회 성**이다 — 차수 계단(`missionFoeRank`)이 얹힌 뒤의 난이도는
+  // 무패 보장의 대상이 아니라 곡선 자체이고, 1차 파견은 계단이 0 이라 이 값이 실전 값이다.
   const disciple = transmit(masteredProgress, createDisciple(), ART);
   for (const c of DUEL_STAGES) {
     const sim = simulateDispatch({ challengerId: c.id, disciple, setId: ART });
@@ -1356,10 +1362,10 @@ suite('B-2 하드 잠금 = 전 초식 최소 성 (REQ-743)', () => {
   logDispatchAbort(session, { mission: session.mission });
   eq(currentMission(session, { random: createSeededRandom(13) }).challenger.id, drawnOnce.challenger.id,
     '관전 중 이탈 후 재진입도 같은 상대다');
-  // 캐시 키는 `dispatchStage` 라 대련 차수가 늘어도 그 판의 상대는 그대로다.
-  session.stage = 1;
+  // 캐시 키는 `dispatchStage` 라, 뽑은 뒤 대련을 이겨 모집단이 넓어져도 그 판의 상대는 그대로다.
+  session.duelWins = { 'A-1': 1 };
   eq(currentMission(session, { random: createSeededRandom(17) }).challenger.id, drawnOnce.challenger.id,
-    '대련 차수가 줄어도(모집단이 바뀌어도) 그 판의 상대는 안 바뀐다');
+    '뽑은 뒤 모집단이 바뀌어도 그 판의 상대는 안 바뀐다');
   settleDispatch(session, { win: true });
   eq(session.mission, null, '한 판이 끝나면 그 임무는 소비된다');
   eq(session.dispatchStage, 3, '이긴 차수만 다음 임무를 연다');

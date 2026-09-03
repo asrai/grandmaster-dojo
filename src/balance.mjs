@@ -351,15 +351,18 @@ function checkMission(values, bad) {
 
 /**
  * 역파가 실제로 벌어질 수 있는 무대 전량 (REQ-772) — 절초를 가진 도전자마다 「누가 그 앞에
- * 서는가」로 자기 성 상한이 갈린다. 대련 로스터는 사부가 치는 무대이면서 파견 추출 풀이기도
- * 하므로 두 무대를 함께 낸다 (#217) — 한쪽만 세면 제자 무대가 검증에서 통째로 빠진다.
+ * 서는가」로 자기 성 상한이 갈린다. 대련 로스터는 사부가 치는 무대이면서 **파견 추출 풀이기도**
+ * 하므로 두 무대를 함께 내고, 그 풀 밖인 `mode:'dispatch'` 행은 어느 무대에도 서지 않는다 —
+ * 없는 무대를 세면 그 행의 수치를 만지는 순간 부팅이 터진다 (#217).
+ * 절초 보유를 `core.mjs` 의 `finisherOf` 로 묻지 않는 것은 그쪽이 이 파일을 import 하기 때문이다.
  * @returns {{id: string, who: string, selfMax: number}[]}
  */
 export function reversalArenas(values = BALANCE) {
   const arenas = [];
   for (const c of CHALLENGERS) {
+    if (c.mode !== 'duel') continue;
     if (!c.styles.some((id) => FOE_STYLES.find((f) => f.id === id)?.finisher)) continue;
-    if (c.mode === 'duel') arenas.push({ id: c.id, who: '사부', selfMax: values.rankMax });
+    arenas.push({ id: c.id, who: '사부', selfMax: values.rankMax });
     arenas.push({ id: c.id, who: '제자', selfMax: values.discipleRankMax });
   }
   return arenas;
