@@ -26,8 +26,9 @@ import { composeHooks, dispatchWiring, logDispatchAbort, logDispatchResult } fro
 /**
  * 절초 공개 (REQ-732·742·888) — 절초는 역파라는 특별 벌칙을 가진 유일한 초식이라 답을 미리
  * 가르친다. 파견 상대는 대면 이력을 갖지 않아 늘 공개 층이고, 그래서 층을 고르는 대신 S7 이
- * 재대련에서 쓰는 문면(`COUNTER`)을 그대로 빌린다. B-2 부터는 조합이 랜덤이라 절초가 없는
- * 임무도 있고, 그때는 공개할 것 자체가 없다.
+ * 재대련에서 쓰는 문면(`COUNTER`)을 그대로 빌린다. 부재 문면만 원장(`REVEAL_VIEW[NONE]`)을
+ * 안 쓰는 것은 그쪽이 「이 도전자는」으로 도전자를 주어로 삼기 때문이다 — 파견 상대는 늘 같고
+ * 매 차수 새로 뽑히는 것은 조합이라, 없다고 말할 대상이 도전자가 아니라 이번 임무다.
  */
 function finisherTell(finisher) {
   if (!finisher) {
