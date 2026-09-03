@@ -2705,6 +2705,9 @@ suite('초식명·한자는 행에서 폭을 양보하지 않는다 (#139)', () 
     '호출부가 라벨에 문구를 이어 붙이지 않는다');
   // 부재 단정만 두면 「배지를 통째로 지웠다」도 통과한다 — 호출 실재가 그 양성 대조다.
   eq((dojo.match(/\brankLabel\(/g) ?? []).length, 2, '접힌 행의 배지와 성 계단이 그 라벨을 쓴다');
+  // 이름이 다시 인터랙티브해지면 행마다 포커스 정지점과 낭독 한 줄이 함께 되돌아온다 (#165).
+  ok(/el\('div', \{ class: 'row-name' \}/.test(dojo), '행 이름 상자는 정적 div 다');
+  ok(!/aria-expanded/.test(dojo), '도장에 펼침 상태를 낭독하는 속성이 없다');
   // 축약이 성립하는 것은 만성 문구를 다른 자리가 지기 때문이다 — 그 자리가 사라지면 문구가 게임에서 소멸한다.
   const duel = readFileSync(new URL('../src/ui/screens/duel.mjs', import.meta.url), 'utf8');
   ok(/완벽히 깨달음/.test(duel), '만성 문구는 성이 오르는 순간의 대련 토스트가 진다');
@@ -2751,7 +2754,7 @@ suite('초식명·한자는 행에서 폭을 양보하지 않는다 (#139)', () 
 
   // ⑤ 동일 단정 (회귀) — 행 높이 40 은 시안 축이고 `.row-head` 의 `--hit-min` 은 탭 히트 하한이라
   // 서로 다른 계약이다. 그리고 손가락 몫은 의사요소가 지므로, 높이를 지키자고 그것을 줄이면 교환이 된다.
-  ok(/min-height:\s*40px/.test(body('.row-head button') ?? ''), '이름 행 버튼의 시안 높이 40 이 그대로다');
+  ok(/min-height:\s*40px/.test(body('.row-head button') ?? ''), '행 액션 버튼의 시안 높이 40 이 그대로다');
   // 압축을 거부한 이름이 갈 곳은 넘침뿐이라, 그 처분이 없으면 폴백 서체에서 액션 버튼을 덮는다.
   ok(/overflow:\s*hidden/.test(body('.row-name') ?? ''), '행 이름 상자가 자기 넘침을 안에서 잘라 둔다');
   ok(/min-height:\s*var\(--hit-min\)/.test(body('.row-head') ?? ''), '행의 탭 히트 하한은 --hit-min 이다');
