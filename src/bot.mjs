@@ -300,7 +300,10 @@ export function createBot({
     }
     if (phase === 'select') { screen.go('duel', screen.params()); return; }
     if (phase === 'preview') { screen.go('dispatch'); return; }
-    if (phase === 'transmit' || phase === 'result') { screen.go('dojo'); return; }
+    // 전수는 이제 화면 안의 버튼이 실행하고 봇에는 그 버튼을 누를 손이 없다 — 헤드리스 사이클과
+    // 같은 자리에서 직접 부른다. 안 부르면 `canTransmitNow` 가 참으로 남아 도장을 무한 왕복한다 (#172).
+    if (phase === 'transmit') { enterTransmit(session); screen.go('dojo'); return; }
+    if (phase === 'result') { screen.go('dojo'); return; }
     if (phase !== 'dojo') return;
     // 방치 축은 버튼 한 번으로만 체감되므로 사이클당 한 번 눌러 본다 (REQ-604).
     if (!simulated) {

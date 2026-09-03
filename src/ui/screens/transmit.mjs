@@ -79,6 +79,13 @@ export function renderTransmit(ctx) {
   // 바닥은 단계마다 뜻만 바뀌고 자리는 지킨다 — 빈 바닥은 결손으로 읽힌다 (REQ-865).
   const action = el('button', { class: 'primary', text: '전수하기' });
 
+  let phase = 'before';
+  let timer = 0;
+  let rowTimer = 0;
+  // 무공은 한 번만 건너간다 (#70) — 이미 받은 제자에게는 연출이 아니라 그 결과만 연다. 마운트
+  // 전에 끝내야 도착을 알리는 `aria-live` 가 도착하지 않은 4행을 낭독하지 않는다.
+  if (session.transmitted) settle();
+
   composeScreen(ctx, {
     top: stageBand({ onLeave: () => ctx.go('dojo'), cap: '전수', name: ART_NAME, hanja: ART_HANJA }),
     body: [
@@ -100,9 +107,6 @@ export function renderTransmit(ctx) {
     padded: false,
   });
 
-  let phase = 'before';
-  let timer = 0;
-  let rowTimer = 0;
   /** 연출의 결과 상태 — 건너뛰기·자연 종료·전수 뒤 재진입이 같은 자리로 모인다. */
   function settle() {
     phase = 'after';
@@ -128,10 +132,13 @@ export function renderTransmit(ctx) {
     // 첫 행은 즉시 — 누른 손에 응답이 없으면 실행이 일어난 것을 알 수 없다.
     appendRow(true);
     const span = ledgerMs('--tm-follow-delay');
-    rowTimer = setInterval(() => {
-      appendRow(true);
-      if (shown >= mastered.length) clearInterval(rowTimer);
-    }, span / mastered.length);
+    // 초식 수는 데이터가 지는 값이라 「남은 행이 있을 때만」이 인터벌의 존재 조건이다.
+    if (shown < mastered.length) {
+      rowTimer = setInterval(() => {
+        appendRow(true);
+        if (shown >= mastered.length) clearInterval(rowTimer);
+      }, span / mastered.length);
+    }
     timer = setTimeout(land, span);
   }
   action.addEventListener('click', () => {
@@ -139,8 +146,6 @@ export function renderTransmit(ctx) {
     else if (phase === 'during') land();
     else ctx.go('dojo');
   });
-  // 무공은 한 번만 건너간다 (#70) — 이미 받은 제자에게는 연출이 아니라 그 결과만 연다.
-  if (session.transmitted) settle();
 
   return () => {
     clearTimeout(timer);
