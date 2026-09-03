@@ -2722,8 +2722,8 @@ suite('초식명·한자는 행에서 폭을 양보하지 않는다 (#139)', () 
 
   // ③ 부재 단정의 모집단은 이름이 아니라 **선택자 매칭**이다 — 합성·그룹 선택자로 한 줄 들어와도
   // 같은 결함이 되돌아오는데, 완전 일치 조회는 그 갈래를 통째로 못 본다.
-  // `.row-name` 은 button 이라 `button.row-name`·`.row-name.open` 같은 합성 형태가 자연스럽다 —
-  // 앞 문자를 공백류로만 보면 그 갈래를 통째로 놓친다.
+  // `div.row-name`·`.row-name.done` 같은 합성 형태는 앞 문자가 공백류가 아니라, 공백류만 보면
+  // 그 갈래를 통째로 놓친다.
   const rowName = rules.filter(([sel]) => /(^|[\s,>+~]|[\w\])])\.row-name\b/.test(sel));
   ok(rowName.length >= 3, `.row-name 을 겨누는 규칙을 실제로 떼어냈다 — ${rowName.length}건`);
   // `white-space` 는 `text-wrap-mode` 의 단축이라 뒤에 온 `text-wrap: wrap` 한 줄이 nowrap 을 무력화한다.
