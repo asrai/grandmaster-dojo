@@ -59,6 +59,23 @@ alive() { kill -0 "$1" 2>/dev/null; }
 
 proc_cwd() { lsof -a -p "$1" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -1; }
 
+# 커맨드라인에서 크롬의 소유 여부를 판정하고 표시용 marker 를 CHROME_MARKER 에 남긴다.
+# 우리 프로필 루트는 값을 추출하지 않고 알려진 접두를 그대로 포함 검사한다 — TMPDIR 에
+# 공백이 있으면 값 추출이 경로를 잘라 우리 프로필조차 못 알아본다.
+chrome_owned() {
+  local line=$1 pid=$2 udd
+  CHROME_MARKER=''
+  case "$line" in
+    *"--user-data-dir=$PROFILE_ROOT/"*)
+      udd=${line#*--user-data-dir="$PROFILE_ROOT"/}
+      CHROME_MARKER="--user-data-dir=$PROFILE_ROOT/${udd%% *}"
+      return 0 ;;
+  esac
+  udd=$(printf '%s' "$line" | sed 's/.*--user-data-dir=//; s/ .*$//')
+  CHROME_MARKER="--user-data-dir=$udd"
+  own_profile "$udd" "$pid"
+}
+
 pids_by_profile() {
   [ -n "${1:-}" ] || return 0
   ps -axo pid=,command= | L4_PAT=$1 awk '
@@ -148,13 +165,12 @@ done
 # 수집 시점과 시그널 시점 사이에 대상이 죽고 pid 가 재사용될 수 있다 — 죽이기 직전에
 # 커맨드라인·cwd 로 소유를 다시 확인한다.
 owned_now() {
-  local pid=$1 line udd cwd
+  local pid=$1 line cwd
   line=$(ps -o command= -p "$pid" 2>/dev/null || true)
   [ -n "$line" ] || return 1
   case "$line" in
     *--user-data-dir=*)
-      udd=$(printf '%s' "$line" | sed 's/.*--user-data-dir=//; s/ .*$//')
-      own_profile "$udd" "$pid" ;;
+      chrome_owned "$line" "$pid" ;;
     *http.server*)
       case "$line" in *python*) : ;; *) return 1 ;; esac
       cwd=$(proc_cwd "$pid" || true)
@@ -174,9 +190,8 @@ while read -r pid ppid etime rest; do
   kind='' marker=''
   case "$rest" in
     *--user-data-dir=*)
-      udd=$(printf '%s' "$rest" | sed 's/.*--user-data-dir=//; s/ .*$//')
-      own_profile "$udd" "$pid" || continue
-      kind=chrome; marker="--user-data-dir=$udd"
+      chrome_owned "$rest" "$pid" || continue
+      kind=chrome; marker=$CHROME_MARKER
       ;;
     *http.server*)
       case "$rest" in *python*) : ;; *) continue ;; esac
