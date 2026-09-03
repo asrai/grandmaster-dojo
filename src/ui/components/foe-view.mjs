@@ -34,8 +34,11 @@ export function foeChips(entry) {
   return el('div', { class: 'attrs' }, chips);
 }
 
-/** 상대 초식 카드 (REQ-884) — 절초는 금테와 태그로 갈린다. 첫 대면에는 카드 자체가 없다. */
-export const foeStyleCards = (entry) => el('div', { class: 'foe-styles' }, revealedStyles(entry).map((foe) => el('div', {
+/**
+ * 상대 초식 카드 (REQ-884·888) — 절초는 금테와 태그로 갈린다. 목록이 아니라 초식을 받는 것은,
+ * S7 은 대면 이력이 고른 공개분을 주고 파견 예고는 그 차수의 임무 조합을 주기 때문이다.
+ */
+export const foeStyleCards = (foes) => el('div', { class: 'foe-styles' }, foes.map((foe) => el('div', {
   class: `fs${foe.finisher ? ' ult' : ''}`, style: `--attr:${attrTone(foe.attr)}`,
 }, [
   el('span', { class: 'n', text: foe.name }),
@@ -53,8 +56,14 @@ export function revealNotice(entry) {
   if (entry.tier === REVEAL_TIER.NONE && entry.firstEncounter) return null;
   const view = REVEAL_VIEW[entry.tier];
   const parts = counterPairOf(entry) ?? {};
-  return el('p', { class: `tell ${view.cls}`.trim() }, [
-    el('b', { text: view.title(parts) }),
-    el('span', { text: ` — ${view.note(parts)}` }),
-  ]);
+  return tellLine({ cls: view.cls, title: view.title(parts), note: view.note(parts) });
 }
+
+/**
+ * 절초 한 줄의 조판 — 층 문구(`REVEAL_VIEW`)든 화면 고유 문면이든 같은 자리에 같은 모양으로 선다.
+ * 파견 예고는 층을 갖지 않고(상대가 늘 공개다) 이 조판만 빌린다 (REQ-888).
+ */
+export const tellLine = ({ cls = '', title, note }) => el('p', { class: `tell ${cls}`.trim() }, [
+  el('b', { text: title }),
+  el('span', { text: ` — ${note}` }),
+]);

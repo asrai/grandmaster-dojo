@@ -297,7 +297,7 @@ body {
 /* 화면이 통째로 소유하는 자리 — 전역 여백이 없어야 어떤 화면이든 y=0 부터 깔 수 있다 (REQ-802). */
 #app { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 /* 플렉스 자식의 기본 min-width:auto 가 긴 한글 줄을 뷰포트 밖으로 밀어낸다. */
-#app, .screen-body, .card, .row, .row-head, .row-name, .head, .meter-line > *, .tip-anchor { min-width: 0; }
+#app, .screen-body, .row, .row-head, .row-name, .head, .meter-line > *, .tip-anchor { min-width: 0; }
 /* 낭독 전용 층 — 스테이지 직속이라 화면이 파괴돼도 판정이 침묵하지 않는다 (REQ-807). */
 .sr-only {
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
@@ -377,9 +377,6 @@ body {
 }
 .band-sim { width: 100%; }
 
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
-.card h2 { margin: 0 0 8px; font-size: 15px; }
-.card p { margin: 6px 0; }
 .head { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
 .head button { margin-left: auto; }
 .dim { color: var(--dim); font-size: 12px; }
@@ -688,18 +685,6 @@ button.ghost { background: transparent; }
 .exch { display: flex; align-items: baseline; gap: 1px; white-space: nowrap; }
 .exch-n { font-size: 16px; font-weight: 800; color: color-mix(in srgb, var(--c3) 80%, transparent); }
 .exch-u { font-size: 13px; font-weight: 800; color: var(--dim); }
-
-.icons { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
-.cand {
-  display: flex; gap: 6px; align-items: center; padding: 8px 10px; min-height: var(--hit-min);
-  border: 2px solid var(--attr); border-radius: 10px; background: var(--c2); color: var(--fg);
-}
-.cand.top { background: var(--raised); box-shadow: 0 0 0 2px var(--attr) inset; }
-.cand.mini, .cand.big-icon { pointer-events: none; }
-.cand.big-icon { font-size: 18px; padding: 14px 18px; }
-.cand.picked { outline: 2px solid var(--gold); }
-.cand.lit { animation: pop .3s ease-out; }
-.cand-name { font-size: 13px; }
 
 /* ══ S5 전수 (REQ-860~866) ══ 대치가 아니라 시범과 따라 하기라 무대가 아레나가 아닌 도장이고,
    둘 다 같은 방향을 본다 — 제자는 사부의 등 뒤에서 같은 자세를 잡는다 (REQ-860). */
@@ -1305,6 +1290,13 @@ button.ghost { background: transparent; }
   background: color-mix(in srgb, var(--c4) 15%, transparent);
   font-size: 17px; font-weight: 700; letter-spacing: 4px;
 }
+
+/* ══ 파견 예고 (REQ-888) ══ 고를 목록이 없어 브리핑이 본문을 통째로 채운다 — 스크롤은 본문 상자가
+   이미 지므로 시트는 높이만 채우고, 바닥 버튼은 「대련 시작」과 같은 자리에 남는다 (REQ-880·881). */
+.brief.preview { flex: 1 1 auto; min-height: 0; border-top: 0; }
+.brief.preview .go { margin-top: auto; }
+/* 제자 성은 사부 성과 갈린다 — 금은 사부가 키운 값의 색이라, 제자의 것은 쾌의 청을 쓴다 (REQ-856). */
+.slots.disciple .slip-rank { color: var(--c6); }
 </style>
 </head>
 <body>
