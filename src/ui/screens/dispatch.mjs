@@ -16,8 +16,7 @@ import { CUE, play, playVerdict } from '../audio.mjs';
 import { SPOT, createArena } from '../arena.mjs';
 import { createMatch } from '../match.mjs';
 import {
-  ART_ID, DISPATCH_CHALLENGER, canDispatch, currentMission,
-  missionLockRankOf, missionShortfallOf,
+  ART_ID, canDispatch, currentMission, missionLockRankOf, missionShortfallOf,
 } from '../session.mjs';
 import { createTablets } from '../tablets.mjs';
 import { createVerdictOverlay } from '../verdict-overlay.mjs';
@@ -25,10 +24,10 @@ import { composeHooks, dispatchWiring, logDispatchAbort, logDispatchResult } fro
 
 /**
  * 절초 공개 (REQ-732·742·888) — 절초는 역파라는 특별 벌칙을 가진 유일한 초식이라 답을 미리
- * 가르친다. 파견 상대는 대면 이력을 갖지 않아 늘 공개 층이고, 그래서 층을 고르는 대신 S7 이
- * 재대련에서 쓰는 문면(`COUNTER`)을 그대로 빌린다. 부재 문면만 원장(`REVEAL_VIEW[NONE]`)을
- * 안 쓰는 것은 그쪽이 「이 도전자는」으로 도전자를 주어로 삼기 때문이다 — 파견 상대는 늘 같고
- * 매 차수 새로 뽑히는 것은 조합이라, 없다고 말할 대상이 도전자가 아니라 이번 임무다.
+ * 가르친다. 제자는 그 상대를 처음 만나지만 사부는 이미 이겼으므로(추출 풀이 그 승수다) 파견은
+ * 늘 공개 층이고, 그래서 층을 고르는 대신 S7 이 재대련에서 쓰는 문면(`COUNTER`)을 그대로
+ * 빌린다. 부재 문면만 원장(`REVEAL_VIEW[NONE]`)을 안 쓰는 것은 그쪽이 「이 도전자는」으로
+ * 도전자를 주어로 삼기 때문이다 — 여기서 없다고 말할 대상은 상대가 아니라 이번 임무다.
  */
 function finisherTell(finisher) {
   if (!finisher) {
@@ -50,7 +49,7 @@ function dispatchWarning(session, unlocked) {
       cls: 'ok',
       text: session.dispatchStage <= 1
         ? '첫 임무는 고정 상대다 — 갓 전수받은 제자도 이긴다'
-        : '임무마다 상대 구성이 새로 짜인다 — 같은 자리에 눌러앉을 수 없다',
+        : '사부가 이긴 상대 중 하나가 나온다 — 고를 수 없으니 눌러앉을 자리도 없다',
     };
   }
   const need = missionLockRankOf(session);
@@ -74,7 +73,6 @@ export function renderPreview(ctx) {
   const unlocked = canDispatch(session);
   // 잠긴 차수는 조합을 뽑지 않는다 — 나갈 수 없는 상대를 미리 굴리면 그 판이 무엇이었는지가 흐려진다.
   const mission = unlocked ? currentMission(session) : null;
-  const challenger = mission ? mission.challenger : DISPATCH_CHALLENGER;
   const styles = discipleStyles(session.disciple, ART_ID);
   const warn = dispatchWarning(session, unlocked);
 
@@ -83,14 +81,15 @@ export function renderPreview(ctx) {
     top: stageBand({
       onLeave: () => ctx.go('dojo'),
       cap: '파견',
-      name: challenger.name,
-      hanja: challenger.hanja,
+      // 뽑기 전에는 상대가 없다 — 없는 상대의 이름을 세우면 그 자리가 곧 거짓말이다 (#217).
+      name: mission ? mission.challenger.name : null,
+      hanja: mission ? mission.challenger.hanja : null,
       seal: `${session.dispatchStage}차`,
     }),
     body: el('div', { class: 'brief preview' }, [
       mission ? el('span', { class: 'cap', text: '상대 초식' }) : null,
       mission ? foeStyleCards(mission.foeSet.map(foeStyleById)) : null,
-      mission ? finisherTell(finisherOf(challenger)) : null,
+      mission ? finisherTell(finisherOf(mission.challenger)) : null,
       // 카드 수가 줄어도 엄지가 닿는 자리는 그대로다 — 그래서 앵커의 단위가 버튼이 아니라 덩어리다 (REQ-888).
       el('div', { class: 'foot' }, [
         styles.length ? el('span', { class: 'cap', text: '제자' }) : null,

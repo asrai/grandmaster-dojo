@@ -160,7 +160,7 @@ const REQUIRED_MAP_KEYS = {
   rankGate: ['equip', 'unlock', 'oneTap'],
   rematch: ['rankGain', 'rankCap'],
   discipleTrain: ['secondsPerRank'],
-  mission: ['unlockRank', 'foeCount', 'rankStep'],
+  mission: ['unlockRank', 'rankStep'],
   killReadout: ['minManualWindows'],
 };
 
@@ -337,10 +337,7 @@ function checkRankOrder(values, bad) {
   checkMission(values, bad);
 }
 
-/**
- * 임무 축 (REQ-742·743) — B-2 하드 잠금은 「도달할 수 있는 성」을 요구해야 잠금이지 봉인이 아니고,
- * 아키타입 풀보다 큰 `foeSet` 은 중복 없는 조합 자체가 성립하지 않는다.
- */
+/** 임무 축 (REQ-743) — B-2 하드 잠금은 「도달할 수 있는 성」을 요구해야 잠금이지 봉인이 아니다. */
 function checkMission(values, bad) {
   const mission = values.mission;
   if (!isPlain(mission)) return;
@@ -350,9 +347,22 @@ function checkMission(values, bad) {
   if (isNum(mission.unlockRank) && trainCap > 0 && mission.unlockRank > trainCap) {
     bad('mission.unlockRank', `${mission.unlockRank} 가 수련 적립 상한 ${trainCap} 를 넘어 잠금이 영구 봉인이 된다`);
   }
-  if (isNum(mission.foeCount) && (mission.foeCount < 1 || mission.foeCount > FOE_STYLES.length)) {
-    bad('mission.foeCount', `${mission.foeCount} 가 적 초식 아키타입 ${FOE_STYLES.length} 종의 1~전량 범위 밖이다`);
+}
+
+/**
+ * 역파가 실제로 벌어질 수 있는 무대 전량 (REQ-772) — 절초를 가진 도전자마다 「누가 그 앞에
+ * 서는가」로 자기 성 상한이 갈린다. 대련 로스터는 사부가 치는 무대이면서 파견 추출 풀이기도
+ * 하므로 두 무대를 함께 낸다 (#217) — 한쪽만 세면 제자 무대가 검증에서 통째로 빠진다.
+ * @returns {{id: string, who: string, selfMax: number}[]}
+ */
+export function reversalArenas(values = BALANCE) {
+  const arenas = [];
+  for (const c of CHALLENGERS) {
+    if (!c.styles.some((id) => FOE_STYLES.find((f) => f.id === id)?.finisher)) continue;
+    if (c.mode === 'duel') arenas.push({ id: c.id, who: '사부', selfMax: values.rankMax });
+    arenas.push({ id: c.id, who: '제자', selfMax: values.discipleRankMax });
   }
+  return arenas;
 }
 
 /**
@@ -366,12 +376,10 @@ function checkReversalReach(values, bad) {
   // 계수 0 은 감쇠를 끈 상태라 하한이 쓰일 자리 자체가 없다.
   if (decay.perRank === 0) return;
   const bindAt = Math.ceil((1 - decay.pierceFloor) / decay.perRank);
-  for (const c of CHALLENGERS) {
-    if (!c.styles.some((id) => FOE_STYLES.find((f) => f.id === id)?.finisher)) continue;
-    const selfMax = c.mode === 'duel' ? values.rankMax : values.discipleRankMax;
-    const spread = selfMax - (values.challengerRank?.[c.id] ?? 0);
-    if (isNum(selfMax) && bindAt > spread) {
-      bad('reversalDecay.pierceFloor', `${c.id} 무대의 최대 성 차 ${spread} 로는 하한 ${decay.pierceFloor} 에 닿지 못한다`
+  for (const arena of reversalArenas(values)) {
+    const spread = arena.selfMax - (values.challengerRank?.[arena.id] ?? 0);
+    if (isNum(arena.selfMax) && bindAt > spread) {
+      bad('reversalDecay.pierceFloor', `${arena.id} ${arena.who} 무대의 최대 성 차 ${spread} 로는 하한 ${decay.pierceFloor} 에 닿지 못한다`
         + ` (성 차 ${bindAt} 필요) — perRank 를 ${((1 - decay.pierceFloor) / spread).toFixed(4)} 이상으로 올려라`);
     }
   }

@@ -511,22 +511,20 @@ export function isMissionUnlocked(disciple, setId, stage) {
   return min !== null && min >= need;
 }
 
-/** 임무 도전자 성 (REQ-742) — 난이도 곡선은 성으로만 오른다 (HP 는 파견 무대 하나를 공유한다). */
+/**
+ * 임무 도전자 성 (REQ-742) — 뽑힌 도전자의 초회 성을 base 로 차수 계단이 얹힌다.
+ * 난이도의 몸통은 그 도전자의 HP·초식 수가 지고 성은 그 위의 보정이다 (#217 실측).
+ */
 export const missionFoeRank = (stage, baseRank) =>
   Math.min(BALANCE.rankMax, baseRank + BALANCE.mission.rankStep * (stage - 1));
 
 /**
- * 임무 상대 구성 (REQ-742) — 아키타입 풀에서 중복 없이 뽑는다. 절초 δ 를 배제하지 않는 것은
- * 역파의 제자 무대가 곧 제자 수련의 보상이 드러나는 자리이기 때문이다 (REQ-772).
- * 주입 난수가 유일한 입력이라 시드를 고정하면 같은 조합이 재현된다.
+ * 이긴 도전자 중 하나 (REQ-742) — 모집단이 비면 null 이라 호출부가 폴백을 고른다.
+ * 주입 난수가 유일한 입력이라 시드를 고정하면 같은 상대가 재현된다.
  */
-export function missionFoeSet(random = Math.random, count = BALANCE.mission.foeCount) {
-  const pool = FOE_STYLES.map((s) => s.id);
-  for (let i = pool.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(random() * (i + 1));
-    [pool[i], pool[j]] = [pool[j], pool[i]];
-  }
-  return pool.slice(0, count);
+export function pickMissionFoe(pool, random = Math.random) {
+  if (!pool.length) return null;
+  return pool[Math.min(pool.length - 1, Math.floor(random() * pool.length))];
 }
 
 // -------------------------------------------------- 제자 수련 (REQ-751~754·706)

@@ -49,7 +49,7 @@
   "discipleRankMax": 10,
   "discipleFireRatio": 0.6,
   "discipleTrain": { "secondsPerRank": 1800 },
-  "mission": { "unlockRank": 5, "foeCount": 3, "rankStep": 1 },
+  "mission": { "unlockRank": 5, "rankStep": 1 },
   "killReadout": { "minManualWindows": 20 },
 
   "winColorHintExchanges": 9007199254740991,
@@ -71,7 +71,7 @@
   "hp": { "user": 100, "disciple": 100, "A-1": 30, "A-2": 45, "A-3": 80, "A-4": 90, "B": 80 },
   "challengerRank": { "A-1": 1, "A-2": 2, "A-3": 3, "A-4": 4, "B": 2 },
   "rematch": { "rankGain": 1, "rankCap": 3 },
-  "reversalDecay": { "perRank": 0.075, "pierceFloor": 0.4 },
+  "reversalDecay": { "perRank": 0.1, "pierceFloor": 0.4 },
 
   "audio": {
     "key": "sfx_key",

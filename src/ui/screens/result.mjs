@@ -12,7 +12,7 @@ import { attrMark, attrTone } from '../components/attr-mark.mjs';
 import { hanja } from '../components/hanja.mjs';
 import { rankStair } from '../components/rank-stair.mjs';
 import {
-  DISPATCH_CHALLENGER, challengerOfStage, duelAttemptOf, rematchBonusOf, settleResult,
+  challengerOfStage, duelAttemptOf, rematchBonusOf, settleResult,
 } from '../session.mjs';
 
 /** 접어 쓰는 무대의 높이 토큰 (REQ-870·875) — 수치는 원장이 지고 화면은 그 이름만 안다. */
@@ -216,7 +216,8 @@ export function renderResult(ctx) {
   // 렌더가 아니라 진입이 정산한다 — 이 호출은 같은 진입에서 몇 번을 돌아도 한 번만 움직인다 (#70).
   const settled = settleResult(session, params);
   const duel = settled.kind === 'duel';
-  const foe = duel ? challengerOfStage(params.stage) : DISPATCH_CHALLENGER;
+  // 파견 상대는 정산이 실어 보낸 값이다 — 이 시점의 `session.mission` 은 이미 비어 있다 (#217).
+  const foe = duel ? challengerOfStage(params.stage) : settled.challenger;
   const brand = settled.win ? (duel ? BRAND.win : BRAND.done) : BRAND.lose;
   const retryable = duel && !settled.win;
 

@@ -72,6 +72,8 @@ function logDispatchOutcome(session, mission, result) {
   }
   return logEvent(session, 'dispatch', {
     stage: mission.label,
+    // 상대별 승패를 가르는 축 (REQ-744) — 「N차」는 임무의 서수라 상대를 식별하지 못한다.
+    challenger: mission.challenger.id,
     foe_set: mission.foeSet.slice(),
     disciple_ranks: { ...mission.ranks },
     locked_until: missionLockRankOf(session),
