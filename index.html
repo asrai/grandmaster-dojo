@@ -1295,10 +1295,10 @@ button.ghost { background: transparent; }
   font-size: 17px; font-weight: 700; letter-spacing: 4px;
 }
 
-/* ══ 파견 예고 (REQ-888) ══ 고를 목록이 없어 브리핑이 본문을 통째로 채운다 — 스크롤은 본문 상자가
-   이미 지므로 시트는 높이만 채우고, 바닥 버튼은 「대련 시작」과 같은 자리에 남는다 (REQ-880·881). */
+/* ══ 파견 예고 (REQ-888) ══ S7 이 목록으로 채우는 자리를 파견은 여백으로 채우므로, 제자 블록부터
+   「파견 보내기」까지를 한 덩어리로 바닥에 앵커해 여백이 CTA 앞이 아니라 그 위에 오게 한다. */
 .brief.preview { flex: 1 1 auto; min-height: 0; border-top: 0; }
-.brief.preview .go { margin-top: auto; }
+.brief.preview .foot { margin-top: auto; display: flex; flex-direction: column; gap: inherit; }
 /* 제자 성은 사부 성과 갈린다 — 금은 사부가 키운 값의 색이라, 제자의 것은 쾌의 청을 쓴다 (REQ-856). */
 .slots.disciple .slip-rank { color: var(--c6); }
 </style>

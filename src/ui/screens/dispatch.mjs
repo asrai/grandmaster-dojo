@@ -91,22 +91,25 @@ export function renderPreview(ctx) {
       mission ? el('span', { class: 'cap', text: '상대 초식' }) : null,
       mission ? foeStyleCards(mission.foeSet.map(foeStyleById)) : null,
       mission ? finisherTell(finisherOf(challenger)) : null,
-      styles.length ? el('span', { class: 'cap', text: '제자' }) : null,
-      // 성은 사부의 진척이 아니라 제자의 것이다 — 도장에서 키운 값이 여기서 읽혀야 전수의 보상이 닫힌다 (REQ-856).
-      styles.length ? styleStrip({
-        label: '제자 초식',
-        tone: 'disciple',
-        items: styles.map((style) => ({ style, rank: discipleStyleRank(session.disciple, ART_ID, style.id) })),
-      }) : null,
-      el('p', { class: `warn ${warn.cls}`.trim(), text: warn.text }),
-      el('button', {
-        class: 'go',
-        text: '파견 보내기',
-        // 잠긴 차수의 사유는 바로 위 경고 줄이 전부 지므로 버튼은 잠겼다는 사실만 말한다 (REQ-911·743).
-        disabled: !unlocked,
-        'aria-disabled': String(!unlocked),
-        onclick: () => ctx.go('dispatch'),
-      }),
+      // 카드 수가 줄어도 엄지가 닿는 자리는 그대로다 — 그래서 앵커의 단위가 버튼이 아니라 덩어리다 (REQ-888).
+      el('div', { class: 'foot' }, [
+        styles.length ? el('span', { class: 'cap', text: '제자' }) : null,
+        // 성은 사부의 진척이 아니라 제자의 것이다 — 도장에서 키운 값이 여기서 읽혀야 전수의 보상이 닫힌다 (REQ-856).
+        styles.length ? styleStrip({
+          label: '제자 초식',
+          tone: 'disciple',
+          items: styles.map((style) => ({ style, rank: discipleStyleRank(session.disciple, ART_ID, style.id) })),
+        }) : null,
+        el('p', { class: `warn ${warn.cls}`.trim(), text: warn.text }),
+        el('button', {
+          class: 'go',
+          text: '파견 보내기',
+          // 잠긴 차수의 사유는 바로 위 경고 줄이 전부 지므로 버튼은 잠겼다는 사실만 말한다 (REQ-911·743).
+          disabled: !unlocked,
+          'aria-disabled': String(!unlocked),
+          onclick: () => ctx.go('dispatch'),
+        }),
+      ]),
     ]),
     // 브리핑 시트가 본문이라 여백은 시트가 진다 — 조립이 덧대면 S7 과 조판이 갈린다 (REQ-880).
     padded: false,
