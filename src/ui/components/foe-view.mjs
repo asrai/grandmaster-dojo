@@ -3,7 +3,7 @@
 // `components/` 에 두는 것은 화면끼리 직접 import 하는 방향을 열지 않기 위해서다.
 // 층 자체를 정하는 것은 `session.mjs` 의 `challengerEntry` 이고 문구는 `theme.mjs` 가 진다.
 
-import { REVEAL_TIER, foeStyleById, styleById } from '../../core.mjs';
+import { REVEAL_TIER, finisherOf, foeStyleById, styleById } from '../../core.mjs';
 import { el } from '../dom.mjs';
 import { REVEAL_VIEW, attrLabel } from '../theme.mjs';
 import { attrMark, attrTone } from './attr-mark.mjs';
@@ -16,7 +16,7 @@ export const revealedStyles = (entry) =>
 /** 절초와 그 파해 대상 — 공개 층이 `COUNTER` 일 때만 존재한다 (REQ-884). */
 export function counterPairOf(entry) {
   if (entry.tier !== REVEAL_TIER.COUNTER) return null;
-  const finisher = entry.challenger.styles.map(foeStyleById).find((s) => s && s.finisher);
+  const finisher = finisherOf(entry.challenger);
   return { finisher, answer: styleById(finisher.counters) };
 }
 
