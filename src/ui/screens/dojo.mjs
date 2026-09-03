@@ -348,7 +348,7 @@ export function renderDojo(ctx) {
 
   const bar = el('div', { class: 'pb-train' });
   composeScreen(ctx, {
-    top: topBand(session, ART_NAME),
+    top: topBand(session, ART_NAME, { label: () => session.label }),
     body: [
       sceneBanner(session),
       // 목록을 감싼 카드는 목록을 또 하나의 패널로 만든다 — 머리글 한 줄로 대체한다 (REQ-832).

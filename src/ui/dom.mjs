@@ -99,13 +99,17 @@ export function composeScreen(ctx, {
  * 표준 상단 띠 (REQ-801) — 띠를 쓰는 화면이 각자 만들고, 갱신 주체도 그 화면이다.
  * @param {object} session
  * @param {string} artName 무공 이름 — 성이 초식 단위로 내려가 무공에는 표시할 성이 없다 (REQ-701·707)
- * @param {object} [p]
+ * @param {object} p
+ * @param {() => string} p.label 띠 둘째 자리 문구 — 그 자리에 오는 요소가 화면마다 달라(도장 =
+ *   단계 표기 E1-1, 도전자 선택 = 화면 제목 E1-2) 값을 호출부가 준다 (#211). `stageBand` 의
+ *   `count.value` 와 같은 계약으로 `paint` 가 매번 다시 읽는다. 기본값을 두지 않아 빠뜨리면 그
+ *   화면 전이가 예외로 끊긴다 — 하네스가 이 파일을 임포트하지 않아 CI 가 대신 잡아 주지 않는다.
  * @param {Function} [p.onLeave] 물러나기 — 띠의 좌측 첫 자리에 고정된다 (REQ-897). 넘기지 않는
  *   화면은 그 자리를 비운다: 홈은 돌아갈 곳이 없어 예외이고, 결과는 띠 자체를 쓰지 않는다.
  * @returns {{node: HTMLElement, paint: () => void}} `paint` 를 `ctx.ownTop` 에 넘기면
  *   `ctx.refreshTop()` 이 그 화면의 띠만 다시 그린다
  */
-export function topBand(session, artName, { onLeave = null } = {}) {
+export function topBand(session, artName, { label, onLeave = null }) {
   const labelEl = el('b', { class: 'top-label' });
   const coinsEl = el('span', { class: 'top-coins' });
 
@@ -134,7 +138,7 @@ export function topBand(session, artName, { onLeave = null } = {}) {
 
   // 부분 갱신이면 `refreshTop()` 이 「띠가 지금 상태와 같아진다」를 보장하지 못한다 — 셋을 함께 그린다.
   const paint = () => {
-    labelEl.textContent = session.label;
+    labelEl.textContent = label();
     coinsEl.textContent = `${session.coins} 냥`;
     paintMute();
   };
