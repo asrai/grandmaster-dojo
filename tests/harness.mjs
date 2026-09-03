@@ -1226,6 +1226,11 @@ suite('케이스 8 — B 밸런스 게이트 (M2 준보스 선행 · 현행 파�
     console.error('  ! B 밸런스 미달 — 현행 파견 경로 밖(M2 준보스 자리)이라 게임 난이도에는 즉시 영향이 없다.'
       + ' 되살릴 때 BALANCE.hp.B / challengerRank.B 하향 후 docs/balance-log.md 기록');
   }
+  // 되살릴 때 역파 도달성 검증만 빠지는 비대칭을 여기서 미리 문다 — `reversalArenas` 는 살아 있는
+  // 무대만 세므로 B 를 되살리기 전까지 그 행을 보지 않는다.
+  const bBind = Math.ceil((1 - BALANCE.reversalDecay.pierceFloor) / BALANCE.reversalDecay.perRank);
+  ok(bBind <= BALANCE.discipleRankMax - foeRankOf('B'),
+    'B 를 제자 무대로 되살려도 관통 하한이 그 무대 안에서 물린다 (REQ-771)');
   console.log(`    B 시뮬: ${sim.exchanges}수, 적 HP ${sim.foeHp}, 제자 HP ${sim.selfHp}, `
     + `등급 ${sim.trace.map((t) => BALANCE.grades[t.grade].label).join('·')}`);
 });
