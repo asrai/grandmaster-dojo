@@ -2789,7 +2789,7 @@ suite('확정 매는 옛 자리에서 미끄러져 오고 탈락 매 위에 선�
   // 문맥만 만들고 자기 층은 갖지 않는 것이 계약이다 — 층을 가지면 무대의 z 순서에 함께 진입한다.
   // 모집단은 이름이 아니라 선택자 매칭이다 — 합성·자손 갈래(`.pad .slip-row`)로 한 줄 들어와도
   // 같은 결함이 되돌아오는데, 완전 일치 조회는 그 갈래를 통째로 못 본다.
-  const rowRules = rules.filter(([sel]) => /(^|[\s,>+~]|[\w\])])\.slip-row\b/.test(sel));
+  const rowRules = rules.filter(([sel]) => /(^|[\s,>+~]|[\w\])])\.slip-row(?![\w-])/.test(sel));
   ok(rowRules.length >= 1, `.slip-row 를 겨누는 규칙을 실제로 떼어냈다 — ${rowRules.length}건`);
   deepEq(rowRules.filter(([, b]) => /(^|[;{\s])z-index:/.test(b)).map(([sel]) => sel), [],
     '.slip-row 계열이 무대의 z 순서에 들어가지 않는다');
@@ -2827,8 +2827,11 @@ suite('확정 매는 옛 자리에서 미끄러져 오고 탈락 매 위에 선�
   ok(opts, '그 호출의 옵션 객체를 실제로 떼어냈다');
   const dur = opts.match(/duration:\s*([A-Za-z_$][\w$]*)/)?.[1];
   ok(dur, `미끄러짐의 길이가 리터럴이 아니라 이름으로 온다 — ${opts.replace(/\s+/g, ' ')}`);
-  ok(dur && new RegExp(`const ${dur} = ledgerMs\\('--slip-exit'\\)`).test(src),
+  ok(dur && new RegExp(`const\\s+${dur}\\s*=\\s*ledgerMs\\(\\s*'--slip-exit'\\s*\\)`).test(src),
     `그 이름이 시각 원장에서 온다 — ${dur}`);
+  // 옛 자리를 레이아웃 좌표로만 재면 미끄러지는 도중의 재좁힘·되돌리기가 눈에 보이던 자리를 버린다.
+  ok(/offsetLeft \+ \(Number\.parseFloat\(getComputedStyle\([^)]*\)\.translate\)/.test(src),
+    '옛 자리는 진행 중인 미끄러짐의 잔여분을 함께 진다');
   // 부재 단정 — 인라인 쓰기는 CSS 가 쥔 채널을 JS 가 덮는 형태라 그 순간 금테 확대가 사라진다.
   deepEq(src.match(/\.style\.(transform|translate)\s*=/g) ?? [], [],
     '합성 채널을 인라인 대입으로 쓰지 않는다');
@@ -2839,7 +2842,7 @@ suite('확정 매는 옛 자리에서 미끄러져 오고 탈락 매 위에 선�
   // 다시 물면 탈락 매의 좌표 기준이 매수 따라 움직이는 줄로 되돌아간다 (#138).
   const POSITIONED = /(^|[;{\s])position\s*:\s*(relative|absolute|fixed|sticky)/i;
   const CONTAINING = /(^|[;{\s])(transform|filter|backdrop-filter|will-change|contain)\s*:/i;
-  const tabletsRules = rules.filter(([sel]) => /(^|[\s,>+~])\.tablets\b/.test(sel));
+  const tabletsRules = rules.filter(([sel]) => /(^|[\s,>+~]|[\w\])])\.tablets(?![\w-])/.test(sel));
   ok(tabletsRules.length >= 2, `죽간 줄을 겨누는 규칙을 실제로 떼어냈다 — ${tabletsRules.length}건`);
   deepEq(tabletsRules.filter(([, b]) => POSITIONED.test(b) || CONTAINING.test(b)).map(([sel]) => sel), [],
     '죽간 줄이 포함 블록을 되찾지 않는다');

@@ -100,7 +100,7 @@ export function createTablets({ soloEmphasis = false } = {}) {
       const byId = new Map(items.map((item) => [item.style.id, item]));
       const states = tabletStates(drawn, next);
 
-      // 가라앉기와 미끄러짐은 같은 길이를 쓴다 — 한 렌더 안에서 원장을 두 번 읽지 않는다.
+      // 가라앉기와 미끄러짐은 같은 길이를 쓴다.
       const exitMs = ledgerMs('--slip-exit');
       // 배경 탭에서는 `animationend` 가 오지 않는다 — 시효가 지난 유령은 렌더가 함께 걷어 낸다.
       const stale = performance.now() - exitMs;
@@ -108,7 +108,9 @@ export function createTablets({ soloEmphasis = false } = {}) {
 
       // 새 매를 그리기 전에 잰다 — 뒤에 재면 폭 계단이 이미 바뀌어 옛 자리를 알 수 없다.
       // 살아남는 매의 옛 자리도 같은 패스에서 잡는다 — 슬롯을 갈아타는 이동이 FLIP 의 출발점이다 (#152).
-      const before = new Map([...live].map(([id, slip]) => [id, slip.node.offsetLeft]));
+      // 아직 미끄러지는 중이면 눈에 보이는 자리는 레이아웃 좌표가 아니라 그 잔여분만큼 옛 자리 쪽이다.
+      const before = new Map([...live].map(([id, slip]) => [id,
+        slip.node.offsetLeft + (Number.parseFloat(getComputedStyle(slip.node).translate) || 0)]));
       sink(states
         .filter(({ id, state }) => state === TABLET.EXIT && live.has(id))
         .map(({ id }) => {
@@ -141,9 +143,7 @@ export function createTablets({ soloEmphasis = false } = {}) {
       for (const [id, from] of before) {
         const slip = live.get(id);
         if (!slip) continue;
-        // 아직 미끄러지는 중이면 눈에 보이는 자리는 레이아웃 좌표가 아니라 그 잔여분만큼 옛 자리 쪽이다.
-        const carried = Number.parseFloat(getComputedStyle(slip.node).translate) || 0;
-        const dx = from + carried - slip.node.offsetLeft;
+        const dx = from - slip.node.offsetLeft;
         if (dx !== 0) {
           slip.node.animate([{ translate: `${dx}px 0` }, { translate: '0px 0' }],
             { duration: exitMs, easing: 'ease' });
