@@ -137,7 +137,7 @@ tags:
 | `rank_wall` | ① | `actor, style, at_rank: 7, attempted: train` | 8성 벽 충돌 횟수 — 벽이 유저를 실전으로 미는지 | 신설 |
 | `unlock` | ② | `style, prev_style_rank` | 5성 해금이 실제 몇 성에서 발화했는지 — 해금·원터치 분리 효과 | sv:2 |
 | `rematch` | ④ | `challenger, foe_rank, attempt_n` | 재대련이 몇 번째에 멈추는지 — 성 +1 이 파밍을 실제로 끊는가 | 신설 |
-| `slot` | ④ | `action, styleId, challenger` | A-4 진입 시 슬롯을 실제로 바꿨는가 — 「진짜 판단」 발생 여부 | sv:2 (`challenger` 추가) |
+| `slot` | ④ | `action, styleId, challenger` | 슬롯을 실제로 바꿨는가 — 교체가 도장 전용이 된 뒤(REQ-736 개정) `challenger` 는 항상 `null` 이라 판독 축은 `action` 이다 | sv:2 (`challenger` 추가) |
 | `finish` | ① | `style, challenger, intended` | 결정타 배분 + 노린 초식과 일치했는가 | 신설 |
 | `disciple_train` | ⑥ | `style, from, to, elapsed_ms, master_activity` | 제자 수련 체감 시간 + 병렬성 검증 | 신설 |
 | `dispatch` | ⑤ | `stage: B-1\|B-2+, foe_set, disciple_ranks, locked_until, result: win\|loss\|abort` | B-1 무패 보장 · B-2 잠금 · 랜덤 조합별 승패 · 중도 이탈 · **(d)** 종점 (B-1) | sv:2 |

@@ -246,8 +246,6 @@ function metricsOf(cycle, all) {
   return {
     rematch_attempts: count(rematches, 'attempt_n'),
     rematch_deepest: rematches.reduce((m, e) => Math.max(m, e.attempt_n), 0),
-    // 슬롯 교체가 **어느 예고 화면에서** 났는지가 REQ-736 의 지표다 (예고 밖은 null 로 남는다).
-    slot_by_challenger: count(cycle.filter((e) => e.event === 'slot' && e.challenger), 'challenger'),
     finish_by_style: count(finishes, 'style'),
     finish_intended_rate: rate(finishes.filter((e) => e.intended).length, finishes.length),
     // 벽은 사부·제자 양쪽에서 나므로 actor 로 가른다 — 합치면 사부 축 숫자가 제자 방치분을 삼킨다.
@@ -328,7 +326,7 @@ function report(result) {
   console.log(`    유효 성공률(유저) ${pct(aux.effective_success_rate)} · 등급 ${JSON.stringify(aux.verdict_grades)}`);
   // 신규 지표 (REQ-794) — 사부 축은 판정 모집단, 제자 축은 판정 범위 밖의 셀프 관측이다.
   console.log(`    사부 축  재대련 회차 ${JSON.stringify(metrics.rematch_attempts)} (최심 ${metrics.rematch_deepest})`
-    + ` · 슬롯 교체 ${JSON.stringify(metrics.slot_by_challenger)} · 결정타 ${JSON.stringify(metrics.finish_by_style)}`
+    + ` · 결정타 ${JSON.stringify(metrics.finish_by_style)}`
     + ` (의도 일치 ${pct(metrics.finish_intended_rate)}) · 8성 벽 ${metrics.rank_wall}회`);
   console.log(`    제자 축  파견 ${metrics.dispatch_by_stage.map((m) => `${m.stage}:${m.result}[${m.foe_set?.join('+') ?? '?'}]${ranksBrief(m.disciple_ranks)}`).join(' · ') || '—'}`
     + ` (승률 ${pct(metrics.dispatch_win_rate)}${metrics.dispatch_aborts ? ` · 이탈 ${metrics.dispatch_aborts}건은 분모 밖` : ''})`
