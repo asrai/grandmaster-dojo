@@ -3058,9 +3058,14 @@ suite('무대 배율은 상자에 축소로만 맞고 0 을 넘는다 (#187)', (
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   ok(!/atan2\s*\(/.test(html), '스타일시트에 길이 인자를 삼각함수에 넣는 트릭이 없다');
   const app = readFileSync(new URL('../src/ui/app.mjs', import.meta.url), 'utf8');
+  ok(/\bResizeObserver\b/.test(app), '부팅이 크기 변화를 관찰한다');
   // 창이 아니라 상자를 봐야 도구 띠의 높이·접힘이 배율에 반영된다.
-  ok(/new ResizeObserver\([\s\S]{0,80}?\)\.observe\(stageBoxNode\)/.test(app),
-    '부팅이 상자를 관찰해 배율을 다시 낸다');
+  ok(/\.observe\(stageBoxNode\)/.test(app), '관찰 대상은 창이 아니라 무대 상자다');
+
+  // `--k` 는 CSS 와 JS 를 잇는 문자열 결합이라 한쪽만 사라져도 조용히 어긋난다 — 좁은 화면에서만
+  // 무대가 잘리는 회귀가 되므로, 주입과 소비를 양쪽에서 함께 문다.
+  ok(/setProperty\('--k'/.test(app), '부팅이 그 배율을 `--k` 로 기입한다');
+  ok(/transform:\s*scale\(var\(--k\)\)/.test(html), '무대가 `--k` 를 배율로 소비한다');
 });
 
 

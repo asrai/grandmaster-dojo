@@ -188,18 +188,25 @@ if (!$('shell')) throw new Error('흔들림 래퍼 #shell 이 스테이지에 �
 // 히트 영역 최소치도 BALANCE 값이라, CSS 가 그 값을 변수로 받아 간다 (REQ-101).
 document.documentElement.style.setProperty('--hit', `${BALANCE.buttonHitPx}px`);
 
+// 무대와 그 상자가 없으면 배율이 정체불명 null 참조로 죽는다 — 다른 필수 노드와 같은 자리에서 문다.
+if (!$('stage')) throw new Error('무대 #stage 가 문서에 없다');
+if (!$('stagebox')) throw new Error('무대 상자 #stagebox 가 문서에 없다');
+
 // 무대 배율은 상자를 재야 나오므로 CSS 가 아니라 여기서 낸다 (#187). 재는 대상이 창이 아니라
 // 상자인 것이 계약이다 — 도구 띠가 먹은 높이도, 그 띠가 접히는 것도 상자 크기에만 나타난다.
 const stageNode = $('stage');
 const stageBoxNode = $('stagebox');
 const fitStage = () => {
+  // 상자는 소수 크기로 떨어질 수 있고 `clientWidth` 의 반올림은 무대를 1px 미만 넘치게 한다.
+  const box = stageBoxNode.getBoundingClientRect();
   const k = stageScale(
-    { w: stageBoxNode.clientWidth, h: stageBoxNode.clientHeight },
+    { w: box.width, h: box.height },
     // 변형 전 레이아웃 크기라 배율을 먹여도 되먹임하지 않는다 — 논리 해상도의 집은 CSS 하나뿐이다.
     { w: stageNode.offsetWidth, h: stageNode.offsetHeight },
   );
   stageNode.style.setProperty('--k', String(k));
 };
+// 첫 관측의 전달 시점을 브라우저에 맡기지 않는다 — 멱등이라 한 번 더 재도 값이 갈리지 않는다.
 new ResizeObserver(fitStage).observe(stageBoxNode);
 fitStage();
 
