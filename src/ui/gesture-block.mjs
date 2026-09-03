@@ -11,3 +11,33 @@ export function blockPinchZoom(target) {
     target.addEventListener(type, (event) => event.preventDefault(), { passive: false });
   }
 }
+
+/**
+ * WebKit 이 두 탭을 확대로 읽는 최대 간격 — 플랫폼 제스처 상수라 게임-룰 원장이 아니라 여기 산다.
+ * 이 값보다 짧은 간격이 곧 「연타」이므로, 차단이 무는 구간과 연타 무손실 구간은 같은 구간이다.
+ */
+export const DOUBLE_TAP_MS = 300;
+
+/**
+ * 더블 탭 확대 차단 — `touch-action` 이 iOS 에서 이 억제를 걸지 않아 JS 층이 대신 진다 (#215).
+ * 두 번째 탭의 기본 동작을 막으면 WebKit 이 그 탭의 `click` 까지 함께 죽이므로, 입력이 소실되지
+ * 않게 같은 타깃으로 click 을 직접 흘린다 — 코어 입력 무손실이 확대 차단보다 우선한다.
+ *
+ * @param {{addEventListener: Function}} target 배선을 받을 대상 — 문서를 주입해 표면 전역을 덮는다
+ * @param {() => number} now 밀리초 시계 — 탭 간격 판정의 유일한 시간 출처다
+ * @returns {void}
+ */
+export function blockDoubleTapZoom(target, now) {
+  let lastTapAt = -Infinity;
+  target.addEventListener('touchend', (event) => {
+    // 핀치의 꼬리는 탭이 아니다 — 손가락이 하나만 떠났고 화면에 남은 것이 없을 때만 탭으로 센다.
+    if (event.changedTouches?.length !== 1 || event.touches?.length) return;
+    const at = now();
+    const isDoubleTap = at - lastTapAt < DOUBLE_TAP_MS;
+    lastTapAt = at;
+    if (!isDoubleTap) return;
+    event.preventDefault();
+    // 방향키는 글리프만 든 버튼이고 되돌리기는 자식 span 을 두므로, 버블링이 두 경우를 함께 덮는다.
+    event.target?.click?.();
+  }, { passive: false });
+}
