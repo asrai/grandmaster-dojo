@@ -225,8 +225,9 @@
   --tm-glow-master-h: 204px;
   --tm-glow-pupil-w: 146px;
   --tm-glow-pupil-h: 162px;
-  /* 회전 중심은 어깨다 — 실루엣 캔버스(512x1024) 안의 비율이라 폭·높이가 바뀌어도 따라간다. */
-  --tm-arm-origin: 52% 34%;
+  /* 회전 중심은 제자 어깨다 — 실루엣 캔버스(512x1024) 안의 비율이라 폭·높이가 바뀌어도 따라가고,
+     사부 어깨는 x·y 가 모두 달라 한 토큰을 나눠 쓸 수 없다 (#171). */
+  --tm-pupil-arm-origin: 52% 28%;
   --tm-follow-angle: 26deg;
   /* 시범을 보는 시간과 팔이 맞아떨어지는 시간 — 한 연출의 두 구간이라 같은 자리에 둔다. */
   --tm-follow-delay: 1400ms;
@@ -687,8 +688,8 @@ button.ghost { background: transparent; }
   /* 배치는 개별 속성으로만 쓴다 — `background` 단축은 파츠마다 선언된 이미지를 none 으로 되돌린다 (#137). */
   background-position: center bottom; background-size: contain; background-repeat: no-repeat;
 }
-.fig > .part.arm { transform-origin: var(--tm-arm-origin); transition: transform var(--tm-follow-dur) ease-out; }
-.fig.following > .part.arm { transform: rotate(var(--tm-follow-angle)); }
+.fig.pupil > .part.arm { transform-origin: var(--tm-pupil-arm-origin); transition: transform var(--tm-follow-dur) ease-out; }
+.fig.pupil.following > .part.arm { transform: rotate(var(--tm-follow-angle)); }
 
 /* 무공 인장 (REQ-862·863) — 화면에서 유일하게 빛나는 것이고, 세로 조판이라 아래 목록이 부속이 된다. */
 .sigil {
