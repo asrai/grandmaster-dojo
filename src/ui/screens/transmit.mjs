@@ -1,7 +1,7 @@
 // 전수 장면 (REQ-860~866·761) — 이 게임이 파는 사제 관계가 화면에 나타나는 유일한 자리다.
 // 사부의 시범과 제자의 따라 하기로 연출하므로 무대는 아레나(대치)가 아니라 도장 안이고,
-// 완료는 제자의 팔 각도가 사부와 나란해지는 전이 하나로 말한다 — 스프라이트 시트가 아니라
-// 몸통·팔을 나눠 납품받은 실루엣과 회전 각도 하나가 그것을 진다.
+// 완료는 두 팔이 대기 자세로 멈추는 것으로 말한다 — 스프라이트 시트가 아니라 몸통·팔을 나눠
+// 납품받은 실루엣과 회전 각도 하나가 그것을 진다.
 
 import { ARROW } from '../../balance.mjs';
 import { artStyles, discipleStyleRank } from '../../core.mjs';
@@ -16,8 +16,8 @@ import {
 } from '../session.mjs';
 
 /**
- * 몸통·팔이 분리 납품된 실루엣 (spec § 아트 계약) — 팔만 별개 그룹이라 각도 하나로 시범과
- * 따라 하기가 갈린다. `.arm` 의 회전값은 원장이 지고 이 모듈은 자세 클래스만 갈아 끼운다.
+ * 몸통·팔이 분리 납품된 실루엣 (spec § 아트 계약) — 팔만 별개 그룹이라 각도 하나로 손짓이
+ * 성립한다. `.arm` 의 회전값은 원장이 지고 이 모듈은 손짓의 시작과 정지만 갈아 끼운다.
  */
 const figure = (id, cls) => el('div', { class: `fig ${cls}`, 'aria-hidden': 'true' }, [
   el('i', { class: `part body ${id}_body` }),
@@ -63,8 +63,19 @@ export function renderTransmit(ctx) {
   const masterRanks = Object.fromEntries(mastered.map((s) => [s.id, rankOfStyle(session, s.id)]));
 
   const master = figure('sil_master_demo', 'master');
-  // 어긋난 팔은 「아직 전수하지 않았다」의 표현이라, 이미 받은 제자에게는 처음부터 없다 (#70).
-  const pupil = figure('sil_disciple_follow', session.transmitted ? 'pupil' : 'pupil following');
+  const pupil = figure('sil_disciple_follow', 'pupil');
+  // 회차 수는 초식 수라 원장이 알 수 없다 — 데이터에서 파생한 값이 여기서 CSS 로 건너간다 (REQ-761).
+  const hall = el('div', { class: 'hall transmit', style: `--tm-waves:${mastered.length}` }, [
+    el('div', { class: 'layer floor' }),
+    el('div', { class: 'layer mist' }),
+    el('div', { class: 'backlight master', 'aria-hidden': 'true' }),
+    el('div', { class: 'backlight pupil', 'aria-hidden': 'true' }),
+    master,
+    pupil,
+    el('div', { class: 'layer vignette' }),
+    el('div', { class: 'ground', 'aria-hidden': 'true' }),
+    sigil(),
+  ]);
   const rows = el('div', { class: 'moves' });
   let shown = 0;
   // 제자의 성은 전수가 실행된 뒤에야 존재하므로 행을 붙이는 그 시점에 읽는다 (REQ-761).
@@ -89,17 +100,7 @@ export function renderTransmit(ctx) {
   composeScreen(ctx, {
     top: stageBand({ onLeave: () => ctx.go('dojo'), cap: '전수', name: ART_NAME, hanja: ART_HANJA }),
     body: [
-      el('div', { class: 'hall transmit' }, [
-        el('div', { class: 'layer floor' }),
-        el('div', { class: 'layer mist' }),
-        el('div', { class: 'backlight master', 'aria-hidden': 'true' }),
-        el('div', { class: 'backlight pupil', 'aria-hidden': 'true' }),
-        master,
-        pupil,
-        el('div', { class: 'layer vignette' }),
-        el('div', { class: 'ground', 'aria-hidden': 'true' }),
-        sigil(),
-      ]),
+      hall,
       // 목록이 뒤늦게 도착하므로, 그 도착을 낭독으로도 알 수 있어야 전이가 화면 밖에서도 성립한다.
       el('section', { class: 'transfer', 'aria-live': 'polite' }, [rows]),
     ],
@@ -111,44 +112,47 @@ export function renderTransmit(ctx) {
   function settle() {
     phase = 'after';
     clearTimeout(timer);
-    clearInterval(rowTimer);
+    clearTimeout(rowTimer);
     while (shown < mastered.length) appendRow(false);
     action.className = 'primary';
     action.textContent = '도장으로';
   }
+  /** 정보가 닫히는 시점 — 제자의 마지막 손짓은 여기서 반 박자 더 흐르다 스스로 멈춘다. */
   function land() {
     if (phase === 'after') return;
     settle();
     play(CUE.TRANSMIT);
   }
+  /** 건너뛰기는 꼬리까지 걷어낸다 — 손짓이 남아 있으면 조작 가능해진 화면이 아직 연출로 읽힌다. */
+  function skip() {
+    land();
+    hall.classList.remove('waving');
+  }
   /** 유저가 이 버튼을 누른 순간이 전수의 실행이다 — 화면 진입이 아니라 (REQ-761). */
   function begin() {
     if (!enterTransmit(session)) return;
     phase = 'during';
-    // 팔이 사부와 나란해지는 것이 「익혔다」의 전부다 (REQ-861).
-    pupil.classList.remove('following');
+    hall.classList.add('waving');
     action.className = 'primary weak';
     action.textContent = '건너뛰기';
-    // 첫 행은 즉시 — 누른 손에 응답이 없으면 실행이 일어난 것을 알 수 없다.
-    appendRow(true);
-    const span = ledgerMs('--tm-follow-delay');
-    // 초식 수는 데이터가 지는 값이라 「남은 행이 있을 때만」이 인터벌의 존재 조건이다.
-    if (shown < mastered.length) {
-      rowTimer = setInterval(() => {
-        appendRow(true);
-        if (shown >= mastered.length) clearInterval(rowTimer);
-      }, span / mastered.length);
-    }
-    timer = setTimeout(land, span);
+    const cycle = ledgerMs('--tm-cycle-ms');
+    // 행이 도착하는 순간은 제자가 그 초식을 잡기 시작하는 순간이다 — 그래서 지연만큼 늦다.
+    const beat = () => {
+      appendRow(true);
+      if (shown < mastered.length) rowTimer = setTimeout(beat, cycle);
+    };
+    rowTimer = setTimeout(beat, ledgerMs('--tm-echo-delay'));
+    // 연출 길이는 초식 수가 정한다 — 사부의 마지막 손짓이 끝나는 자리에서 정보가 닫힌다.
+    timer = setTimeout(land, cycle * mastered.length);
   }
   action.addEventListener('click', () => {
     if (phase === 'before') begin();
-    else if (phase === 'during') land();
+    else if (phase === 'during') skip();
     else ctx.go('dojo');
   });
 
   return () => {
     clearTimeout(timer);
-    clearInterval(rowTimer);
+    clearTimeout(rowTimer);
   };
 }
