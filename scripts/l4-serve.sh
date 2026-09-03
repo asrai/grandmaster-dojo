@@ -76,6 +76,13 @@ term_then_kill() {
 
 state_get() { sed -n "s/^$2=//p" "$1" 2>/dev/null | tail -1; }
 
+# 상태 파일은 크래시 뒤에도 남으므로 pid 만으로는 신원이 아니다 — 재사용된 남의 pid 를 막는다.
+is_our_server() {
+  [ -n "${1:-}" ] || return 1
+  kill -0 "$1" 2>/dev/null || return 1
+  ps -o command= -p "$1" 2>/dev/null | grep -q 'http\.server'
+}
+
 # 프로필 경로를 --user-data-dir 로 물고 있는 프로세스 전부 (크롬 본체 + 헬퍼).
 # 값 뒤가 공백이거나 줄 끝일 때만 일치시켜, 접두가 같은 남의 프로필을 삼키지 않는다.
 pids_by_profile() {
@@ -98,7 +105,7 @@ stop_tag() {
     targets="$targets $pid"
   done
   server=$(state_get "$state" L4_SERVER_PID)
-  if [ -n "$server" ] && alive "$server"; then
+  if is_our_server "$server"; then
     case " $skip " in *" $server "*) : ;; *) targets="$targets $server" ;; esac
   fi
   if [ -n "$targets" ]; then
@@ -111,7 +118,9 @@ stop_tag() {
   fi
   rm -rf "$profile"
   rm -f "$state" "$PROFILE_ROOT/$tag-server.log"
-  printf 'l4-serve: [%s] 정리 완료 (남은 대상 0건)\n' "$tag" >&2
+  local left=''
+  for pid in $targets; do alive "$pid" && left="$left $pid"; done
+  printf 'l4-serve: [%s] 정리 완료 · 잔여%s\n' "$tag" "${left:- 0건}" >&2
 }
 
 start_tag() {
@@ -126,6 +135,7 @@ start_tag() {
   ( cd "$REPO_ROOT" && exec python3 -m http.server "$port" --bind 127.0.0.1 ) \
     >"$PROFILE_ROOT/$tag-server.log" 2>&1 &
   local server_pid=$!
+  OWNED=1
   sleep 0.4
   alive "$server_pid" || die "서버가 즉시 종료했다 — $PROFILE_ROOT/$tag-server.log 를 보라"
   local url="http://127.0.0.1:$port$url_path"
@@ -154,7 +164,8 @@ start_tag() {
     printf 'L4_SERVER_PID=%s\n' "$server_pid"
     printf 'L4_CHROME_PID=%s\n' "$chrome_pid"
     printf 'L4_DEBUG_PORT=%s\n' "$dbg"
-  } >"$state"
+  } >"$state.tmp"
+  mv -f "$state.tmp" "$state"
 
   L4_TAG=$tag L4_PORT=$port L4_URL=$url L4_PROFILE=$profile L4_DEBUG_PORT=$dbg
   export L4_TAG L4_PORT L4_URL L4_PROFILE L4_DEBUG_PORT
@@ -167,12 +178,16 @@ cmd=${1:-}
 shift || true
 
 TAG='' PORT=8000 WANT_CHROME=0 HEADED=0 URL_PATH=/
+OWNED=0
 CMDV=()
 HAS_CMD=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --tag) need_value $# --tag; TAG=$2; shift 2 ;;
-    --port) need_value $# --port; PORT=$2; shift 2 ;;
+    --port)
+      need_value $# --port
+      case "$2" in ''|*[!0-9]*) die "--port 는 정수다: $2" ;; esac
+      PORT=$2; shift 2 ;;
     --url) need_value $# --url; URL_PATH=$2; shift 2 ;;
     --chrome) WANT_CHROME=1; shift ;;
     --headed) HEADED=1; WANT_CHROME=1; shift ;;
@@ -196,9 +211,9 @@ case "$cmd" in
     # 세션을 실제로 획득한 뒤에만 정리한다 — 중복 태그로 거절당한 실행이
     # 남의 살아있는 세션을 걷어 버리는 것을 막는 플래그다.
     OWNED=0
-    trap '[ "$OWNED" = 1 ] && stop_tag "$TAG"' EXIT INT TERM
+    trap '[ "$OWNED" = 1 ] && { stop_tag "$TAG"; OWNED=0; }' EXIT
+    trap '[ "$OWNED" = 1 ] && { stop_tag "$TAG"; OWNED=0; }; trap - EXIT; exit 130' INT TERM
     start_tag "$TAG" "$PORT" "$WANT_CHROME" "$HEADED" "$URL_PATH" run
-    OWNED=1
     rc=0
     "${CMDV[@]}" || rc=$?
     exit "$rc"
@@ -209,8 +224,9 @@ case "$cmd" in
       [ -f "$f" ] || continue
       found=1
       s=$(state_get "$f" L4_SERVER_PID); c=$(state_get "$f" L4_CHROME_PID)
-      printf '%s url=%s server=%s(%s) chrome=%s(%s)\n' \
-        "$(state_get "$f" L4_TAG)" "$(state_get "$f" L4_URL)" \
+      printf '%s mode=%s owner=%s url=%s server=%s(%s) chrome=%s(%s)\n' \
+        "$(state_get "$f" L4_TAG)" "$(state_get "$f" L4_MODE)" \
+        "$(state_get "$f" L4_OWNER_PID)" "$(state_get "$f" L4_URL)" \
         "$s" "$(alive "$s" && echo alive || echo dead)" \
         "${c:--}" "$([ -n "$c" ] && { alive "$c" && echo alive || echo dead; } || echo -)"
     done

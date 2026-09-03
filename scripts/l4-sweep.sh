@@ -10,8 +10,9 @@
 #
 # STATE 판정 — l4-serve 의 run 세션은 상태 파일에 소유 셸 pid 를 남기므로 생사가 확정된다.
 # up 세션은 의도적으로 detach 된 것이라 소유 셸이 없어, 「쓰는 중」과 「버려진 것」을
-# 원리적으로 구분할 수 없다 — 그래서 유예 시간(--max-age, 기본 120분)으로 가른다.
-#   live-session : run 세션의 소유 셸이 살아 있거나, up 세션이 유예 안에 있다 → 보존
+# 원리적으로 구분할 수 없다 — 그래서 크롬 프로필의 마지막 갱신 시각을 활동 근사로 삼아
+# 유예 시간(--max-age, 기본 120분)으로 가른다.
+#   live-session : run 세션의 소유 셸이 살아 있거나, up 세션의 프로필이 유예 안에 갱신됐다 → 보존
 #   orphan       : 소유 셸이 죽었거나(run 을 kill -9), 상태 파일이 아예 없거나,
 #                  up 세션이 유예를 넘겼다 → --kill 의 기본 대상
 #   live-parent  : orphan 크롬의 헬퍼처럼 부모가 붙어 있다 → 부모를 죽이면 함께 죽는다
@@ -25,8 +26,9 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
 PROFILE_ROOT="$(printf '%s' "${TMPDIR:-/tmp}" | sed 's:/*$::')/grandmaster-dojo-l4"
-TMP_ROOTS="$(printf '%s' "${TMPDIR:-/tmp}" | sed 's:/*$::') /tmp /private/tmp"
-MAIN_CLONE=$(cd "$SCRIPT_DIR/.." && cd "$(git rev-parse --git-common-dir)" && cd .. && pwd -P)
+TMP_ROOT="$(printf '%s' "${TMPDIR:-/tmp}" | sed 's:/*$::')"
+MAIN_CLONE=$(cd "$SCRIPT_DIR/.." && cd "$(git rev-parse --git-common-dir)" && cd .. && pwd -P) \
+  || { printf 'l4-sweep: 저장소 루트를 못 찾았다 — 소유 판별 불가\n' >&2; exit 2; }
 
 KILL=0
 INCLUDE_LIVE=0
@@ -37,6 +39,7 @@ while [ $# -gt 0 ]; do
     --include-live) INCLUDE_LIVE=1; shift ;;
     --max-age)
       [ $# -ge 2 ] || { printf 'l4-sweep: --max-age 에는 분 단위 값이 필요하다\n' >&2; exit 2; }
+      case "$2" in ''|*[!0-9]*) printf 'l4-sweep: --max-age 는 분 단위 정수다: %s\n' "$2" >&2; exit 2 ;; esac
       MAX_AGE_MIN=$2; shift 2 ;;
     -h|--help) sed -n '/^# 사용법:/,/^#$/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) printf 'l4-sweep: 알 수 없는 인자: %s\n' "$1" >&2; exit 2 ;;
@@ -53,8 +56,6 @@ ancestor_pids() {
 SKIP=" $(ancestor_pids | tr '\n' ' ') "
 
 alive() { kill -0 "$1" 2>/dev/null; }
-
-sanitize_tag() { printf '%s' "$1" | tr -c 'A-Za-z0-9._' '-'; }
 
 proc_cwd() { lsof -a -p "$1" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -1; }
 
@@ -79,10 +80,11 @@ own_cwd() {
   [ "$common" = "$MAIN_CLONE/.git" ]
 }
 
-# 프로필은 이 스크립트의 프로필 루트, 또는 tmp 밑의 레거시 접두(l4-* · <이슈번호>-chrome*)만
-# 소유다 — 디렉터리 앵커가 없으면 basename 만 같은 남의 프로필까지 삼킨다.
+# 프로필은 이 스크립트의 프로필 루트, 또는 사용자 전용 TMPDIR 밑의 레거시 접두
+# (l4-* · <이슈번호>-chrome*)만 소유다 — 디렉터리 앵커가 없으면 basename 만 같은 남의
+# 프로필까지 삼킨다. 레거시 분기는 #231 이전 즉석 프로필용이라 그 잔재가 소진되면 지운다.
 own_profile() {
-  local p=$1 pid=$2 base r cwd
+  local p=$1 pid=$2 base cwd
   case "$p" in
     "$PROFILE_ROOT"/*) return 0 ;;
     /*) : ;;
@@ -94,13 +96,11 @@ own_profile() {
     [0-9]*-chrome*) [ -z "$(printf '%s' "${base%%-chrome*}" | tr -d '0-9')" ] || return 1 ;;
     *) return 1 ;;
   esac
-  for r in $TMP_ROOTS; do
-    case "$p" in "$r"/*) return 0 ;; esac
-  done
+  case "$p" in "$TMP_ROOT"/*) return 0 ;; esac
   return 1
 }
 
-# run 세션은 소유 셸 pid 로, up 세션은 상태 파일의 나이로 생사를 가른다. pid 재사용은
+# run 세션은 소유 셸 pid 로, up 세션은 크롬 프로필의 최근 갱신 시각으로 생사를 가른다. pid 재사용은
 # 그 pid 의 커맨드라인에 l4-serve.sh 가 있는지로 배제한다.
 owner_alive() {
   local pid=$1
@@ -113,19 +113,21 @@ LIVE_PIDS=' '
 STALE=''
 for f in "$PROFILE_ROOT"/*.env; do
   [ -f "$f" ] || continue
-  tag=$(sed -n 's/^L4_TAG=//p' "$f" | tail -1)
+  tag=${f##*/}; tag=${tag%.env}
   [ -n "$tag" ] || continue
-  tag=$(sanitize_tag "$tag")
   holders=$(pids_by_profile "$PROFILE_ROOT/$tag-chrome" || true)
   server=$(sed -n 's/^L4_SERVER_PID=//p' "$f" | tail -1)
   owner=$(sed -n 's/^L4_OWNER_PID=//p' "$f" | tail -1)
   mode=$(sed -n 's/^L4_MODE=//p' "$f" | tail -1)
+  activity=''
 
   session_live=0
   if [ -n "$owner" ] || [ "$mode" = run ]; then
     owner_alive "$owner" && session_live=1
-  elif [ -z "$(find "$f" -mmin "+$MAX_AGE_MIN" 2>/dev/null)" ]; then
-    session_live=1
+  else
+    activity="$PROFILE_ROOT/$tag-chrome"
+    [ -d "$activity" ] || activity=$f
+    [ -n "$(find "$activity" -maxdepth 0 -mmin "+$MAX_AGE_MIN" 2>/dev/null)" ] || session_live=1
   fi
 
   if [ -z "$holders" ] && { [ -z "$server" ] || ! alive "$server"; }; then
@@ -193,9 +195,8 @@ purge_dead_states() {
   local f tag holders server
   for f in "$PROFILE_ROOT"/*.env; do
     [ -f "$f" ] || continue
-    tag=$(sed -n 's/^L4_TAG=//p' "$f" | tail -1)
+    tag=${f##*/}; tag=${tag%.env}
     [ -n "$tag" ] || continue
-    tag=$(sanitize_tag "$tag")
     holders=$(pids_by_profile "$PROFILE_ROOT/$tag-chrome" || true)
     server=$(sed -n 's/^L4_SERVER_PID=//p' "$f" | tail -1)
     if [ -n "$holders" ]; then continue; fi

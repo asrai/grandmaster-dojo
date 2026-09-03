@@ -19,9 +19,12 @@
 빌드 단계는 없지만 `index.html` 이 ESM 모듈(`src/`)을 로드하므로 **로컬 서버가 필수**다 — `file://` 로 직접 열면 모듈이 차단된다. 헤드리스 검증(§ 검증)은 Node 22+ 가 하한이다.
 
 ```bash
-python3 -m http.server 8000
-# → http://localhost:8000
+bash scripts/l4-serve.sh up          # 서버 기동 (종료는 down)
+# → http://127.0.0.1:8000
+bash scripts/l4-serve.sh down        # 서버 종료
 ```
+
+`python3 -m http.server` 를 직접 띄우지 않는 이유는 그 프로세스에 주인이 없어서다 — 세션이 끝나도 살아남아 포트를 붙든다. 구동기가 그 정리를 진다.
 
 세로 화면(모바일 폭) 기준으로 만들어져 있다. 진행 상태는 **세션 한정**이라 새로고침하면 처음부터다.
 
