@@ -73,7 +73,7 @@ tags:
 - **REQ-733** *(Ubiquitous)*: The system shall A-4 도전자 성을 A-3 보다 **한 단계만** 올린다 — 절초의 존재 자체가 난이도이므로 수치까지 올리면 이중 부담 (문제 1ⓑ). *(depends: REQ-722, REQ-731)*
 - **REQ-734** *(Event-driven)*: When 유저가 이미 이긴 도전자와 재대련하면, the system shall 그 도전자의 성을 **+1 누적** 시킨다 (초회 대면 +0, **상한 시드 +3**) — 파밍 자연 종료 + 「여기서 더 캘까 / 다음으로 넘어갈까」. 상한 필수 근거: 파운현월 완파는 A-4 에서만 가능하므로 상한 없는 누적은 A-4 반복 실패가 파운 12성을 영구 봉쇄한다. 재대련 항목을 도장에 명시 노출하고, **재대련 승리는 재화(coins) 보상을 주지 않는다** (파밍 루프 차단, 문제 2). `rematch{challenger, foe_rank, attempt_n}` 로깅. *(depends: REQ-722)*
 - **REQ-735** *(Ubiquitous)*: The system shall **A 밸런스 게이트** 를 재검증한다 — 각 차수 도달 시점의 장착·성으로 A-1~A-4 를 초 상한 안에서 이길 수 있는지 하네스 시뮬 (1.01 REQ-507 승계·A-4 확장), 못 이기면 해당 차수 HP·도전자 성 하향. *(depends: REQ-731)*
-- **REQ-736** *(Event-driven)*: When 도전자 예고 화면에서 유저가 슬롯을 탭하면, the system shall **그 자리에서 슬롯 교체** 를 허용한다 (도장 교체 동선도 유지) — 판단의 순간과 조작의 장소를 붙여 A-4 슬롯 압박을 잡무가 아니라 판단으로 만든다 (문제 6). `slot{action, styleId, challenger}` 로깅. *(depends: REQ-731)*
+- **REQ-736** *(Event-driven)*: When 유저가 슬롯을 바꾸면, the system shall **도장의 행 버튼(「장착」·「해제」)에서만** 그것을 받는다 — 도전자 예고 화면의 in-place 교체는 REQ-886(1.02)이 철회했다. 장착 가능 초식이 10 종을 넘으면 「어느 칸을 비울지 → 무엇을 넣을지」의 2단 선택을 예고 화면이 감당하지 못하고, 예고 화면의 물러나기가 이미 도장으로 가므로 동선 손실이 없다. `slot{action, styleId, challenger}` 로깅은 그대로이며 `challenger` 는 예고 화면 밖의 교체를 뜻하는 `null` 이 된다. *(depends: REQ-731)*
 
 ### ⑤ 제자 파견 = 임무 · 2단화 (B-1 / B-2+)
 
@@ -125,7 +125,7 @@ tags:
 - **REQ-791** *(Ubiquitous)*: The system shall 로그 스키마를 좌표 모델 변경에 재정합한다 — **소멸**: `mastery`·`initiate` (개념 소멸) / **뜻-바뀜 (schema 판별 필드 `sv: 2` 부여)**: `rank` (무공 `style_set`+`pts` → 초식 `actor, style, from, to, via`) · `unlock` (발화점 숙련 100% → 5성, `style, prev_style_rank`) · `transmit` (`style_set` → `art, styles: [{id, rank}], t_ms`) · `dispatch` (`challenger` → `stage, foe_set, disciple_ranks, locked_until, result`) · `slot` (`challenger` 필드 추가) / **신설**: `rank_wall`·`rematch`·`finish`·`disciple_train`·`cheat` (신설 이벤트는 `sv` 불요 — 구 스키마가 없다) / **불변**: `key`·`ignore`·`reset`·`narrow`·`fire`·`timeout`·`verdict`·`select`·`coins`·`cycle`·`session`. *(depends: REQ-701, REQ-705)*
 - **REQ-792** *(Ubiquitous)*: The system shall 지인 kill 판정 범위를 **B-1 종료까지** 로 긋는다 — (a) 자명성·(b) 손 숙달·(c) 전수 정서는 전부 B-1 이전에 발현하므로 판정 손실 0. B-2 이후·제자 방치 루프는 구현하되 판정하지 않고 로그로 셀프 관측 (재방문은 하루 이상 걸리는 관측 — 한 자리 판정 세션의 성질이 아니다). *(depends: REQ-741)*
 - **REQ-793** *(Ubiquitous)*: The system shall kill (b) 완주율을 재확정한다 — **산식 불변** (`fire(oneTap=false) / (fire(oneTap=false) + timeout) ≥ 0.5`), 원터치 제외 시점만 숙련 100% → **7성** 으로 이동. 판독 유효 조건으로 **최소 수동 창 표본** (시드 20창) 을 추가한다 — 모집단 축소로 인한 소표본 오판 방지. **수련 창은 분모 밖**이다 — 무벌 재시도라 「놓침」의 뜻이 대련과 달라 두 모집단을 한 분수에 섞지 않으며, 수련 미완주는 로그가 아니라 낭독 채널로만 관측된다. (역질문 확정 2026-09-02) *(depends: REQ-713, REQ-791)*
-- **REQ-794** *(Ubiquitous)*: The system shall 로그만으로 산출 가능하게 한다 — kill 4항 개인별 pass/fail (1.01 REQ-603 승계 + (b) 재확정 반영. **(b) 의 모집단은 대련 창 한정** — 수련 창은 REQ-793 대로 분모 밖) + 신규 지표: 재대련 중단 지점 (`rematch.attempt_n` 분포) · A-4 슬롯 교체 발생 여부 (`slot{challenger}`) · 결정타 배분·의도 일치 (`finish{intended}`) · 8성 벽 충돌 횟수 (`rank_wall`) · 제자 수련 병렬성 (`disciple_train.master_activity`) · 파견 중도 이탈 수 (`dispatch{result: 'abort'}`, 승률 분모 밖). *(depends: REQ-791)*
+- **REQ-794** *(Ubiquitous)*: The system shall 로그만으로 산출 가능하게 한다 — kill 4항 개인별 pass/fail (1.01 REQ-603 승계 + (b) 재확정 반영. **(b) 의 모집단은 대련 창 한정** — 수련 창은 REQ-793 대로 분모 밖) + 신규 지표: 재대련 중단 지점 (`rematch.attempt_n` 분포) · 결정타 배분·의도 일치 (`finish{intended}`) · 8성 벽 충돌 횟수 (`rank_wall`) · 제자 수련 병렬성 (`disciple_train.master_activity`) · 파견 중도 이탈 수 (`dispatch{result: 'abort'}`, 승률 분모 밖). *(depends: REQ-791)*
 
 ### 통합 로그 스키마
 
@@ -137,7 +137,7 @@ tags:
 | `rank_wall` | ① | `actor, style, at_rank: 7, attempted: train` | 8성 벽 충돌 횟수 — 벽이 유저를 실전으로 미는지 | 신설 |
 | `unlock` | ② | `style, prev_style_rank` | 5성 해금이 실제 몇 성에서 발화했는지 — 해금·원터치 분리 효과 | sv:2 |
 | `rematch` | ④ | `challenger, foe_rank, attempt_n` | 재대련이 몇 번째에 멈추는지 — 성 +1 이 파밍을 실제로 끊는가 | 신설 |
-| `slot` | ④ | `action, styleId, challenger` | A-4 진입 시 슬롯을 실제로 바꿨는가 — 「진짜 판단」 발생 여부 | sv:2 (`challenger` 추가) |
+| `slot` | ④ | `action, styleId, challenger` | 슬롯을 실제로 바꿨는가 — 교체가 도장 전용이 된 뒤(REQ-736 개정) `challenger` 는 항상 `null` 이라 판독 축은 `action` 이다 | sv:2 (`challenger` 추가) |
 | `finish` | ① | `style, challenger, intended` | 결정타 배분 + 노린 초식과 일치했는가 | 신설 |
 | `disciple_train` | ⑥ | `style, from, to, elapsed_ms, master_activity` | 제자 수련 체감 시간 + 병렬성 검증 | 신설 |
 | `dispatch` | ⑤ | `stage: B-1\|B-2+, foe_set, disciple_ranks, locked_until, result: win\|loss\|abort` | B-1 무패 보장 · B-2 잠금 · 랜덤 조합별 승패 · 중도 이탈 · **(d)** 종점 (B-1) | sv:2 |
@@ -167,7 +167,7 @@ tags:
 
 - **성 게이지** (REQ-707): 연속 막대 + 계단 눈금 12 + 성 배지, 11·12 눈금 별도 표식. 초식 카드 단위 (무공 카드 「N성」 배지는 소멸 — 숙련 막대 + 성 배지 이중 표시 해소).
 - **도장**: 재대련 항목 (이긴 도전자 목록 + 회차·강화 표시, REQ-734) · 제자 카드 = 수련 지정 UI + 진척 막대 + 초식별 성 4개 (REQ-752) · 배우기 (5성 해금 표시).
-- **도전자 예고 화면**: 절초 파해 대상 공개 (REQ-732) + 슬롯 교체 in-place (REQ-736).
+- **도전자 예고 화면**: 절초 파해 대상 공개 (REQ-732). 슬롯은 표시 전용이고 교체는 도장이 진다 (REQ-736 개정).
 - **파견**: B-2 잠금 = 버튼 비활성 + 권장 성·부족 초식 표시 (REQ-743). 관전 기본 유지.
 - **대련 결과 화면**: 결정타 초식 표시 (REQ-708).
 - **치트 패널**: 게임 화면 밖, 기본 숨김 (REQ-781).
@@ -285,7 +285,7 @@ tags:
 - [ ] 케이스 5 *(REQ-721, 722)*: 하네스 — 같은 무공 내 성 4·7 두 초식의 피해 정수가 각자의 N 으로 산출, `foePower = powerOf(도전자 성)` 로 상쇄식 양변 성립
 - [ ] 케이스 6 *(REQ-731~733)*: A-4 진입 → 예고에 δ 파해 대상 (파운현월) 공개, A-4 도전자 성 = A-3 + 1, 파운현월로 δ 완파 가능 (역파표 대칭 무결성)
 - [ ] 케이스 7 *(REQ-734)*: 같은 도전자 재대련 3회 → 성 +1/+2/+3, 4회째 +3 유지 (상한), coins 0, `rematch{attempt_n}` 기록
-- [ ] 케이스 8 *(REQ-736)*: 도전자 예고 화면에서 슬롯 교체 → 대련 진입 시 반영 + `slot{challenger}` 기록
+- [ ] 케이스 8 *(REQ-736)*: 도전자 예고 화면의 슬롯은 탭해도 바뀌지 않고, 도장에서 교체한 뒤 돌아오면 반영된다 + `slot{action, styleId}` 기록
 - [ ] 케이스 9 *(REQ-741)*: 하네스 — 1성 제자 (전 초식) 무지시 자동으로 B-1 승리 (REQ-506 게이트 승계)
 - [ ] 케이스 10 *(REQ-742, 743)*: 제자 최소 성 4 에서 B-2 버튼 비활성 + 부족 초식 표시, 최소 성 5 도달 시 활성; B-2 foe_set 이 호출마다 달라짐 (시드 고정 테스트로 결정성 검증)
 - [ ] 케이스 11 *(REQ-751~754)*: 제자 수련 지정 → (시간 주입 하네스) 경과에 따라 지정 초식만 상승 + `disciple_train` 기록, 사부 대련 진입이 차단되지 않음 (병렬)

@@ -2,16 +2,13 @@
 // 전환으로 갈리면 왕복 잡무가 되므로, 목록만 스크롤하고 브리핑과 「대련 시작」은 바닥에 고정한다
 // (REQ-881). 목록의 원본은 `session.mjs` 의 `challengerRoster` 하나이고 브리핑이 그 항을 그대로 받는다.
 
-import { BALANCE, STYLES } from '../../balance.mjs';
+import { BALANCE } from '../../balance.mjs';
 import { REVEAL_TIER, styleById } from '../../core.mjs';
 import { clear, composeScreen, el, topBand } from '../dom.mjs';
 import { particle } from '../theme.mjs';
-import { attrTone } from '../components/attr-mark.mjs';
 import { hanja } from '../components/hanja.mjs';
 import { counterPairOf, foeChips, foeStyleCards, revealNotice } from '../components/foe-view.mjs';
-import {
-  ART_NAME, canEquip, challengerRoster, equip, rankOfStyle,
-} from '../session.mjs';
+import { ART_NAME, challengerRoster, rankOfStyle } from '../session.mjs';
 
 /** 대면 상태 (REQ-887) — 이미 이긴 상대는 회색 보통 굵기이고 주사색은 쓰지 않는다 (REQ-811). */
 function rowState(entry) {
@@ -30,16 +27,16 @@ function rowState(entry) {
 /** 첫 대면 안내 (REQ-882) — 브리핑이 설 자리에 「왜 없는가」가 대신 선다. */
 const unknownNotice = () => el('div', { class: 'unknown' }, [
   el('span', { class: 't', text: '겪어본 적 없는 상대다' }),
-  el('span', { class: 's', text: '상대 초식은 한 번 겨뤄봐야 알 수 있다 — 슬롯은 지금 고르고, 답은 다음 대면에' }),
+  el('span', { class: 's', text: '상대 초식은 한 번 겨뤄봐야 알 수 있다 — 답은 다음 대면에, 슬롯은 도장에서 바꾼다' }),
 ]);
 
 /**
  * 슬롯 경고 (REQ-886) — 「무엇이 없는지」가 아니라 「없으면 무슨 일이 나는지」다. 파해가 공개된
- * 대면에서만 주사색이 서고, 교체가 그것을 금색 확인으로 바꾼다.
+ * 대면에서만 주사색이 서고, 도장에서 슬롯을 바꿔 돌아오면 금색 확인으로 바뀐다 (REQ-736).
  */
 function slotWarning(session, entry) {
   // 빈 슬롯을 먼저 본다 — 「대련 시작」을 잠근 술어가 그것이라, 절초 경고에 가리면 비활성 사유가 화면에서 사라진다.
-  if (!session.slots.some(Boolean)) return { cls: 'risk', text: '슬롯이 비어 있다 — 낼 초식이 없으면 매 초 피격이다' };
+  if (!session.slots.some(Boolean)) return { cls: 'risk', text: '슬롯이 비어 있다 — 낼 초식이 없으면 매 초 피격이다, 도장에서 장착한다' };
   const counter = counterPairOf(entry);
   if (counter) {
     const { name } = counter.answer;
@@ -48,7 +45,7 @@ function slotWarning(session, entry) {
       cls: equipped ? 'ok' : 'risk',
       text: equipped
         ? `${name}${particle(name, '이', '가')} 슬롯에 들어왔다 — 절초를 받아칠 수 있다`
-        : `${name}${particle(name, '이', '가')} 빠져 있다 — 절초에 역파를 맞는다`,
+        : `${name}${particle(name, '이', '가')} 빠져 있다 — 절초에 역파를 맞는다, 도장에서 해제하고 장착한다`,
     };
   }
   if (entry.tier === REVEAL_TIER.RUMOR) {
@@ -63,9 +60,6 @@ export function renderSelect(ctx) {
   // 도장 밴드가 차수를 지목해 들어오므로 그 지목이 곧 선택이고, 목록 밖이면 가장 최근에 열린 차수로 떨어진다.
   const asked = roster.findIndex((e) => e.challenger.stage === params.stage);
   let pickedFoe = asked < 0 ? roster.length - 1 : asked;
-  // 슬롯을 먼저 고르고 후보를 고른다 — 두 번의 탭이 곧 「무엇을 빼고 무엇을 넣는가」다.
-  const emptySlot = session.slots.indexOf(null);
-  let pickedSlot = emptySlot < 0 ? 0 : emptySlot;
 
   // 한 줄만 고를 수 있는 목록이라 그룹이 아니라 radio 그룹이다 (REQ-911) — 「몇 중 몇 번째를
   // 골랐는가」가 낭독으로 나온다. 역할은 거동을 주지 않으므로 방향키 순회는 아래에서 직접 진다.
@@ -73,7 +67,6 @@ export function renderSelect(ctx) {
   const briefEl = el('div', { class: 'brief' });
   const entry = () => roster[pickedFoe];
   // 재렌더가 누른 버튼 노드를 파기하므로, 포커스를 되돌리려면 같은 자리를 id 로 다시 찾아야 한다.
-  const slotId = (i) => `select-slot-${i}`;
   // `composeScreen` 을 거치지 않는 부분 갱신이라 조립의 포커스 계약 밖이다 — 그 일반해로 존치한다 (#133).
   function repaint(paint, focusId = document.activeElement?.id) {
     paint();
@@ -119,40 +112,28 @@ export function renderSelect(ctx) {
     });
   }
 
-  /** 슬롯 3칸 + 벤치 (REQ-886) — 화면 전환 없이 그 자리에서 바뀌므로 갱신도 이 화면 안에서 닫힌다. */
-  function slotBlock() {
-    const slotsEl = el('div', { class: 'slots' }, session.slots.map((styleId, i) => {
+  /**
+   * 슬롯 표시 (REQ-886) — 표시 전용이다. 장착·해제의 자리는 도장 행 버튼 하나뿐이라(REQ-736)
+   * 여기서 또 바꾸게 하면 「어느 칸을 비울지 → 무엇을 넣을지」가 이 화면에 얹힌다.
+   * 대련 죽간과 같은 세로 카드를 좌우 스크롤로 세워, 칸이 늘어도 규격이 그대로다 (REQ-824).
+   */
+  function slotStrip() {
+    // 카드가 표시 전용이라 스트립 안에 포커스 받을 것이 없다 — 이 상자가 탭 정지점을 지지 않으면
+    // 칸이 넘친 순간 키보드로 뒤쪽 카드에 닿는 경로가 사라진다 (REQ-911).
+    return el('div', {
+      class: 'slots', role: 'list', 'aria-label': '내 슬롯', tabindex: '0',
+    }, session.slots.map((styleId) => {
       const style = styleId ? styleById(styleId) : null;
-      return el('button', {
-        id: slotId(i),
-        class: `sl${style ? '' : ' empty'}${i === pickedSlot ? ' hit' : ''}`,
-        style: `--attr:${style ? attrTone(style.attr) : 'var(--line)'}`,
-        // 고른 슬롯이 테두리에만 있으면 낭독으로는 다음 탭이 어디로 들어가는지 알 수 없다.
-        'aria-pressed': String(i === pickedSlot),
-        onclick: () => { pickedSlot = i; repaint(paintBrief); },
-      }, [
-        el('span', { class: 'n', text: style ? style.name : '빈 슬롯' }),
-        style ? hanja(style.hanja) : null,
-        el('span', { class: 'r', text: style ? `${rankOfStyle(session, style.id)}성` : `슬롯 ${i + 1}` }),
+      return el('div', { class: `slip${style ? '' : ' empty'}`, role: 'listitem' }, [
+        el('span', { class: 'slip-head' }, [
+          el('b', { class: 'slip-rank', text: style ? `${rankOfStyle(session, style.id)}성` : '' }),
+        ]),
+        el('span', { class: 'slip-body' }, [
+          el('span', { class: 'slip-name', text: style ? style.name : '빈 슬롯' }),
+          style ? hanja(style.hanja, { stacked: true }) : null,
+        ]),
       ]);
     }));
-    const benched = STYLES.filter((s) => session.progress.styles[s.id].learned
-      && !session.slots.includes(s.id) && canEquip(session, s.id));
-    const benchEl = benched.length
-      ? el('div', { class: 'bench' }, benched.map((style) => el('button', {
-        class: 'sl bench-pick', style: `--attr:${attrTone(style.attr)}`,
-        onclick: () => {
-          const at = pickedSlot;
-          equip(session, style.id, at, { challenger: entry().challenger.id });
-          // 고른 초식은 벤치에서 사라지므로 포커스가 갈 자리는 그것을 받은 슬롯이다.
-          repaint(paintBrief, slotId(at));
-        },
-      }, [
-        el('span', { class: 'n', text: style.name }),
-        el('span', { class: 'r', text: `${rankOfStyle(session, style.id)}성` }),
-      ])))
-      : el('p', { class: 'dim', text: '교체할 초식이 없다 — 장착 성에 닿은 초식이 전부 슬롯에 있다.' });
-    return [slotsEl, benchEl];
   }
 
   function paintBrief() {
@@ -162,8 +143,8 @@ export function renderSelect(ctx) {
       row.firstEncounter ? unknownNotice() : el('span', { class: 'cap', text: '상대 초식' }),
       row.firstEncounter ? null : foeStyleCards(row),
       revealNotice(row),
-      el('span', { class: 'cap', text: '내 슬롯 — 탭하면 바꾼다' }),
-      ...slotBlock(),
+      el('span', { class: 'cap', text: '내 슬롯' }),
+      slotStrip(),
       warn ? el('p', { class: `warn ${warn.cls}`.trim(), text: warn.text }) : null,
       el('button', {
         class: 'go', text: row.firstEncounter ? '대련 시작' : '재대련 시작',
