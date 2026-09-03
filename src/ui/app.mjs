@@ -60,6 +60,8 @@ const budget = createFrameBudget();
 let sceneNode = null;
 let overlayNode = null;
 let lastFrameAt = 0;
+/** 직전 프레임에서 무대가 합성 비용을 내고 있었나 — 구간 경계의 한 장을 가리는 데만 쓴다. */
+let stageWasBusy = false;
 // 상단 띠의 주인이 화면이라 갱신 주체도 그 화면이다 — 띠가 없는 화면에서는 갱신할 것도 없다 (REQ-801).
 let paintTop = () => {};
 
@@ -155,7 +157,12 @@ function watchFrames(at) {
   window.requestAnimationFrame(watchFrames);
   const delta = at - lastFrameAt;
   lastFrameAt = at;
-  budget.sample(sceneOfFrame(), delta);
+  // 간격은 직전 프레임이 그린 것의 비용이라, 구간이 열린 첫 한 장은 앞 구간의 값을 들고 온다 —
+  // 그것을 손짓 비용으로 세면 시작 지연 하나가 연출 전체를 강등한다 (#223).
+  const busy = stageBusy();
+  const boundary = busy !== stageWasBusy;
+  stageWasBusy = busy;
+  if (!boundary) budget.sample(sceneOfFrame(), delta);
   if (!sceneNode) return;
   const fps = budget.fps('parallax');
   // 표본이 모자라면 켜 둔 채로 둔다 — 시작하자마자 끄면 무엇을 잰 것인지가 없다.

@@ -3140,6 +3140,9 @@ suite('전수 손짓은 클래스와 회차 주입으로만 성립한다 (#223)'
   ok(/querySelector\('\.scene, \.hall\.transmit'\)/.test(app), '강등 대상에 전수 무대가 들어 있다');
   ok(/classList\.contains\('scene'\) \|\| .*classList\.contains\('waving'\)/.test(app),
     '정지 구간의 프레임은 패럴랙스 표본이 아니다');
+  // 경계 한 장을 세면 시작 지연 하나가 강등을 래치하고, 래치는 그 화면에서 풀리지 않는다.
+  ok(/const boundary = busy !== stageWasBusy;[\s\S]{0,120}if \(!boundary\) budget\.sample\(/.test(app),
+    '구간이 열린 첫 프레임은 표본에서 빠진다');
 });
 
 // ------------------------- 12-a-11. 무대 배율은 음수·0 이 될 수 없다 (#187 · REQ-802)
