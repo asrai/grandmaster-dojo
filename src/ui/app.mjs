@@ -6,6 +6,7 @@ import { createBot } from '../bot.mjs';
 import { $, LEDGER_MS, focusables, ledgerMs } from './dom.mjs';
 import { initAudio, resumeAudio } from './audio.mjs';
 import { createFrameBudget } from './frame-budget.mjs';
+import { blockPinchZoom } from './gesture-block.mjs';
 import { SCREEN } from './theme.mjs';
 import { mountCheatPanel } from './cheat.mjs';
 import { createPad } from './pad.mjs';
@@ -290,6 +291,9 @@ a11yBox.addEventListener('change', () => {
 
 // 도구 띠가 세로를 먹어 무대 배율이 1 밑으로 내려가므로, 목업 대조 스크린샷은 이 스위치로 1:1 을 되찾는다.
 if (new URLSearchParams(window.location.search).get('tools') === '0') $('tools').hidden = true;
+
+// iOS Safari 의 핀치는 meta·CSS 어느 쪽도 못 막아 문서에서 한 번 잡는다 — 더블 탭은 `touch-action` 이 진다 (#204).
+blockPinchZoom(document);
 
 // 오디오는 컨텍스트를 정지 상태로 먼저 세우고 파일을 디코드해 둔다 — 첫 제스처가 오는 순간
 // 이미 준비돼 있어야 「그 입력부터 소리가 난다」가 성립한다 (REQ-920·921).

@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no">
 <title>일대종사 一代宗師</title>
 <!-- 본문 주력 서체는 첫 화면부터 전 표면을 그리므로, 스타일시트 파싱을 기다리지 않고 먼저 받는다 (REQ-803). -->
 <link rel="preload" href="assets/fonts/NanumMyeongjo-subset-400.woff2" as="font" type="font/woff2" crossorigin>
@@ -250,11 +250,14 @@
 .screen-body, .transfer, .settle, .body-flow, .list, .slots { scrollbar-width: none; }
 .screen-body::-webkit-scrollbar, .transfer::-webkit-scrollbar, .settle::-webkit-scrollbar,
 .body-flow::-webkit-scrollbar, .list::-webkit-scrollbar, .slots::-webkit-scrollbar { display: none; }
-html, body { margin: 0; height: 100dvh; overflow: hidden; }
-body {
-  background: var(--bg); color: var(--fg); font: var(--font-body);
-  overscroll-behavior: none;
+/* 브라우저 확대는 무대 배율 산식 밖에서 뷰포트를 옮겨 레터박스와 히트 영역을 어긋내므로,
+   뷰포트 meta 를 무시하는 엔진에서는 이 선언이 확대의 유일한 차단이다 — 두 축을 명시해
+   `manipulation` 이 남겨 두는 핀치줌까지 빼면서 스크롤·scroll-snap 은 그대로 둔다 (#204). */
+html, body {
+  margin: 0; height: 100dvh; overflow: hidden;
+  touch-action: pan-x pan-y; overscroll-behavior: none; -webkit-text-size-adjust: 100%;
 }
+body { background: var(--bg); color: var(--fg); font: var(--font-body); }
 #frame {
   position: relative; width: 100vw; height: 100dvh; overflow: hidden;
   display: flex; flex-direction: column;
