@@ -4,11 +4,19 @@
 
 **재미 가설**: 손으로 익힌 초식이 자동화되는 순간이 보상이다 (성 = 자동화 권한).
 
-## 실행
+## 플레이
 
-빌드 단계는 없지만 `index.html` 이 ESM 모듈(`src/`)을 로드하므로 **로컬 서버가 필수**다 — `file://` 로 직접 열면 모듈이 차단된다.
+**https://asrai.github.io/grandmaster-dojo/**
 
-수치 정본을 JSON 모듈로 읽으므로 import attributes 를 지원하는 런타임이 하한이다 — Chrome 123+ · Safari 17.2+ · Firefox 138+ · Node 22+.
+설치도 빌드도 내려받기도 없다 — 위 주소를 브라우저로 열면 그 자리에서 시작한다.
+
+수치 정본을 JSON 모듈로 읽으므로 import attributes 를 지원하는 브라우저가 하한이다 — Chrome 123+ · Safari 17.2+ · Firefox 138+.
+
+## 실행 (개발자용)
+
+소스를 고쳐 가며 볼 때만 필요한 절이다 — 플레이만 할 것이라면 위 § 플레이 링크로 충분하고 Python 도 Node 도 깔 필요가 없다.
+
+빌드 단계는 없지만 `index.html` 이 ESM 모듈(`src/`)을 로드하므로 **로컬 서버가 필수**다 — `file://` 로 직접 열면 모듈이 차단된다. 헤드리스 검증(§ 검증)은 Node 22+ 가 하한이다.
 
 ```bash
 python3 -m http.server 8000
