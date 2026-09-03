@@ -9,6 +9,7 @@ import { createFrameBudget } from './frame-budget.mjs';
 import { SCREEN } from './theme.mjs';
 import { mountCheatPanel } from './cheat.mjs';
 import { createPad } from './pad.mjs';
+import { stageScale } from './stage-scale.mjs';
 import {
   createSession, enterPhase, exportPayload, flushScreenView, logEvent, logSessionMeta, setBotRunning,
 } from './session.mjs';
@@ -186,6 +187,21 @@ if (!$('shell')) throw new Error('흔들림 래퍼 #shell 이 스테이지에 �
 
 // 히트 영역 최소치도 BALANCE 값이라, CSS 가 그 값을 변수로 받아 간다 (REQ-101).
 document.documentElement.style.setProperty('--hit', `${BALANCE.buttonHitPx}px`);
+
+// 무대 배율은 상자를 재야 나오므로 CSS 가 아니라 여기서 낸다 (#187). 재는 대상이 창이 아니라
+// 상자인 것이 계약이다 — 도구 띠가 먹은 높이도, 그 띠가 접히는 것도 상자 크기에만 나타난다.
+const stageNode = $('stage');
+const stageBoxNode = $('stagebox');
+const fitStage = () => {
+  const k = stageScale(
+    { w: stageBoxNode.clientWidth, h: stageBoxNode.clientHeight },
+    // 변형 전 레이아웃 크기라 배율을 먹여도 되먹임하지 않는다 — 논리 해상도의 집은 CSS 하나뿐이다.
+    { w: stageNode.offsetWidth, h: stageNode.offsetHeight },
+  );
+  stageNode.style.setProperty('--k', String(k));
+};
+new ResizeObserver(fitStage).observe(stageBoxNode);
+fitStage();
 
 // 형식 위반을 여기서 전건 터뜨려, 판정 오버레이·죽간 exit·전수 팔 각도가 각자 연출 도중에
 // 죽는 경로를 없앤다 — 실패 시점이 첫 페인트 앞으로 고정된다 (#132).

@@ -266,11 +266,11 @@ body {
 #tools .cheat { position: absolute; top: 100%; left: 8px; z-index: 3; background: var(--c1); }
 
 /* 스테이지 배율의 기준은 창이 아니라 이 상자다 — 도구 띠가 먹은 만큼은 무대가 쓸 수 없다. */
-#stagebox { flex: 1; min-height: 0; container-type: size; display: grid; place-content: center; }
+#stagebox { flex: 1; min-height: 0; display: grid; place-content: center; }
 /* 논리 해상도를 393x852 로 못박고 상자에는 축소로만 맞춘다 — 내부 좌표가 창·기기와 무관해진다.
-   무단위 배율이 필요한데 min() 은 길이와 수를 못 섞으므로 tan(atan2()) 로 길이비를 수로 환산한다. */
+   배율은 부팅이 상자를 재서 `--k` 로 넣어 준다 (#187); 여기 적힌 1 은 그 주입 전의 무대 크기다. */
 #stage {
-  --k: min(tan(atan2(100cqw, 393px)), tan(atan2(100cqh, 852px)), 1);
+  --k: 1;
   position: relative; width: 393px; height: 852px;
   transform: scale(var(--k)); transform-origin: center;
   background: var(--bg); border-radius: 18px; overflow: hidden;
