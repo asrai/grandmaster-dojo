@@ -2915,6 +2915,85 @@ suite('이름·한자 병기의 간격은 부모의 flex gap 이 짓는다 (#159
 });
 
 
+// ------------------------- 12-a-9. 엎드린 실루엣의 세로 기준 — 바닥이지 무대의 위가 아니다 (#161)
+
+suite('쓰러진 사람은 접어 쓰는 무대의 바닥을 기준으로 앉는다 (#161)', () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'))
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => [m[1].trim(), m[2]]);
+  const heads = (sel) => rules.filter(([s]) => s === sel).length;
+  const body = (sel) => rules.find(([s]) => s === sel)?.[1] ?? null;
+  const rootBlock = css.match(/^:root \{[\s\S]*?\n\}/m)?.[0];
+  ok(rootBlock, ':root 블록을 실제로 떼어냈다');
+  const px = (name) => Number(rootBlock?.match(new RegExp(`(^|[;{\\s])${name}:\\s*(\\d*\\.?\\d+)px`))?.[2]);
+
+  // ① 두 집합 대조 — 화면이 눕히는 자세와 CSS 가 바닥 기준으로 되돌리는 자세가 같아야 한다.
+  // 한쪽만 늘면 새 자세가 옛 좌표계에 홀로 남아 같은 결함이 그 자세에서만 되돌아온다.
+  const resultSrc = readFileSync(new URL('../src/ui/screens/result.mjs', import.meta.url), 'utf8');
+  // 자세 이름은 하네스가 아니라 화면이 정한다 — 여기에 접미사를 박으면 그 리터럴이 바뀔 때
+  // 클래스가 CSS 양쪽에서 조용히 떨어져 나가는데도 아래 대조가 통과한다.
+  const pose = resultSrc.match(/PRONE_ASSETS\.has\([^)]*\)[^}]*?pose:\s*'(\w+)'/)?.[1];
+  ok(pose, 'result.mjs 가 눕히는 자세 리터럴을 실제로 지니고 있다');
+  // 모집단은 완전 일치가 아니라 선택자 매칭이다 — 미디어 쿼리 안의 둘째 규칙이 캐스케이드로
+  // 이기고도 첫 규칙만 검사되면 통과한다.
+  const proneSel = new RegExp(`\\.fig\\.far\\.sil_\\w+_${pose}\\b`);
+  const proneRules = rules.filter(([sel]) => proneSel.test(sel));
+  eq(proneRules.length, 1, `엎드린 실루엣의 좌표 규칙이 하나뿐이다 — ${proneRules.length}건`);
+  const proneRule = proneRules[0];
+  const cssProne = [...(proneRule?.[0] ?? '')
+    .matchAll(new RegExp(`\\.(sil_\\w+_${pose})\\b`, 'g'))].map((m) => m[1]).sort();
+  const declared = resultSrc.match(/const PRONE_ASSETS = new Set\(\[([^\]]*)\]\)/);
+  ok(declared, 'result.mjs 의 엎드림 에셋 집합 선언을 실제로 떼어냈다');
+  const jsProne = [...(declared?.[1] ?? '').matchAll(/'([^']+)'/g)].map((m) => `${m[1]}_${pose}`).sort();
+  ok(jsProne.length >= 2, `눕는 자세가 실재한다 — ${jsProne.join(' · ')}`);
+  deepEq(cssProne, jsProne, '눕히는 자세와 바닥 기준으로 되돌리는 자세가 같은 집합이다');
+  // 그 클래스가 실제로 그림을 지고 있는가 — 자세 이름이 바뀌면 여기서 함께 터진다.
+  deepEq(rules.filter(([sel, b]) => /background-image:/.test(b) && new RegExp(`_${pose}$`).test(sel))
+    .map(([sel]) => sel.replace(/^\.fig\./, '')).sort(), jsProne,
+  '눕는 자세마다 실루엣 그림 선언이 실재한다');
+
+  // ② 양성 대조 — 되돌림이 겨누는 원 좌표(위 기준)가 실재해야 아래 단정이 공허하지 않다.
+  ok(body('.scene .fig.far'), '원경 좌표 규칙 블록을 실제로 떼어냈다');
+  eq(heads('.scene .fig.far'), 1, '.scene .fig.far 규칙 머리가 하나뿐이다 — 뒤에 온 재정의가 없다');
+  ok(/(^|[;{\s])top:\s*var\(--fig-far-y\)/.test(body('.scene .fig.far') ?? ''),
+    '원경의 기준은 여전히 무대의 위다 — 서 있는 사람은 그 자리를 쓴다');
+
+  // ③ 되돌림 — 위 기준을 놓지 않으면 두 축이 함께 걸려 상자 높이가 무대에 눌린다. 그리고 선택자가
+  // 원 규칙을 통째로 머리에 지므로 특이도가 언제나 이긴다 — 순서로 이기는 규칙은 재배치에 썩는다.
+  ok((proneRule?.[0] ?? '').split(',').every((sel) => sel.trim().startsWith('.scene .fig.far.')),
+    '엎드림 규칙이 원 규칙을 머리에 지고 좁힌다 — 특이도가 순서에 기대지 않는다');
+  ok(/(^|[;{\s])top:\s*auto/.test(proneRule?.[1] ?? ''), '엎드린 쪽은 위 기준을 놓는다');
+  ok(/(^|[;{\s])bottom:\s*var\(--fig-prone-y\)/.test(proneRule?.[1] ?? ''),
+    '엎드린 쪽의 기준은 무대 바닥이다 — 무대를 접어도 몸이 바닥과 함께 오른다');
+
+  // ④ 무대 초과 — 실루엣 상자는 납품 캔버스의 종횡비를 지므로 폭 하나가 높이를 정한다.
+  // 접은 무대에서 바닥 간격과 그 높이의 합이 무대를 넘으면 몸의 위가 잘린다.
+  const proneY = px('--fig-prone-y');
+  const farW = px('--fig-far-w');
+  const sceneH = px('--result-scene-h');
+  const ratio = body('.fig')?.match(/aspect-ratio:\s*(\d+)\s*\/\s*(\d+)/);
+  ok(ratio, '실루엣 상자의 종횡비 선언을 실제로 떼어냈다');
+  ok([proneY, farW, sceneH].every(Number.isFinite),
+    `원장에서 바닥 간격·원경 폭·접은 무대 높이를 실제로 읽었다 — ${proneY} / ${farW} / ${sceneH}`);
+  const boxH = farW * Number(ratio?.[2]) / Number(ratio?.[1]);
+  ok(proneY + boxH <= sceneH,
+    `엎드린 상자가 접은 무대 안에 온전히 든다 — ${proneY} + ${boxH} ≤ ${sceneH}`);
+
+  // ⑤ 표찰 회피 — 띠의 실제 높이는 폰트 메트릭이 정해 원장에 없으므로, 선언된 최대 글자 크기의
+  // 2배를 그 상계로 잡는다. 표찰의 글자나 바닥 간격이 커지면 이 자리가 재실측을 요구한다.
+  const tagRules = rules.filter(([sel]) => /(^|[\s,>+~])\.foe-tag\b/.test(sel));
+  ok(tagRules.length >= 2, `표찰을 겨누는 규칙을 실제로 떼어냈다 — ${tagRules.length}건`);
+  const tagBottom = Number(body('.scene .foe-tag')?.match(/(?:^|[;{\s])bottom:\s*(\d*\.?\d+)px/)?.[1]);
+  const tagFont = Math.max(...tagRules
+    .map(([, b]) => Number(b.match(/font-size:\s*(\d*\.?\d+)px/)?.[1]) || 0));
+  ok(tagBottom > 0 && tagFont > 0,
+    `표찰의 바닥 간격과 최대 글자 크기를 실제로 읽었다 — ${tagBottom}px / ${tagFont}px`);
+  ok(proneY >= tagBottom + tagFont * 2,
+    `엎드린 몸이 표찰 띠 위에서 끝난다 — 바닥 ${proneY}px ≥ ${tagBottom} + ${tagFont * 2}px`);
+});
+
+
 // ------------------------- 12-b. 결과 진입 1회 정산 · 판 원장 (#70 · REQ-871~873)
 
 suite('판 원장 — 그 판의 판정 분포·성 변화·결정타 (REQ-872·873·708)', () => {

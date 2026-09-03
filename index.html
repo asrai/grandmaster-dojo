@@ -137,6 +137,7 @@
   --fig-near-x: 14px;
   --fig-near-y: 30px;
   --fig-near-w: 176px;
+  --fig-prone-y: 48px;   /* 쓰러진 사람이 무대 바닥에서 뜨는 거리 */
   /* 역광은 실루엣보다 크고 어긋나 있다 — 뒤에서 비추는 빛이라 윤곽과 같은 상자가 아니다. */
   --glow-far-x: 22px;
   --glow-far-y: 112px;
@@ -587,6 +588,10 @@ button.ghost { background: transparent; }
 .scene .backlight.near { right: var(--glow-near-x); bottom: var(--glow-near-y); width: var(--glow-near-w); height: var(--glow-near-h); }
 .scene .fig.far { left: var(--fig-far-x); top: var(--fig-far-y); width: var(--fig-far-w); }
 .scene .fig.near { right: var(--fig-near-x); bottom: var(--fig-near-y); width: var(--fig-near-w); }
+/* 쓰러진 쪽만 바닥 기준이다 — 서 있는 쪽처럼 바닥에 묶여야 무대를 접어도 몸이 표찰 위에 남는다 (#161). */
+.scene .fig.far.sil_master_prone, .scene .fig.far.sil_challenger_prone {
+  top: auto; bottom: var(--fig-prone-y);
+}
 /* 지켜보는 사부는 무대 밖 앞 구석에 서고 그 잘림이 카메라가 곧 사부의 시선임을 말한다
    (REQ-854). 판정 오버레이(z 8)보다 아래인 것은 관객이 판정을 가리면 안 되기 때문이다. */
 .scene .fig.watcher { left: var(--watch-x); bottom: var(--watch-y); width: var(--watch-w); z-index: 4; }
