@@ -74,8 +74,9 @@ state_get() { sed -n "s/^$2=//p" "$1" 2>/dev/null | tail -1; }
 
 # 프로필 경로를 --user-data-dir 로 물고 있는 프로세스 전부 (크롬 본체 + 헬퍼).
 pids_by_profile() {
-  L4_PAT=$1 ps -axo pid=,command= \
-    | awk 'index($0, "--user-data-dir=" ENVIRON["L4_PAT"]) { print $1 }'
+  [ -n "${1:-}" ] || die "내부 오류: 빈 프로필 경로로는 조회하지 않는다"
+  ps -axo pid=,command= \
+    | L4_PAT=$1 awk 'index($0, "--user-data-dir=" ENVIRON["L4_PAT"]) { print $1 }'
 }
 
 stop_tag() {
@@ -94,6 +95,9 @@ stop_tag() {
   fi
   if [ -n "$targets" ]; then
     printf 'l4-serve: 정리 대상 pid:%s\n' "$targets" >&2
+    for pid in $targets; do
+      ps -o pid=,command= -p "$pid" 2>/dev/null | cut -c1-120 >&2 || true
+    done
     # shellcheck disable=SC2086
     term_then_kill $targets
   fi

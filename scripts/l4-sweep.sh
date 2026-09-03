@@ -64,7 +64,7 @@ proc_cwd() { lsof -a -p "$1" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -1
 
 TARGETS=''
 FOUND=0
-printf '%-7s %-6s %-11s %-7s %-6s %s\n' PID PPID ETIME KIND STATE MARKER
+ROWS=''
 
 while read -r pid ppid etime rest; do
   [ -n "${pid:-}" ] || continue
@@ -87,7 +87,8 @@ while read -r pid ppid etime rest; do
   esac
   FOUND=$((FOUND + 1))
   if [ "$ppid" = "1" ]; then state=orphan; else state=live-parent; fi
-  printf '%-7s %-6s %-11s %-7s %-6s %s\n' "$pid" "$ppid" "$etime" "$kind" "$state" "$marker"
+  ROWS="$ROWS$(printf '%-7s %-6s %-11s %-7s %-11s %s' "$pid" "$ppid" "$etime" "$kind" "$state" "$marker")
+"
   if [ "$state" = orphan ] || [ "$INCLUDE_LIVE" = 1 ]; then
     TARGETS="$TARGETS $pid"
   fi
@@ -95,17 +96,43 @@ done <<EOF
 $(ps -axo pid=,ppid=,etime=,command=)
 EOF
 
-if [ "$FOUND" = 0 ]; then
+# 비정상 종료는 상태 파일·프로필도 남긴다 — 같은 태그의 다음 up 이 그것에 막힌다.
+STALE=''
+for f in "$PROFILE_ROOT"/*.env; do
+  [ -f "$f" ] || continue
+  tag=$(sed -n 's/^L4_TAG=//p' "$f" | tail -1)
+  [ -n "$tag" ] || continue
+  holder=$(ps -axo pid=,command= | L4_PAT="$PROFILE_ROOT/$tag-chrome" \
+    awk 'index($0, "--user-data-dir=" ENVIRON["L4_PAT"]) { print $1 }' | head -1)
+  server=$(sed -n 's/^L4_SERVER_PID=//p' "$f" | tail -1)
+  if [ -z "$holder" ] && { [ -z "$server" ] || ! alive "$server"; }; then
+    STALE="$STALE $tag"
+  fi
+done
+
+if [ "$FOUND" = 0 ] && [ -z "$STALE" ]; then
   printf 'l4-sweep: 소유 표지가 있는 잔여 프로세스 0건\n'
   exit 0
 fi
+
+if [ "$FOUND" != 0 ]; then
+  printf '%-7s %-6s %-11s %-7s %-11s %s\n' PID PPID ETIME KIND STATE MARKER
+  printf '%s' "$ROWS"
+fi
+[ -n "$STALE" ] && printf 'l4-sweep: 죽은 세션의 상태 파일:%s\n' "$STALE"
 
 if [ "$KILL" != 1 ]; then
   printf 'l4-sweep: dry-run — 종료 대상%s (죽이려면 --kill)\n' "${TARGETS:- 없음}"
   exit 0
 fi
 
-[ -n "$TARGETS" ] || { printf 'l4-sweep: 종료 대상 없음 (live-parent 만 있음 — --include-live 로 포함)\n'; exit 0; }
+for tag in $STALE; do
+  rm -rf "$PROFILE_ROOT/$tag-chrome"
+  rm -f "$PROFILE_ROOT/$tag.env" "$PROFILE_ROOT/$tag-server.log"
+  printf 'l4-sweep: [%s] 상태 파일 제거\n' "$tag"
+done
+
+[ -n "$TARGETS" ] || { printf 'l4-sweep: 종료 대상 프로세스 없음\n'; exit 0; }
 
 for pid in $TARGETS; do alive "$pid" && kill "$pid" 2>/dev/null || true; done
 for _ in 1 2 3 4 5 6; do
