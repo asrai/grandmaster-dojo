@@ -270,7 +270,7 @@ tags:
 | S2 | 도장 | REQ-830~837 | `dojo_v2_growth.png` (v2) |
 | S3 | 수련 | REQ-840~846 | `train_v4_input.png` (v4) |
 | S4 | 파견 관전 | REQ-850~857 | `dispatch_v1_beckon.png` (v1) |
-| S5 | 전수 | REQ-860~867 | `transmit_v2_done.png` (v2) |
+| S5 | 전수 | REQ-860~867 | `transmit_v2_done.png` (v2) — 단 **구도는 REQ-860 이 개정**했다(시안은 좌향 나란히, 현행은 마주 보기): 대조 스윕은 조문을 따르고 이 시안을 이탈 근거로 쓰지 않는다 |
 | S6 | 결과 | REQ-870~878 | `result_v2_duel.png` (v2) |
 | S7 | 도전자 선택 | REQ-880~887 | `select_v2_first.png` (v2) |
 
