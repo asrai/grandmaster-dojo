@@ -18,9 +18,9 @@ import { createVerdictOverlay } from '../verdict-overlay.mjs';
 import { trainWiring } from '../wiring.mjs';
 
 /**
- * 구결 족자 (REQ-841·842) — 구절 하나가 방향 하나에 대응하고 친 만큼 점등된다. 딜레이드 힌트가
- * 0 인 수련에서는 이 점등이 곧 힌트다 (REQ-712). 화면에서 유일하게 밝은 면이라 색이 아니라
- * 표면(C9 화선지)으로 서고, 상하 축과 주사 낙관이 그것을 족자로 만든다.
+ * 구결 족자 (REQ-841·842) — 딜레이드 힌트가 0 인 수련에서는 이 점등이 곧 힌트다 (REQ-712).
+ * 화면에서 유일하게 밝은 면이라 색이 아니라 표면(C9 화선지)으로 서고, 상하 축과 주사 낙관이
+ * 그것을 족자로 만든다.
  */
 function gugyeolScroll(style) {
   const verses = style.gugyeol.map((verse, i) => el('div', { class: 'verse' }, [
@@ -29,21 +29,26 @@ function gugyeolScroll(style) {
   ]));
   // 낙관은 두 자다 — 초식 한자의 앞 두 자를 새긴다.
   const stamp = el('span', { class: 'stamp' }, [hanja(style.hanja.slice(0, 2), { stacked: true })]);
+  const list = el('div', { class: 'verse-list' }, verses);
   const node = el('div', { class: 'scroll' }, [
     el('div', { class: 'rod', 'aria-hidden': 'true' }),
-    el('div', { class: 'silk' }, [...verses, stamp]),
+    // 낙관은 움직이는 목록이 아니라 창에 붙는다 — 족자에 찍힌 도장은 글이 흘러도 제자리다.
+    el('div', { class: 'silk' }, [el('div', { class: 'verse-win' }, [list]), stamp]),
     el('div', { class: 'rod', 'aria-hidden': 'true' }),
   ]);
   let lit = -1;
-  return {
-    node,
-    /** @param {number} done 이미 친 키 수 */
-    light(done) {
-      if (lit === done) return;
-      lit = done;
-      verses.forEach((verse, i) => { verse.className = `verse${i < done ? ' lit' : ''}`; });
-    },
+  /** @param {number} done 이미 친 키 수 */
+  const light = (done) => {
+    if (lit === done) return;
+    lit = done;
+    // 둘째 줄이 지금 칠 구절이므로 목록은 `done - 1` 줄만큼 올라간다 — 아직 아무것도 안 쳤으면
+    // 한 줄 내려가 첫 줄이 비고, 완주하면 마지막 구절이 첫 줄에 점등된 채 남는다.
+    list.style.setProperty('--verse-shift', String(1 - done));
+    verses.forEach((verse, i) => verse.classList.toggle('lit', i === done - 1));
   };
+  // 화면에 붙기 전에 시작 상태를 세운다 — 붙은 뒤 세우면 진입하자마자 전이가 한 번 돈다.
+  light(0);
+  return { node, light };
 }
 
 /**

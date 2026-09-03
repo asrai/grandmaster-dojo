@@ -194,10 +194,14 @@
   --glow-hall-y: 24px;
   --glow-hall-w: 206px;
   --glow-hall-h: 222px;
-  /* 구결 족자 (REQ-841·842) — 화면에서 유일하게 밝은 면이라 여기만 C9 를 표면으로 쓴다. */
+  /* 구결 족자 (REQ-841·842) — 화면에서 유일하게 밝은 면이라 여기만 C9 를 표면으로 쓴다. 창이
+     3줄 상수라 행 높이 하나가 곧 키 한 번의 이동량이고, 창 바닥은 사부 머리 알파 경계 위에 선다 (#169). */
   --scroll-x: 16px;
-  --scroll-y: 12px;
+  --scroll-y: 10px;
   --scroll-rod-h: 10px;
+  --verse-row-h: 25px;
+  --verse-line-h: 19px;
+  --scroll-shift: 150ms;
   --seal-size: 26px;
   /* 지켜보는 사부 (REQ-854) — 무대 밖 앞 구석이라 좌표가 음수이고 그 잘림이 곧 사부의 시선이다. */
   --watch-x: -30px;
@@ -957,12 +961,28 @@ button.ghost { background: transparent; }
   background: linear-gradient(180deg, color-mix(in srgb, var(--c3) 42%, var(--c9)), var(--c9));
   box-shadow: 0 8px 22px var(--sunken);
 }
-/* 구절 하나가 방향 하나다 — 친 만큼 점등되고 남은 구절은 흐려진다 (REQ-841). */
-.verse {
-  display: flex; align-items: baseline; gap: 11px; padding: 3px 0;
-  font-size: 15px; font-weight: 800; color: var(--c1); opacity: .32;
+/* 창은 세 줄이고 그 안에서 목록만 흐른다 — 족자 높이가 구절 수를 따라가면 사부를 덮는다. */
+.scroll .verse-win { height: calc(var(--verse-row-h) * 3); overflow: hidden; }
+/* 화면은 몇 줄을 올릴지만 넘기고 픽셀 환산은 원장이 진다 — 행 높이와 이동량이 한 토큰이라 어긋날 수 없다. */
+.scroll .verse-list {
+  transform: translateY(calc(var(--verse-row-h) * var(--verse-shift, 1)));
+  transition: transform var(--scroll-shift) ease;
 }
+/* 구절 하나가 방향 하나다 — 직전에 친 한 줄만 점등되고 앞으로 칠 구절은 흐리다 (REQ-841). */
+.verse {
+  display: flex; align-items: baseline; gap: 11px; height: var(--verse-row-h);
+  font-size: 15px; line-height: var(--verse-line-h); font-weight: 800; color: var(--c1); opacity: .32;
+}
+/* 행이 상수 높이라 워드랩은 아래 행을 침범한다 — 넘치는 구절은 #168 해설과 같은 말줄임으로 접는다. */
+.verse span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .verse.lit { opacity: 1; }
+/* 흐르는 글을 못 읽는 손에는 줄 배정만 남기고 이동을 즉시 끝낸다. 미디어 쿼리는 위 전이 선언과
+   특이도가 같아 순서로만 이기므로 블록을 앞으로 옮기면 조용히 진다. `.flat` 은 저프레임 강등
+   스위치가 `.scene` 에만 붙어 수련 무대(`.hall`)에는 아직 닿지 않는, 그 스위치가 넓어질 때의 선언이다. */
+.flat .scroll .verse-list { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .scroll .verse-list { transition: none; }
+}
 .verse-dir { flex: none; width: 17px; text-align: center; font-style: normal; font-size: 16px; color: var(--c5); }
 /* 낙관은 주사(C5)의 자리다 (REQ-811). */
 .scroll .stamp {
