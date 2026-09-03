@@ -3715,20 +3715,20 @@ suite('확대 차단의 선언과 리스너가 제자리에 있다 (#204)', () =
   let clock = 0;
   const taps = [];
   blockDoubleTapZoom({ addEventListener: (type, fn, opts) => taps.push([type, fn, opts]) }, () => clock);
-  deepEq(taps.map(([type]) => type), ['touchend'],
-    '더블 탭 차단은 탭이 끝나는 자리 하나에만 선다 — 시작을 막으면 스크롤이 함께 죽는다');
-  ok(taps.every(([, , opts]) => opts && opts.passive === false),
-    'passive 로 붙으면 preventDefault 가 무음으로 무시된다');
-  const [, onTouchEnd] = taps[0];
+  deepEq(taps.map(([type, , opts]) => `${type}:${opts?.passive}`), ['touchstart:true', 'touchend:false'],
+    '시작은 자리만 적고 끝에서만 막는다 — 시작을 비-passive 로 잡으면 스크롤이 함께 죽는다');
+  const onStart = taps[0][1];
+  const onEnd = taps[1][1];
 
   // 두 번째 탭의 기본 동작을 막으면 iOS 가 그 탭의 click 까지 죽이므로, 차단층이 직접 흘려야 한다.
-  const tap = (at) => {
+  const tap = (at, { from = { x: 100, y: 700 }, to = from, fingers = 1 } = {}) => {
     clock = at;
     let prevented = 0;
     let clicked = 0;
-    onTouchEnd({
-      changedTouches: { length: 1 },
+    onStart({ touches: { length: fingers }, changedTouches: [{ clientX: from.x, clientY: from.y }] });
+    onEnd({
       touches: { length: 0 },
+      changedTouches: [{ clientX: to.x, clientY: to.y }],
       target: { click: () => { clicked += 1; } },
       preventDefault: () => { prevented += 1; },
     });
@@ -3743,19 +3743,19 @@ suite('확대 차단의 선언과 리스너가 제자리에 있다 (#204)', () =
   deepEq(tap(9000), { prevented: 0, clicked: 0 },
     '창을 넘긴 간격은 더블 탭이 아니다 — 느린 두 탭까지 가로채면 클릭이 두 번 난다');
 
+  // 십자는 좌우 키가 떨어져 있어, 시간만 보면 정상 교대 연타가 통째로 합성 click 경로로 넘어간다.
+  deepEq(tap(9100, { from: { x: 300, y: 700 } }), { prevented: 0, clicked: 0 },
+    '창 안이어도 멀리 떨어진 둘째 탭은 확대 판정 대상이 아니다');
+
+  // touchend 의 타깃은 터치가 시작된 요소로 고정되므로, 이동량을 안 보면 취소 제스처가 press 로 둔갑한다.
+  deepEq(tap(30000, { from: { x: 300, y: 700 }, to: { x: 300, y: 760 } }), { prevented: 0, clicked: 0 },
+    '타깃 밖으로 뺀 끝은 press 를 만들지 않는다 — 브라우저도 그 자리를 누르지 않는다');
+  deepEq(tap(30100, { from: { x: 300, y: 760 } }), { prevented: 0, clicked: 0 },
+    '그 취소는 탭으로 적히지도 않는다 — 적히면 뒤따르는 제자리 탭이 짝으로 묶인다');
+
   // 핀치의 꼬리는 탭이 아니다 — 여기서 세면 손을 뗄 때마다 확대 차단이 엉뚱한 곳에서 발화한다.
-  clock = 20000;
-  let pinchTail = 0;
-  onTouchEnd({
-    changedTouches: { length: 1 },
-    touches: { length: 1 },
-    target: { click: () => { pinchTail += 1; } },
-    preventDefault: () => { pinchTail += 1; },
-  });
-  clock = 20000 + 10;
-  deepEq(tap(20000 + 10), { prevented: 0, clicked: 0 },
-    '남은 손가락이 있는 끝은 탭 시계를 움직이지 않는다');
-  eq(pinchTail, 0, '그 끝에서는 차단도 press 도 일어나지 않는다');
+  deepEq(tap(9250, { fingers: 2 }), { prevented: 0, clicked: 0 },
+    '두 손가락으로 시작한 터치의 끝은 탭으로 세지 않는다');
 
   ok(/blockDoubleTapZoom\(document, /.test(app),
     '부팅이 더블 탭 차단도 문서에 1회 설치한다 — 타깃이 문서여야 표면 전역을 덮는다');

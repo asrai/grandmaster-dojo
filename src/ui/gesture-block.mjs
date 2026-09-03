@@ -12,32 +12,51 @@ export function blockPinchZoom(target) {
   }
 }
 
-/**
- * WebKit 이 두 탭을 확대로 읽는 최대 간격 — 플랫폼 제스처 상수라 게임-룰 원장이 아니라 여기 산다.
- * 이 값보다 짧은 간격이 곧 「연타」이므로, 차단이 무는 구간과 연타 무손실 구간은 같은 구간이다.
- */
+/** WebKit 이 두 탭을 확대로 읽는 최대 간격 — 플랫폼 제스처 상수라 게임-룰 원장이 아니라 여기 산다. */
 export const DOUBLE_TAP_MS = 300;
 
+/** 제자리 탭으로 셀 이동 상한(px) — 더 움직인 끝은 타깃 밖으로 뺀 취소라 브라우저도 그 자리를 누르지 않는다. */
+const TAP_SLOP_PX = 10;
+
+/** 두 탭을 한 짝으로 셀 거리 상한(px) — 화면 양끝을 번갈아 치는 연타는 확대 판정 대상이 아니다. */
+const TAP_PAIR_PX = 40;
+
+const tapPoint = (touch) => (touch ? { x: touch.clientX, y: touch.clientY } : null);
+const apart = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
 /**
- * 더블 탭 확대 차단 — `touch-action` 이 iOS 에서 이 억제를 걸지 않아 JS 층이 대신 진다 (#215).
- * 두 번째 탭의 기본 동작을 막으면 WebKit 이 그 탭의 `click` 까지 함께 죽이므로, 입력이 소실되지
- * 않게 같은 타깃으로 click 을 직접 흘린다 — 코어 입력 무손실이 확대 차단보다 우선한다.
+ * 더블 탭 확대 차단 — iOS 가 `touch-action` 으로는 이 억제를 걸지 않아 JS 층이 대신 진다 (#215).
+ * 막힌 탭은 그 `click` 까지 함께 죽으므로 같은 타깃으로 직접 흘린다 — 코어 입력 무손실이 확대 차단보다 앞선다.
  *
  * @param {{addEventListener: Function}} target 배선을 받을 대상 — 문서를 주입해 표면 전역을 덮는다
  * @param {() => number} now 밀리초 시계 — 탭 간격 판정의 유일한 시간 출처다
  * @returns {void}
  */
 export function blockDoubleTapZoom(target, now) {
-  let lastTapAt = -Infinity;
+  let began = null;
+  let lastTap = null;
+
+  target.addEventListener('touchstart', (event) => {
+    // 손가락이 둘 이상 닿는 순간은 핀치라, 그 터치는 탭 추적에서 뺀다.
+    began = event.touches?.length === 1 ? tapPoint(event.changedTouches?.[0]) : null;
+  }, { passive: true });
+
   target.addEventListener('touchend', (event) => {
-    // 핀치의 꼬리는 탭이 아니다 — 손가락이 하나만 떠났고 화면에 남은 것이 없을 때만 탭으로 센다.
-    if (event.changedTouches?.length !== 1 || event.touches?.length) return;
+    const from = began;
+    began = null;
+    // 화면에 손가락이 남았거나 여럿이 함께 떨어진 끝은 핀치의 꼬리다.
+    if (event.touches?.length || event.changedTouches?.length !== 1) return;
+    const ended = tapPoint(event.changedTouches[0]);
+    // 타깃은 터치가 시작된 요소로 고정되므로, 밖으로 뺀 취소에 press 를 만들어 주지 않으려면 이동량을 봐야 한다.
+    if (!from || !ended || apart(from, ended) > TAP_SLOP_PX) return;
     const at = now();
-    const isDoubleTap = at - lastTapAt < DOUBLE_TAP_MS;
-    lastTapAt = at;
-    if (!isDoubleTap) return;
+    const paired = lastTap !== null
+      && at - lastTap.at < DOUBLE_TAP_MS
+      && apart(lastTap, ended) <= TAP_PAIR_PX;
+    lastTap = { ...ended, at };
+    if (!paired) return;
     event.preventDefault();
     // 방향키는 글리프만 든 버튼이고 되돌리기는 자식 span 을 두므로, 버블링이 두 경우를 함께 덮는다.
-    event.target?.click?.();
+    event.target.click();
   }, { passive: false });
 }
