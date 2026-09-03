@@ -568,6 +568,7 @@ Output filename: as specified below.
 - `sil_master` Pass 0 산출본 1장을 톤 reference 로 첨부해 붓 질감을 맞춘다. **체격 대비가 이 자산의 존재 이유** — 나란히 놓았을 때 누가 사부이고 누가 제자인지 실루엣만으로 갈려야 한다.
 - Pass 2·3(따라 하기 몸통 / 팔)의 어깨 관절은 `sil_master` Pass 3·4 와 **같은 회전 축 규약**을 쓴다 — 두 인물의 팔이 같은 각도에서 나란해지는 것이 전수 완료의 연출이다(REQ-861).
 - `sil_disciple_base_raw.png` 는 manifest 미등록 · 빌드 복사 제외.
+- **override — S2 도장 정경(REQ-833)에 한해 `sil_disciple_dojo.png` 를 화면에서 좌우 반전해 쓴다** (CSS `scaleX(-1)`, 자산 무변경). 계약 기본방향은 `facing three-quarter right` 그대로이고 파생 자세의 방향 앵커도 그대로다 — 제자가 사부 오른쪽에 서는 배치라 그 화면에서만 좌향으로 읽혀야 한다. 계약↔납품 대조 스윕은 이 자산을 **우향으로** 판정해야 하며, 화면이 좌향이라는 이유로 파일을 뒤집으면 이중 반전이 된다 (#213).
 
 **[C] 내부 참조**
 
