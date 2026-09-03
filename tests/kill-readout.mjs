@@ -279,7 +279,7 @@ const mark = (pass) => (pass == null ? '  ?' : pass ? '  ✓' : '  ✗');
 
 /** 파견 항목의 투입 성 한 토막 — 구 판본 파일은 필드가 없으므로 그 부재도 값으로 보인다. */
 const ranksBrief = (ranks) => (ranks
-  ? `{${Object.entries(ranks).map(([id, rank]) => `${id}${rank}`).join('/')}}`
+  ? `{${Object.entries(ranks).map(([id, rank]) => `${id}:${rank}`).join('/')}}`
   : '{?}');
 
 /**

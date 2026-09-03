@@ -1631,6 +1631,12 @@ suite('파견 판의 투입 성은 판마다 다시 뜬다 (REQ-744)', () => {
   eq(won.disciple_ranks['yuun-bo'], grown.to, '완주 항목은 재진입 시점의 여문 성을 진다');
   ok(aborted.disciple_ranks['yuun-bo'] !== won.disciple_ranks['yuun-bo'],
     '두 항목의 투입 성이 갈린다 — 재진입 판이 이탈 시점의 스냅샷을 물려받지 않는다');
+  // 재스냅샷은 세션의 임무에 쓰고 로그는 호출부가 든 임무를 읽는다 — 두 출처가 갈리면 갱신이
+  // 로그에 닿지 않은 채 무음으로 무효화되므로, 같은 값임을 여기서 문다.
+  deepEq(won.disciple_ranks, session.mission.ranks,
+    '로그가 실은 투입 성은 배선이 그 판에 다시 뜬 바로 그 값이다');
+  ok(won.disciple_ranks !== session.mission.ranks,
+    '로그 항목은 임무의 사본을 진다 — 다음 판의 재스냅샷이 지난 항목을 소급해 바꾸지 않는다');
 
   // ② 반대 방향 — 성이 오르지 않은 재진입은 같은 값이다. 재스냅샷이 값을 흔들지 않는다.
   const still = transmitted();

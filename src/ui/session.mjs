@@ -540,8 +540,8 @@ export function beginMission(session, { random = Math.random } = {}) {
     label: `B-${stage}`,
     foeSet,
     foeRank: missionFoeRank(stage, foeRankOf(DISPATCH_CHALLENGER.id)),
-    // 판 시작 시점의 **투입된** 성 — 배선이 판을 열 때마다 다시 뜨므로 판 사이의 성 상승은 다음
-    // 판에 반영되고, 판 도중의 상승은 그 판의 귀속에 섞이지 않는다 (REQ-744).
+    // 판 시작 시점의 **투입된** 성 — 판 사이의 성 상승은 다음 판에 반영되고, 판 도중의 상승은
+    // 그 판의 귀속에 섞이지 않는다 (REQ-744).
     ranks: discipleRanks(session),
     challenger: { ...DISPATCH_CHALLENGER, styles: foeSet },
   };

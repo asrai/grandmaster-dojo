@@ -73,7 +73,7 @@ function logDispatchOutcome(session, mission, result) {
   return logEvent(session, 'dispatch', {
     stage: mission.label,
     foe_set: mission.foeSet.slice(),
-    disciple_ranks: mission.ranks,
+    disciple_ranks: { ...mission.ranks },
     locked_until: missionLockRankOf(session),
     result,
   });
