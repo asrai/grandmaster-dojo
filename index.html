@@ -266,16 +266,19 @@ body {
 #tools .cheat { position: absolute; top: 100%; left: 8px; z-index: 3; background: var(--c1); }
 
 /* 스테이지 배율의 기준은 창이 아니라 이 상자다 — 도구 띠가 먹은 만큼은 무대가 쓸 수 없다. */
-#stagebox { flex: 1; min-height: 0; container-type: size; display: grid; place-content: center; }
+#stagebox { flex: 1; min-height: 0; display: grid; place-content: center; }
 /* 논리 해상도를 393x852 로 못박고 상자에는 축소로만 맞춘다 — 내부 좌표가 창·기기와 무관해진다.
-   무단위 배율이 필요한데 min() 은 길이와 수를 못 섞으므로 tan(atan2()) 로 길이비를 수로 환산한다. */
+   배율은 부팅이 상자를 재서 `--k` 로 넣어 준다 (#187); 여기 적힌 1 은 그 주입 전의 무대 크기다. */
 #stage {
-  --k: min(tan(atan2(100cqw, 393px)), tan(atan2(100cqh, 852px)), 1);
+  --k: 1;
   position: relative; width: 393px; height: 852px;
   transform: scale(var(--k)); transform-origin: center;
   background: var(--bg); border-radius: 18px; overflow: hidden;
   box-shadow: 0 0 0 1px var(--line);
 }
+/* 모듈이 늦게 오면 배율 없는 무대가 먼저 그려져 잘린 채 보였다가 튄다 — 실측된 창이라, 잰
+   배율이 붙기 전까지는 레터박스 색만 남긴다. 부팅이 첫 측정에서 `.fit` 을 준다 (#187). */
+#stage:not(.fit) { visibility: hidden; }
 /* 흔들림이 걸리는 유일한 노드 — 스테이지는 `transform: scale(var(--k))` 를 이미 쓰므로 거기 걸면
    완파·역파마다 그 배율이 날아가 화면이 100% 로 튄다 (REQ-816). */
 .shell { position: relative; height: 100%; }
@@ -1283,6 +1286,10 @@ button.ghost { background: transparent; }
     // 부팅에 성공한 뒤의 런타임 예외까지 덮으면 플레이 중 화면이 통째로 날아간다 — 백지일 때만 쓴다.
     const el = document.getElementById('app');
     if (!el || el.childNodes.length > 0) return;
+    // 배율이 붙기 전의 무대는 감춰져 있고, 부팅이 죽으면 그 배율은 영영 안 붙는다 — 문면을
+    // 남기려면 이 경로가 직접 걷어야 한다. 잘린 크기로 보이더라도 백지보다 낫다 (#187).
+    const stage = document.getElementById('stage');
+    if (stage) stage.style.visibility = 'visible';
     el.style.whiteSpace = 'pre-wrap';
     el.style.padding = '16px';
     el.textContent = text;

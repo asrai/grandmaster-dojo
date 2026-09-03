@@ -9,6 +9,7 @@ import { createFrameBudget } from './frame-budget.mjs';
 import { SCREEN } from './theme.mjs';
 import { mountCheatPanel } from './cheat.mjs';
 import { createPad } from './pad.mjs';
+import { stageScale } from './stage-scale.mjs';
 import {
   createSession, enterPhase, exportPayload, flushScreenView, logEvent, logSessionMeta, setBotRunning,
 } from './session.mjs';
@@ -183,9 +184,33 @@ if (!$('live')) throw new Error('낭독 리전 #live 가 스테이지에 없다'
 if (!$('nav-live')) throw new Error('전환 낭독 리전 #nav-live 가 스테이지에 없다');
 // 셸이 없으면 흔들림이 스테이지로 올라가 완파·역파마다 배율이 날아간다 (REQ-816).
 if (!$('shell')) throw new Error('흔들림 래퍼 #shell 이 스테이지에 없다');
+// 무대와 그 상자가 없으면 배율이 정체불명 null 참조로 죽는다 — 그 실패도 이름을 갖는다 (#187).
+if (!$('stage')) throw new Error('무대 #stage 가 문서에 없다');
+if (!$('stagebox')) throw new Error('무대 상자 #stagebox 가 문서에 없다');
 
 // 히트 영역 최소치도 BALANCE 값이라, CSS 가 그 값을 변수로 받아 간다 (REQ-101).
 document.documentElement.style.setProperty('--hit', `${BALANCE.buttonHitPx}px`);
+
+
+// 무대 배율은 상자를 재야 나오므로 CSS 가 아니라 여기서 낸다 (#187). 재는 대상이 창이 아니라
+// 상자인 것이 계약이다 — 도구 띠가 먹은 높이도, 그 띠가 접히는 것도 상자 크기에만 나타난다.
+const stageNode = $('stage');
+const stageBoxNode = $('stagebox');
+const fitStage = () => {
+  // 상자는 소수 크기로 떨어질 수 있고 `clientWidth` 의 반올림은 무대를 1px 미만 넘치게 한다.
+  const box = stageBoxNode.getBoundingClientRect();
+  const k = stageScale(
+    { w: box.width, h: box.height },
+    // 변형 전 레이아웃 크기라 배율을 먹여도 되먹임하지 않는다 — 논리 해상도의 집은 CSS 하나뿐이다.
+    { w: stageNode.offsetWidth, h: stageNode.offsetHeight },
+  );
+  stageNode.style.setProperty('--k', String(k));
+  // 잰 배율이 붙은 뒤에야 무대를 보인다 — 그 전 프레임은 배율 없는 크기라 잘린 채 그려진다.
+  stageNode.classList.add('fit');
+};
+// 첫 관측의 전달 시점을 브라우저에 맡기지 않는다 — 멱등이라 한 번 더 재도 값이 갈리지 않는다.
+new ResizeObserver(fitStage).observe(stageBoxNode);
+fitStage();
 
 // 형식 위반을 여기서 전건 터뜨려, 판정 오버레이·죽간 exit·전수 팔 각도가 각자 연출 도중에
 // 죽는 경로를 없앤다 — 실패 시점이 첫 페인트 앞으로 고정된다 (#132).

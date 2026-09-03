@@ -35,6 +35,7 @@ import {
   ATTR_VIEW, EXTREME_GRADES, GRADE_VIEW, REASON_VIEW, REVEAL_VIEW, SCREEN, TRAIN_DONE_VIEW, particle,
 } from '../src/ui/theme.mjs';
 import { TABLET, tabletStates } from '../src/ui/tablet-state.mjs';
+import { stageScale } from '../src/ui/stage-scale.mjs';
 import { BOT_UNREACHABLE, BROWSER_ONLY, KILL, killVerdicts, readout } from './kill-readout.mjs';
 import {
   REVEAL_TIER, SELECT_REASON,
@@ -3023,6 +3024,61 @@ suite('잠긴 밴드 버튼의 자물쇠는 흐림에 함께 지워지지 않는
   const dojo = readFileSync(new URL('../src/ui/screens/dojo.mjs', import.meta.url), 'utf8');
   ok(/locked:\s*Boolean\(a\.disabled && !a\.done\)/.test(dojo),
     '잠김 술어가 완료를 제외한다 — 잠김과 완료는 다른 사실이다');
+});
+
+
+// ------------------------- 12-a-11. 무대 배율은 음수·0 이 될 수 없다 (#187 · REQ-802)
+
+suite('무대 배율은 상자에 축소로만 맞고 0 을 넘는다 (#187)', () => {
+  const STAGE = { w: 393, h: 852 };
+  const box = (w, h) => stageScale({ w, h }, STAGE);
+
+  // 축소로만 맞춘다 — 상자가 무대보다 크면 배율은 1 에 머문다.
+  eq(box(786, 1704), 1, '상자가 남아도 확대하지 않는다');
+  eq(box(393, 852), 1, '꼭 맞는 상자의 배율은 1 이다');
+  // 좁은 축이 배율을 짓는다 — 그것이 레터박스가 남는 축이다.
+  eq(box(393, 426), 0.5, '높이가 모자라면 높이비가 이긴다');
+  eq(box(196.5, 852), 0.5, '폭이 모자라면 폭비가 이긴다');
+
+  // 이 이슈의 결함 형태 — 어떤 상자에서도 배율이 음수·0 이 되지 않는다. WebKit 은 CSS 트릭의
+  // 각도 단위를 잃어 `min()` 에 음수를 넣었고, `scale(음수)` 는 무대를 점대칭으로 뒤집었다.
+  const boxes = [];
+  for (const w of [0, 1, 12, 320, 393, 430, 1280, 4096]) {
+    for (const h of [0, 1, 12, 568, 733, 852, 1024, 4096]) boxes.push([w, h]);
+  }
+  const outside = boxes.filter(([w, h]) => !(box(w, h) > 0 && box(w, h) <= 1));
+  deepEq(outside, [], `${boxes.length}개 상자 전건에서 0 < k <= 1 이다`);
+
+  // 레이아웃 전·측정 실패의 갈래도 같은 계약을 진다 — 접힌 상자에서 무대가 사라지지 않는다.
+  eq(stageScale({ w: 0, h: 0 }, STAGE), 1, '접힌 상자는 배율 없음으로 접힌다');
+  eq(stageScale({ w: 393, h: 852 }, { w: 0, h: 0 }), 1, '무대를 못 잰 순간도 배율 없음이다');
+  // 한 축만 0 이면 그 축의 비율이 Infinity 로 걸러져, 남은 축이 그럴듯한 값을 내던 갈래다.
+  eq(stageScale({ w: 393, h: 852 }, { w: 0, h: 852 }), 1, '무대의 한 축만 못 재도 배율 없음이다');
+  eq(stageScale({ w: NaN, h: 852 }, STAGE), 1, '잴 수 없는 값은 배율 없음이다');
+
+  // 산식이 CSS 로 돌아가면 같은 결함이 조용히 재발한다 — 자동 검사가 렌더를 못 보기 때문이다.
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  ok(!/atan2\s*\(/.test(html), '스타일시트에 길이 인자를 삼각함수에 넣는 트릭이 없다');
+  // 이 픽스처는 CSS 가 못박은 논리 해상도의 사본이라, 그 집이 움직이면 위 산술이 허구가 된다.
+  ok(new RegExp(`#stage\\s*\\{[\\s\\S]*?width:\\s*${STAGE.w}px;\\s*height:\\s*${STAGE.h}px`).test(html),
+    `논리 해상도 ${STAGE.w}x${STAGE.h} 의 집은 CSS 하나뿐이다`);
+  // 배율이 붙기 전 프레임은 잘린 무대를 그린다 — 실측된 창이라 CSS 가 그동안 무대를 감춘다.
+  ok(/#stage:not\(\.fit\)\s*\{[^}]*visibility:\s*hidden/.test(html),
+    '배율이 붙기 전의 무대는 감춰진다');
+  // 부팅이 죽으면 배율이 영영 안 붙으므로, 그 감춤이 치명 문면까지 덮어 백지가 되던 자리다.
+  ok(/showFatal[\s\S]*?getElementById\('stage'\)[\s\S]{0,120}?visibility = 'visible'/.test(html),
+    '치명 문면은 그 감춤을 스스로 걷는다');
+
+  const app = readFileSync(new URL('../src/ui/app.mjs', import.meta.url), 'utf8');
+  ok(/classList\.add\('fit'\)/.test(app), '부팅이 첫 측정에서 그 감춤을 푼다');
+  ok(/new ResizeObserver\(/.test(app), '부팅이 크기 변화를 관찰한다');
+  // 창이 아니라 상자를 봐야 도구 띠의 높이·접힘이 배율에 반영된다.
+  ok(/\.observe\(stageBoxNode\)/.test(app), '관찰 대상은 창이 아니라 무대 상자다');
+
+  // `--k` 는 CSS 와 JS 를 잇는 문자열 결합이라 한쪽만 사라져도 조용히 어긋난다 — 좁은 화면에서만
+  // 무대가 잘리는 회귀가 되므로, 주입과 소비를 양쪽에서 함께 문다.
+  ok(/setProperty\('--k'/.test(app), '부팅이 그 배율을 `--k` 로 기입한다');
+  ok(/transform:\s*scale\(var\(--k\)\)/.test(html), '무대가 `--k` 를 배율로 소비한다');
 });
 
 
