@@ -358,6 +358,9 @@ body {
 /* 한자는 어디서나 한글 옆의 보조 표기다 (REQ-813). 화면의 한자 조판이 이 한 규칙에만 있어
    「한자 전면 제거」가 규칙 하나의 변경으로 닫힌다. */
 .hj { font-size: var(--hj-size); font-weight: 400; color: var(--hj-tone); letter-spacing: 2px; }
+/* 간격은 부모의 flex gap 이 짓는다 — .hj 에 margin 을 달면 이미 gap 을 가진 나머지 병기 자리에서
+   이중으로 붙는다 (#159). */
+.hj-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 7px; }
 /* 한글 우측 세로열 — 높이가 모자라면 조용히 2열로 접히므로 nowrap·overflow 가 한 세트다. */
 .hj.stacked {
   writing-mode: vertical-rl; text-orientation: upright;
@@ -740,7 +743,7 @@ button.ghost { background: transparent; }
 /* 표찰에는 이름·한자·초 수만 싣는다 — 남은 기력은 끝난 판의 정보가 아니다 (REQ-878). */
 .scene .foe-tag {
   position: absolute; left: 0; right: 0; bottom: 14px; z-index: 6;
-  text-align: center; font-size: 12px; color: var(--dim);
+  justify-content: center; text-align: center; font-size: 12px; color: var(--dim);
 }
 .scene .foe-tag b { font-size: 15px; font-weight: 800; color: var(--fg); }
 .scene .foe-tag .sub { color: var(--hj-tone); }
