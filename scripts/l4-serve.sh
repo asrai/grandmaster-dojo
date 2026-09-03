@@ -76,11 +76,15 @@ term_then_kill() {
 
 state_get() { sed -n "s/^$2=//p" "$1" 2>/dev/null | tail -1; }
 
-# 상태 파일은 크래시 뒤에도 남으므로 pid 만으로는 신원이 아니다 — 재사용된 남의 pid 를 막는다.
+# 상태 파일은 크래시 뒤에도 남으므로 pid 만으로는 신원이 아니다 — 재사용된 남의 pid 를
+# 막으려면 기록해 둔 cwd·포트까지 실제 프로세스와 대조해야 한다.
 is_our_server() {
-  [ -n "${1:-}" ] || return 1
-  kill -0 "$1" 2>/dev/null || return 1
-  ps -o command= -p "$1" 2>/dev/null | grep -q 'http\.server'
+  local pid=$1 root=$2 port=$3 cwd
+  [ -n "$pid" ] && [ -n "$root" ] && [ -n "$port" ] || return 1
+  kill -0 "$pid" 2>/dev/null || return 1
+  ps -o command= -p "$pid" 2>/dev/null | grep -q "http\.server $port" || return 1
+  cwd=$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -1 || true)
+  [ "$cwd" = "$root" ]
 }
 
 # 프로필 경로를 --user-data-dir 로 물고 있는 프로세스 전부 (크롬 본체 + 헬퍼).
@@ -105,7 +109,7 @@ stop_tag() {
     targets="$targets $pid"
   done
   server=$(state_get "$state" L4_SERVER_PID)
-  if is_our_server "$server"; then
+  if is_our_server "$server" "$(state_get "$state" L4_ROOT)" "$(state_get "$state" L4_PORT)"; then
     case " $skip " in *" $server "*) : ;; *) targets="$targets $server" ;; esac
   fi
   if [ -n "$targets" ]; then
@@ -173,6 +177,17 @@ start_tag() {
     "$tag" "$url" "$server_pid" "${chrome_pid:--}" "$profile" >&2
 }
 
+# trap 본문 — 감싼 명령을 먼저 걷어야 세션 정리가 그 뒤에서 돈다. 자식이 foreground 면
+# bash 가 trap 을 그 자식이 끝날 때까지 미루므로 run 은 자식을 background 로 두고 wait 한다.
+# shellcheck disable=SC2329  # trap 으로만 호출된다
+run_cleanup() {
+  # 각 단계를 if 로 쓴다 — `a && b` 형태는 이미 끝난 자식에 대한 kill 실패가
+  # set -e 로 이 함수를 그 자리에서 끊어 정리를 통째로 건너뛴다.
+  if [ -n "${CMD_PID:-}" ]; then kill "$CMD_PID" 2>/dev/null || true; fi
+  if [ "${OWNED:-0}" = 1 ]; then OWNED=0; stop_tag "$TAG"; fi
+  return 0
+}
+
 cmd=${1:-}
 [ -n "$cmd" ] || { usage; exit 2; }
 shift || true
@@ -211,11 +226,14 @@ case "$cmd" in
     # 세션을 실제로 획득한 뒤에만 정리한다 — 중복 태그로 거절당한 실행이
     # 남의 살아있는 세션을 걷어 버리는 것을 막는 플래그다.
     OWNED=0
-    trap '[ "$OWNED" = 1 ] && { stop_tag "$TAG"; OWNED=0; }' EXIT
-    trap '[ "$OWNED" = 1 ] && { stop_tag "$TAG"; OWNED=0; }; trap - EXIT; exit 130' INT TERM
+    CMD_PID=''
+    trap run_cleanup EXIT
+    trap 'run_cleanup; trap - EXIT; exit 130' INT TERM
     start_tag "$TAG" "$PORT" "$WANT_CHROME" "$HEADED" "$URL_PATH" run
+    "${CMDV[@]}" &
+    CMD_PID=$!
     rc=0
-    "${CMDV[@]}" || rc=$?
+    wait "$CMD_PID" || rc=$?
     exit "$rc"
     ;;
   status)
