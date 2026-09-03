@@ -2499,35 +2499,45 @@ suite('화면 모듈은 포커스를 직접 조작하지 않는다 (#133)', () =
   eq(touches, 2, '그 한 곳이 실재한다 — 조작 출현 건수(activeElement 1 · focus 1)');
 });
 
-// ------------------------- 12-a-4. 파츠 배경 — 단축이 이미지를 되돌리지 않는가 (#137)
+// ------------------------- 12-a-4. 실루엣 배경 — 단축이 이미지를 되돌리지 않는가 (#137)
 
-suite('파츠 규칙은 background 단축을 쓰지 않는다 (#137)', () => {
+suite('실루엣 규칙은 background 단축을 쓰지 않는다 (#137)', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-  const style = html.slice(html.indexOf('<style>'), html.indexOf('</style>'))
+  const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'))
     .replace(/\/\*[\s\S]*?\*\//g, '');
-  // 모집단 = 선택자에 `.part` 가 든 선언 블록 전부 — 파츠 이미지를 덮을 수 있는 자리는 그뿐이다 (#137).
-  const rules = [...style.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+  // 모집단 = 선택자에 `.fig` 나 `.part` 가 든 선언 블록 전부 — 실루엣 이미지를 덮을 수 있는 자리는
+  // 그 둘을 맞히는 규칙뿐이고, 파츠만 보면 자세 쪽 같은 클래스의 재발을 못 본다 (#137).
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
     .map((m) => [m[1].trim(), m[2]])
-    .filter(([sel]) => /(^|[\s,>+~])\.part\b/.test(sel));
+    .filter(([sel]) => /(^|[\s,>+~])\.(fig|part)\b/.test(sel));
+  const heads = (sel) => rules.filter(([s]) => s === sel).length;
 
   // 양성 대조 ① — 추출이 실패해 모집단이 비면 아래 부재 단정이 공허하게 참이 된다.
-  ok(rules.length >= 5, `.part 계열 규칙을 실제로 떼어냈다 — ${rules.length}건`);
-  // 양성 대조 ② — 덮일 대상인 파츠 이미지 선언 자체가 실재하는가. 이름으로 물어 부분 소실도 잡는다.
+  ok(rules.length >= 20, `.fig · .part 계열 규칙을 실제로 떼어냈다 — ${rules.length}건`);
+  // 양성 대조 ② — 덮일 대상인 실루엣 이미지 선언이 실재하는가. 이름으로 물어 부분 소실도 잡는다.
+  // 실패하면 자세·파츠가 늘거나 줄었다는 뜻이니, 아래 목록을 실제 납품분으로 맞춰라.
   deepEq(rules.filter(([, body]) => /background-image:/.test(body)).map(([sel]) => sel).sort(), [
+    '.fig.sil_challenger_prone', '.fig.sil_challenger_stance', '.fig.sil_disciple_dojo',
+    '.fig.sil_disciple_stance', '.fig.sil_master_dojo', '.fig.sil_master_prone',
+    '.fig.sil_master_stance', '.fig.sil_master_watch',
     '.part.sil_disciple_follow_arm', '.part.sil_disciple_follow_body',
     '.part.sil_master_demo_arm', '.part.sil_master_demo_body',
-  ], '전수 4파츠의 background-image 선언이 실재한다');
+  ], '납품된 자세 8 · 파츠 4 의 background-image 선언이 실재한다');
 
-  // 부재 단정 — 단축은 명시 안 한 하위 속성을 initial 로 되돌리므로, 같은 특이도의 파츠 규칙보다
-  // 뒤에 오는 순간 이미지가 none 이 된다. 경계 인식이 없으면 `background-image:` 를 물어 공허해진다.
+  // 부재 단정 — 단축은 명시 안 한 하위 속성을 initial 로 되돌리므로, 이미지 선언 규칙을 특이도나
+  // 순서로 이기는 순간 그 이미지가 none 이 된다. 경계 인식이 없으면 `background-image:` 를 물어 공허해진다.
   const SHORTHAND = /(^|[;{\s])background\s*:/;
   deepEq(rules.filter(([, body]) => SHORTHAND.test(body)).map(([sel]) => sel), [],
-    '.part 계열에 background 단축이 없다');
+    '.fig · .part 계열에 background 단축이 없다');
   // 부재만 두면 「규칙을 통째로 지웠다」도 통과한다 — 풀어 쓴 개별 속성이 실제로 앉았음을 함께 문다.
-  const part = rules.find(([sel]) => sel === '.fig > .part')?.[1] ?? '';
-  ok(/background-position:\s*center bottom/.test(part), '.fig > .part 의 배치가 개별 속성으로 남아 있다');
-  ok(/background-size:\s*contain/.test(part) && /background-repeat:\s*no-repeat/.test(part),
-    '.fig > .part 의 크기·반복이 개별 속성으로 남아 있다');
+  // 머리 계수가 없으면 뒤에 온 같은 선택자의 재정의가 캐스케이드로 이기고도 첫 블록으로 통과한다.
+  for (const sel of ['.fig', '.fig > .part']) {
+    const block = rules.find(([s]) => s === sel)?.[1] ?? '';
+    eq(heads(sel), 1, `${sel} 규칙 머리가 하나뿐이다 — 뒤에 온 재정의가 없다`);
+    ok(/background-position:\s*center bottom/.test(block), `${sel} 의 배치가 개별 속성으로 남아 있다`);
+    ok(/background-size:\s*contain/.test(block) && /background-repeat:\s*no-repeat/.test(block),
+      `${sel} 의 크기·반복이 개별 속성으로 남아 있다`);
+  }
 });
 
 // ------------------------- 12-b. 결과 진입 1회 정산 · 판 원장 (#70 · REQ-871~873)
