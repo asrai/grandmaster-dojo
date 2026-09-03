@@ -300,8 +300,8 @@ export function createBot({
     }
     if (phase === 'select') { screen.go('duel', screen.params()); return; }
     if (phase === 'preview') { screen.go('dispatch'); return; }
-    // 전수는 이제 화면 안의 버튼이 실행하고 봇에는 그 버튼을 누를 손이 없다 — 헤드리스 사이클과
-    // 같은 자리에서 직접 부른다. 안 부르면 `canTransmitNow` 가 참으로 남아 도장을 무한 왕복한다 (#172).
+    // 봇에는 바닥 버튼을 누를 손이 없어, 실행 입구가 사람 경로와 둘로 갈리는 대가를 알고 헤드리스
+    // 사이클과 같은 자리에서 직접 부른다 — 안 부르면 도장을 무한 왕복하고 사이클이 끝나지 않는다 (#172).
     if (phase === 'transmit') { enterTransmit(session); screen.go('dojo'); return; }
     if (phase === 'result') { screen.go('dojo'); return; }
     if (phase !== 'dojo') return;
