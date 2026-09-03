@@ -2428,9 +2428,12 @@ suite('크롬 원장은 한 토큰 한 값 (#133)', () => {
 
   // (I2) 두 띠가 같은 토큰을 쓰는가. 규칙 블록을 떼어내지 못하면 아래 부재 단정이 전부 공허하게
   // 참이 되므로, 블록 실재 → 토큰 실재 → px 리터럴 부재 순으로 물린다.
+  // 첫 블록만 떼어내면 뒤에 온 같은 선택자의 재정의가 캐스케이드로 이기고도 핀을 통과한다.
+  const heads = (sel) => (html.match(new RegExp(`^\\${sel} \\{`, 'gm')) ?? []).length;
   for (const sel of ['.top-band', '.stage-band']) {
     const block = html.match(new RegExp(`^\\${sel} \\{([\\s\\S]*?)\\n\\}`, 'm'))?.[1];
     ok(block, `${sel} 규칙 블록을 실제로 떼어냈다`);
+    eq(heads(sel), 1, `${sel} 규칙 머리가 하나뿐이다 — 뒤에 온 재정의가 없다`);
     ok(/height:\s*var\(--band-h\)/.test(block ?? ''), `${sel} 의 높이가 --band-h 다`);
     ok(!/(^|[;\s])height:\s*\d/.test(block ?? ' height: 1'), `${sel} 에 px 리터럴 높이가 없다`);
   }
@@ -2459,6 +2462,7 @@ suite('크롬 원장은 한 토큰 한 값 (#133)', () => {
   for (const sel of ['.row-head', '.tele-attr', '.cand']) {
     const block = outside.match(new RegExp(`^\\${sel} \\{([\\s\\S]*?)\\n?\\}`, 'm'))?.[1];
     ok(block, `${sel} 규칙 블록을 실제로 떼어냈다`);
+    eq(heads(sel), 1, `${sel} 규칙 머리가 하나뿐이다 — 뒤에 온 재정의가 없다`);
     ok(/var\(--hit-min\)/.test(block ?? ''), `${sel} 의 히트 축이 --hit-min 이다`);
   }
 
