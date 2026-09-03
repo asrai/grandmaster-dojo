@@ -237,6 +237,11 @@
   --sigil-size: 24px;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+/* 세로 스크롤 컨테이너 공통 — 상시 스크롤 막대가 무협 톤을 깨므로 막대만 숨기고 스크롤은 남긴다 (#164). */
+.screen-body, .transfer, .settle, .body-flow, .list { scrollbar-width: none; }
+.screen-body::-webkit-scrollbar, .transfer::-webkit-scrollbar, .settle::-webkit-scrollbar,
+.body-flow::-webkit-scrollbar, .list::-webkit-scrollbar { display: none; }
 html, body { margin: 0; height: 100dvh; overflow: hidden; }
 body {
   background: var(--bg); color: var(--fg); font: var(--font-body);
