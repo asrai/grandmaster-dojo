@@ -36,6 +36,7 @@ import {
 } from '../src/ui/theme.mjs';
 import { TABLET, tabletStates } from '../src/ui/tablet-state.mjs';
 import { stageScale } from '../src/ui/stage-scale.mjs';
+import { blockPinchZoom } from '../src/ui/gesture-block.mjs';
 import { BOT_UNREACHABLE, BROWSER_ONLY, KILL, killVerdicts, readout } from './kill-readout.mjs';
 import {
   REVEAL_TIER, SELECT_REASON,
@@ -3672,6 +3673,44 @@ suite('곁판이 선 줄에서만 죽간이 4매 폭으로 서고 대련의 계�
     '곁판 높이는 죽간 줄이 못박으므로 넘침이 테두리 밖으로 새지 않는다');
 });
 
+
+
+// ------------------------- 12-a-13. 브라우저 확대 차단 배선 (#204)
+
+suite('확대 차단의 선언과 리스너가 제자리에 있다 (#204)', () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'))
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => [m[1].trim(), m[2]]);
+  const body = (sel) => rules.find(([s]) => s === sel)?.[1] ?? null;
+
+  // 키 버튼에만 걸면 키 근처 여백의 더블 탭이 그대로 확대되므로 게임 표면 전역이어야 하고,
+  // `manipulation` 은 핀치줌을 남기므로 허용 목록이 두 패닝 축뿐인 것까지가 계약이다.
+  ok(/(^|[;{\s])touch-action:\s*pan-x pan-y\s*;/.test(body('html, body') ?? ''),
+    '확대를 끄는 선언이 게임 표면 전역에 서고 패닝 두 축만 남긴다');
+  // 이 프로퍼티는 루트에서만 뷰포트로 전파되므로, `body` 단독 선언은 문서 바운스에 닿지 못한다.
+  ok(/(^|[;{\s])overscroll-behavior:\s*none\b/.test(body('html, body') ?? ''),
+    '문서 바운스·당겨서 새로고침을 막는 선언이 루트에 함께 선다');
+
+  const viewport = html.match(/<meta name="viewport"[^>]*>/)?.[0] ?? '';
+  ok(/maximum-scale=1\b/.test(viewport), '뷰포트 meta 가 배율 상한을 든다');
+  ok(/user-scalable=no\b/.test(viewport), '그 meta 가 확대 자체도 거절한다');
+
+  // WebKit 은 위 meta 를 무시하므로 iOS 핀치 차단은 이벤트 층으로 내려온다.
+  const seen = [];
+  blockPinchZoom({ addEventListener: (type, fn, opts) => seen.push([type, fn, opts]) });
+  deepEq(seen.map(([type]) => type), ['gesturestart', 'gesturechange', 'gestureend'],
+    '핀치 이벤트 셋이 모두 배선된다 — 어느 단계에서 잡히든 같은 결과여야 한다');
+  ok(seen.every(([, , opts]) => opts && opts.passive === false),
+    'passive 로 붙으면 preventDefault 가 무음으로 무시된다');
+  let prevented = 0;
+  for (const [, fn] of seen) fn({ preventDefault: () => { prevented += 1; } });
+  eq(prevented, 3, '배선된 핸들러가 저마다 기본 동작을 막는다');
+
+  // 부팅 경로에 한 번 서지 않으면 위 배선이 아무 데도 닿지 않는다 — 대상이 문서인 것까지가 계약이다.
+  const app = readFileSync(new URL('../src/ui/app.mjs', import.meta.url), 'utf8');
+  ok(/blockPinchZoom\(document\)/.test(app), '부팅이 그 배선을 문서에 1회 설치한다');
+});
 
 
 // ------------------------------------------------------------------ 결과
