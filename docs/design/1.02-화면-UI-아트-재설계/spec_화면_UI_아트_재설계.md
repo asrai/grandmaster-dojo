@@ -472,8 +472,8 @@ Output filename: as specified below.
 
 | pass | variant.pose | variant.output_filename |
 |---|---|---|
-| 1 | standing calmly at rest inside a dojo, feet together, hands loosely at the sides, facing three-quarter right | `sil_master_dojo.png` |
-| 2 | seen from behind, cropped at the chest so only the back of the head, topknot and shoulders are in frame, occupying the lower half of the canvas as a foreground observer | `sil_master_watch.png` |
+| 1 | standing calmly at rest inside a dojo, feet apart at shoulder width, hands loosely at the sides, facing front | `sil_master_dojo.png` |
+| 2 | seen from behind, cropped at the chest so only the back of the head, topknot and shoulders are in frame, vertically centered on the canvas as a foreground observer | `sil_master_watch.png` |
 | 3 | demonstrating a technique, body only — both arms REMOVED from the shape entirely (arms are supplied as a separate layer), torso turned three-quarter left with weight on the front foot | `sil_master_demo_body.png` |
 | 4 | a single pair of arms only, no torso, extended forward and slightly upward in a demonstrating gesture, drawn to attach at the shoulder joints of the previous body image, pivot point at the shoulder | `sil_master_demo_arm.png` |
 | 5 | fallen and face down on the ground, prone, one arm folded under, robe spread out, occupying only the lower third of the canvas — readable as a person and not as a black blob, so keep the head, shoulder, hip and robe hem separations distinct | `sil_master_prone.png` |
@@ -483,8 +483,8 @@ Output filename: as specified below.
 ```
 주제: 무협 사부 1인의 전신 먹 실루엣 6자세 (일괄 납품)
 캐릭터 외형: 성인 남성 무술 사부 · 키가 크고 어깨가 넓다 · 무릎 아래까지 오는 도포(넓은 소매) · 허리에 넓은 띠 · 상투 머리에 작은 관 · 이목구비는 전혀 그리지 않는다 · 무기 없음 · 실루엣은 도포 자락·소매 낙차·띠 끝·상투의 윤곽만으로 읽힌다
-표정 / 포즈 / 동작: ① 대치 준비 자세(무게 낮게, 한 발 앞, 팔은 몸에서 살짝 벌림, 좌 3/4) ② 도장에서 편히 선 자세(발 모음, 손 자연스럽게 내림, 우 3/4) ③ 뒤에서 본 뒷모습 — 가슴에서 잘려 뒤통수·상투·어깨만, 캔버스 아래 절반을 차지하는 전경 인물 ④ 시범 자세 몸통만 — 팔을 형태에서 완전히 제외(팔은 별도 파일) ⑤ 팔만 — 몸통 없이, 앞으로 살짝 위를 향해 뻗은 시범 제스처, 어깨 관절이 회전 축이 되도록 ④ 의 어깨에 맞물리게 ⑥ 엎어져 쓰러진 자세 — 한 팔은 몸 아래로 접히고 도포가 펼쳐짐, 캔버스 아래 1/3만 차지, 검은 덩어리가 아니라 사람으로 읽히도록 머리·어깨·엉덩이·도포단의 경계를 살릴 것
-구도: 전신 중앙 정렬 · 세로 방향 · ①②④⑤ 는 캔버스 세로를 대부분 채우고 ③⑥ 은 지정 영역만
+표정 / 포즈 / 동작: ① 대치 준비 자세(무게 낮게, 한 발 앞, 팔은 몸에서 살짝 벌림, 좌 3/4) ② 도장에서 편히 선 자세(발은 어깨너비로 벌림, 손 자연스럽게 내림, 정면) ③ 뒤에서 본 뒷모습 — 가슴에서 잘려 뒤통수·상투·어깨만, 캔버스 중앙에 놓이는 전경 인물 ④ 시범 자세 몸통만 — 팔을 형태에서 완전히 제외(팔은 별도 파일) ⑤ 팔만 — 몸통 없이, 앞으로 살짝 위를 향해 뻗은 시범 제스처, 어깨 관절이 회전 축이 되도록 ④ 의 어깨에 맞물리게 ⑥ 엎어져 쓰러진 자세 — 한 팔은 몸 아래로 접히고 도포가 펼쳐짐, 캔버스 아래 1/3만 차지, 검은 덩어리가 아니라 사람으로 읽히도록 머리·어깨·엉덩이·도포단의 경계를 살릴 것
+구도: 전신 중앙 정렬 · 세로 방향 · ①②④⑤ 는 캔버스 세로를 대부분 채우고 ③ 은 중앙 정렬, ⑥ 은 지정 영역만
 화풍: 단색 먹 실루엣 · 붓으로 친 가장자리(도포 자락·소매 끝에 약간의 번짐과 갈필) · 내부 음영·그라디언트·내부 선 일절 없음
 팔레트 / 톤: 순수 검정 도형 · 다른 색 없음
 포맷: 투명 PNG · 512x1024 · 6파일 일괄
@@ -497,6 +497,7 @@ Output filename: as specified below.
 - Pass 3·4(시범 몸통 / 팔)는 **어깨 관절이 정확히 맞물려야** 팔 회전 트랜지션(REQ-861)이 성립한다. 두 파일을 겹쳐 확인한 뒤 납품한다.
 - `sil_disciple` · `sil_challenger` 생성 시 이 캐릭터의 Pass 0 산출본을 톤 reference 로 첨부해 붓 질감을 맞춘다.
 - `sil_master_base_raw.png` 는 manifest 미등록 · 빌드 복사 제외 — 최종 6파일 산출 후 삭제 가능.
+- **Pass 1(`sil_master_dojo`)의 정면·발 벌림, Pass 2(`sil_master_watch`)의 중앙 정렬은 납품 형상에 맞춰 문면을 정정한 결과다 (#218).** 정면 사부는 제자가 곁에 시립하는 S2 정경(REQ-833)에 적합해 자산을 재생성하지 않았다 — 계약↔납품 대조 스윕이 이 두 자세를 이탈로 판정해 재생성하면 잘 읽히는 화면이 이유 없이 바뀐다.
 
 **[C] 내부 참조**
 
