@@ -325,9 +325,6 @@ export function challengerEntry(session, challenger) {
 export const challengerRoster = (session) =>
   DUEL_STAGES.slice(0, session.stage).map((c) => challengerEntry(session, c));
 
-/** 가장 최근에 열린 차수의 도전자 (REQ-834) — `challengerRoster` 의 마지막 항과 같은 자리다. */
-export const nextChallengerEntry = (session) => challengerEntry(session, challengerOfStage(session.stage));
-
 /**
  * 대련 진입 (REQ-734) — 그 대면의 성을 확정하고 재대련이면 그것을 로그에 남긴다.
  * 진입에서 찍는 것은 `attempt_n` 이 「몇 번째에 그만두는가」의 지표라, 승패로 걸러지면
