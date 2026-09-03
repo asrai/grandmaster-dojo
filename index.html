@@ -391,13 +391,13 @@ button.ghost { background: transparent; }
 
 .rows { display: flex; flex-direction: column; gap: 8px; }
 .row {
-  /* 말풍선의 기준 상자 — 헤더에 걸면 말풍선이 바로 아래 시퀀스 화살표를 덮는다. */
+  /* 말풍선의 기준 상자 — 행 바닥에 확보한 여백이 그 자리라, 헤더에 걸면 기준이 그 위로 올라간다. */
   position: relative;
   border: 1px solid var(--line); border-left: 3px solid var(--attr); border-radius: 8px; padding: 6px 8px;
 }
 /* 잠김 표현은 행의 **내용**에만 걸린다 — 행 상자에 걸면 유도 말풍선이 그 opacity 를 상속해
    반투명해지고, 자식은 부모의 불투명도를 넘지 못하므로 되돌릴 방법이 없다 (#50). */
-.row.locked .row-name, .row.locked > .rank-next, .row.locked > .arrows { opacity: .55; }
+.row.locked .row-name, .row.locked > .rank-next { opacity: .55; }
 .row-head { display: flex; gap: 6px; align-items: center; min-height: var(--hit-min); }
 .row-head button { min-height: 40px; }
 /* 히트 영역 확장 (REQ-910) — 시각 크기는 그대로 두고 의사요소가 손가락 몫을 진다. 버튼 자체를
@@ -407,16 +407,11 @@ button.ghost { background: transparent; }
   content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
   width: 100%; height: var(--hit-min); min-width: var(--hit-min);
 }
-/* 접기 토글은 진짜 버튼이라야 키보드로 닿는다 — 줄 이름 전체가 그 히트 영역이다. */
 .row-name {
   flex: 1; display: flex; gap: 6px; align-items: center;
   /* 아래에서 이름·한자가 압축을 거부하므로, 폭이 모자라면 흘러넘쳐 우측 액션 버튼을 덮는다 — 행 안에서 잘린다. */
   overflow: hidden;
-  text-align: left; background: transparent; border: 0; padding: 0;
 }
-/* 서브셋 원본인 나눔명조에 작은 삼각(U+25B8/25BE)이 없어 큰 삼각을 쓰고 크기로 줄인다 (REQ-804). */
-.row-name::before { content: '\25B6'; color: var(--dim); font-size: 11px; }
-.row.open .row-name::before { content: '\25BC'; }
 /* 4자 초식명·한자 병기는 이 게임의 고유명사라 폭을 양보하지 않는다 — 양보는 아래 배지·태그가
    말줄임으로 지고, 그래서 성이 올라도 행 높이가 자라지 않는다 (#139). */
 .row-name > b, .row-name > .hj { white-space: nowrap; flex-shrink: 0; }

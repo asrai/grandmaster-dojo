@@ -2705,6 +2705,9 @@ suite('초식명·한자는 행에서 폭을 양보하지 않는다 (#139)', () 
     '호출부가 라벨에 문구를 이어 붙이지 않는다');
   // 부재 단정만 두면 「배지를 통째로 지웠다」도 통과한다 — 호출 실재가 그 양성 대조다.
   eq((dojo.match(/\brankLabel\(/g) ?? []).length, 2, '접힌 행의 배지와 성 계단이 그 라벨을 쓴다');
+  // 이름이 다시 인터랙티브해지면 행마다 포커스 정지점과 낭독 한 줄이 함께 되돌아온다 (#165).
+  ok(/el\('div', \{ class: 'row-name' \}/.test(dojo), '행 이름 상자는 정적 div 다');
+  ok(!/aria-expanded/.test(dojo), '도장에 펼침 상태를 낭독하는 속성이 없다');
   // 축약이 성립하는 것은 만성 문구를 다른 자리가 지기 때문이다 — 그 자리가 사라지면 문구가 게임에서 소멸한다.
   const duel = readFileSync(new URL('../src/ui/screens/duel.mjs', import.meta.url), 'utf8');
   ok(/완벽히 깨달음/.test(duel), '만성 문구는 성이 오르는 순간의 대련 토스트가 진다');
@@ -2722,8 +2725,8 @@ suite('초식명·한자는 행에서 폭을 양보하지 않는다 (#139)', () 
 
   // ③ 부재 단정의 모집단은 이름이 아니라 **선택자 매칭**이다 — 합성·그룹 선택자로 한 줄 들어와도
   // 같은 결함이 되돌아오는데, 완전 일치 조회는 그 갈래를 통째로 못 본다.
-  // `.row-name` 은 button 이라 `button.row-name`·`.row-name.open` 같은 합성 형태가 자연스럽다 —
-  // 앞 문자를 공백류로만 보면 그 갈래를 통째로 놓친다.
+  // `div.row-name`·`.row-name.done` 같은 합성 형태는 앞 문자가 공백류가 아니라, 공백류만 보면
+  // 그 갈래를 통째로 놓친다.
   const rowName = rules.filter(([sel]) => /(^|[\s,>+~]|[\w\])])\.row-name\b/.test(sel));
   ok(rowName.length >= 3, `.row-name 을 겨누는 규칙을 실제로 떼어냈다 — ${rowName.length}건`);
   // `white-space` 는 `text-wrap-mode` 의 단축이라 뒤에 온 `text-wrap: wrap` 한 줄이 nowrap 을 무력화한다.
@@ -2751,7 +2754,7 @@ suite('초식명·한자는 행에서 폭을 양보하지 않는다 (#139)', () 
 
   // ⑤ 동일 단정 (회귀) — 행 높이 40 은 시안 축이고 `.row-head` 의 `--hit-min` 은 탭 히트 하한이라
   // 서로 다른 계약이다. 그리고 손가락 몫은 의사요소가 지므로, 높이를 지키자고 그것을 줄이면 교환이 된다.
-  ok(/min-height:\s*40px/.test(body('.row-head button') ?? ''), '이름 행 버튼의 시안 높이 40 이 그대로다');
+  ok(/min-height:\s*40px/.test(body('.row-head button') ?? ''), '행 액션 버튼의 시안 높이 40 이 그대로다');
   // 압축을 거부한 이름이 갈 곳은 넘침뿐이라, 그 처분이 없으면 폴백 서체에서 액션 버튼을 덮는다.
   ok(/overflow:\s*hidden/.test(body('.row-name') ?? ''), '행 이름 상자가 자기 넘침을 안에서 잘라 둔다');
   ok(/min-height:\s*var\(--hit-min\)/.test(body('.row-head') ?? ''), '행의 탭 히트 하한은 --hit-min 이다');

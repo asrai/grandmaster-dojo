@@ -6,7 +6,7 @@ import { BALANCE, STYLES } from '../../balance.mjs';
 import {
   artById, canLearn, discipleStyleRank, discipleStyles, ladderBandAt, styleById, trainAccrualCap,
 } from '../../core.mjs';
-import { arrowRow, clear, composeScreen, el, tipAnchor, topBand } from '../dom.mjs';
+import { clear, composeScreen, el, tipAnchor, topBand } from '../dom.mjs';
 import { particle } from '../theme.mjs';
 import { attrMark, attrTone } from '../components/attr-mark.mjs';
 import { hanja } from '../components/hanja.mjs';
@@ -44,18 +44,6 @@ const TIP_LEAD = { start: '여기서 시작', unlocked: '지금 열렸다' };
 const TIP_ID = 'dojo-tip';
 const tipRank = (id) => TIPS.findIndex(([kind]) => kind === String(id).split(':')[0]);
 const tipText = (id, lead) => `${TIP_LEAD[lead]} — ${TIPS[tipRank(id)][1]}`;
-
-// 초식 줄의 액션 id 만 `<종류>:<초식 id>` 꼴이라, 이 분해가 곧 「밴드 액션인가 줄 액션인가」다.
-const rowStyleId = (id) => (String(id).includes(':') ? String(id).split(':')[1] : null);
-
-// 재렌더가 노드를 파기해도 조립이 이 id 로 같은 줄의 토글을 되찾는다 (#133).
-const rowToggleId = (styleId) => `row-toggle-${styleId}`;
-
-/**
- * 사용자가 고른 펼침 행 — `row: null` 은 전부 접음이고, `against` 는 그 선택을 한 시점의 안내 대상 행이다.
- * 세션이 아니라 모듈에 두는 것은 이것이 순수 뷰 상태라, 로그 내보내기 payload 에 실려서는 안 되기 때문이다.
- */
-let chosen = null;
 
 /**
  * 도장 정경 (REQ-837) — 제자의 **존재·정서**가 서는 자리다. 조작과 수치는 제자 블록이 지므로
@@ -114,16 +102,6 @@ function rankGauge(session, style) {
     ]),
     el('p', { class: `rank-next${note.wall ? ' wall' : ''}`, text: note.text }),
   ];
-}
-
-/**
- * 펼칠 행 하나 — 세로 예산이 초식 4행을 다 펼칠 만큼 넓지 않아 아코디언으로 접는다 (#37).
- * 사용자의 선택은 안내가 같은 행에 머무는 동안만 유지된다 — 안내가 다른 행으로 옮겨가면 그쪽이
- * 다시 열려, 도장에 들어올 때마다 지목된 행에 안내와 상세가 함께 있다.
- */
-function openRowOf(session, guidedRow) {
-  if (chosen && chosen.against === guidedRow) return chosen.row;
-  return guidedRow ?? session.slots.find(Boolean) ?? STYLES[0].id;
 }
 
 /**
@@ -228,7 +206,7 @@ function actionButton(ctx, action, target) {
  * 초식 한 줄 — 만성·잠김 행은 게이지를 접고 배지만 머리줄에 남긴다 (REQ-831). 전부 금색이거나
  * 전부 빈 계단은 정보량이 0인데 세로를 행마다 먹고, 회수한 그 세로가 제자 블록의 자리다.
  */
-function styleRow(ctx, style, actions, target, guidedRow, open) {
+function styleRow(ctx, style, actions, target) {
   const { session } = ctx;
   const { learned, rank } = session.progress.styles[style.id];
   const slotIdx = session.slots.indexOf(style.id);
@@ -236,17 +214,12 @@ function styleRow(ctx, style, actions, target, guidedRow, open) {
   const folded = !learned || mastered;
 
   return el('div', {
-    class: `row${learned ? '' : ' locked'}${mastered ? ' done' : ''}${open ? ' open' : ''}`,
+    class: `row${learned ? '' : ' locked'}${mastered ? ' done' : ''}`,
     style: `--attr:${attrTone(style.attr)}`,
   }, [
     el('div', { class: 'row-head' }, [
-      el('button', {
-        id: rowToggleId(style.id), class: 'row-name', 'aria-expanded': String(open),
-        onclick: () => {
-          chosen = { row: open ? null : style.id, against: guidedRow };
-          ctx.go('dojo');
-        },
-      }, [
+      // 이름은 읽는 자리이지 누르는 자리가 아니다 — 행의 조작은 우측 액션 버튼이 전부 진다 (#165).
+      el('div', { class: 'row-name' }, [
         attrMark(style.attr),
         el('b', { text: style.name }),
         hanja(style.hanja),
@@ -255,7 +228,6 @@ function styleRow(ctx, style, actions, target, guidedRow, open) {
       ]),
       ...actions.map((a) => actionButton(ctx, a, target)),
     ]),
-    open ? arrowRow(style.seq, 0, learned ? style.seq.length : 0) : null,
     ...(folded ? [] : rankGauge(session, style)),
     // 만성은 더 오를 계단이 없어 안내할 것도 없다 — 잠김 행은 여는 조건이 곧 그 안내다.
     learned ? null : el('p', { class: 'rank-next', text: `직전 초식 ${BALANCE.rankGate.unlock}성에서 열린다` }),
@@ -389,8 +361,6 @@ export function renderDojo(ctx) {
   const target = pickTooltip(session.tooltip, [...rowActions.flat(), ...band]
     .filter((a) => tipRank(a.id) >= 0)
     .sort((a, b) => tipRank(a.id) - tipRank(b.id)));
-  const guidedRow = rowStyleId(target?.id);
-  const openId = openRowOf(session, guidedRow);
 
   const bar = el('div', { class: 'pb-train' });
   composeScreen(ctx, {
@@ -403,7 +373,7 @@ export function renderDojo(ctx) {
           el('b', { class: 'kr', text: ART_NAME }),
           hanja(artById(ART_ID).hanja),
         ]),
-        el('div', { class: 'rows' }, STYLES.map((s, i) => styleRow(ctx, s, rowActions[i], target, guidedRow, s.id === openId))),
+        el('div', { class: 'rows' }, STYLES.map((s, i) => styleRow(ctx, s, rowActions[i], target))),
         session.slots.some(Boolean) ? null : el('p', {
           class: 'dim', text: `초식을 수련해 ${BALANCE.rankGate.equip}성에 닿으면 실전 슬롯에 자동으로 장착된다.`,
         }),
