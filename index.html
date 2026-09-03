@@ -400,11 +400,20 @@ button.ghost { background: transparent; }
 /* 접기 토글은 진짜 버튼이라야 키보드로 닿는다 — 줄 이름 전체가 그 히트 영역이다. */
 .row-name {
   flex: 1; display: flex; gap: 6px; align-items: center;
+  /* 아래에서 이름·한자가 압축을 거부하므로, 폭이 모자라면 흘러넘쳐 우측 액션 버튼을 덮는다 — 행 안에서 잘린다. */
+  overflow: hidden;
   text-align: left; background: transparent; border: 0; padding: 0;
 }
 /* 서브셋 원본인 나눔명조에 작은 삼각(U+25B8/25BE)이 없어 큰 삼각을 쓰고 크기로 줄인다 (REQ-804). */
 .row-name::before { content: '\25B6'; color: var(--dim); font-size: 11px; }
 .row.open .row-name::before { content: '\25BC'; }
+/* 4자 초식명·한자 병기는 이 게임의 고유명사라 폭을 양보하지 않는다 — 양보는 아래 배지·태그가
+   말줄임으로 지고, 그래서 성이 올라도 행 높이가 자라지 않는다 (#139). */
+.row-name > b, .row-name > .hj { white-space: nowrap; flex-shrink: 0; }
+/* `min-width` 는 위 상자와 같은 이유다 — 그것이 auto 면 nowrap 텍스트가 줄지 않아 말줄임이 발화하지 않는다. */
+.row-name > .badge, .row-name > .tag {
+  min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .meter-line { display: flex; gap: 8px; align-items: center; }
 .meter-line .meter { flex: 1; }
 
