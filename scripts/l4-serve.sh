@@ -60,10 +60,13 @@ ancestor_pids() {
 
 alive() { kill -0 "$1" 2>/dev/null; }
 
-# TERM 후 3초까지 기다렸다가 남은 것만 KILL 한다.
+# TERM 후 3초까지 기다렸다가 남은 것만 KILL 한다. 첫 인자는 pid 하나를 받아 「지금도
+# 우리 것인가」를 답하는 함수 이름이다 — 대상이 죽고 같은 pid 가 재사용되면 그 사이
+# 무관한 프로세스가 KILL 대상이 되므로, 시그널 직전마다 다시 묻는다.
 term_then_kill() {
-  local pid rest
-  for pid in "$@"; do alive "$pid" && kill "$pid" 2>/dev/null || true; done
+  local verify=$1 pid rest
+  shift
+  for pid in "$@"; do "$verify" "$pid" && kill "$pid" 2>/dev/null || true; done
   rest=''
   for _ in 1 2 3 4 5 6; do
     rest=''
@@ -71,7 +74,7 @@ term_then_kill() {
     [ -z "$rest" ] && return 0
     sleep 0.5
   done
-  for pid in $rest; do kill -9 "$pid" 2>/dev/null || true; done
+  for pid in $rest; do "$verify" "$pid" && kill -9 "$pid" 2>/dev/null || true; done
 }
 
 state_get() { sed -n "s/^$2=//p" "$1" 2>/dev/null | tail -1; }
@@ -98,18 +101,35 @@ pids_by_profile() {
       if (tail == "" || tail == " ") print $1 }'
 }
 
+# term_then_kill 이 시그널 직전마다 묻는 술어 — 프로필 보유자이거나 기록된 그 서버여야 한다.
+# shellcheck disable=SC2329  # term_then_kill 이 이름으로 호출한다
+still_ours() {
+  local pid=$1
+  alive "$pid" || return 1
+  if [ "$pid" = "${VERIFY_SERVER:-}" ]; then
+    is_our_server "$pid" "${VERIFY_ROOT:-}" "${VERIFY_PORT:-}"
+    return $?
+  fi
+  pids_by_profile "${VERIFY_PROFILE:-}" | grep -qx "$pid"
+}
+
 stop_tag() {
   local tag=$1
   local state="$PROFILE_ROOT/$tag.env"
   local profile="$PROFILE_ROOT/$tag-chrome"
-  local skip pid targets='' server
+  local skip pid targets='' server root port
+  VERIFY_PROFILE=$profile
   skip=$(ancestor_pids)
   for pid in $(pids_by_profile "$profile"); do
     case " $skip " in *" $pid "*) continue ;; esac
     targets="$targets $pid"
   done
   server=$(state_get "$state" L4_SERVER_PID)
-  if is_our_server "$server" "$(state_get "$state" L4_ROOT)" "$(state_get "$state" L4_PORT)"; then
+  root=$(state_get "$state" L4_ROOT)
+  port=$(state_get "$state" L4_PORT)
+  if [ -z "$server" ]; then server=${SERVER_PID:-}; root=${SERVER_ROOT:-}; port=${SERVER_PORT:-}; fi
+  VERIFY_SERVER=$server VERIFY_ROOT=$root VERIFY_PORT=$port
+  if is_our_server "$server" "$root" "$port"; then
     case " $skip " in *" $server "*) : ;; *) targets="$targets $server" ;; esac
   fi
   if [ -n "$targets" ]; then
@@ -118,7 +138,7 @@ stop_tag() {
       ps -o pid=,command= -p "$pid" 2>/dev/null | cut -c1-120 >&2 || true
     done
     # shellcheck disable=SC2086
-    term_then_kill $targets
+    term_then_kill still_ours $targets
   fi
   rm -rf "$profile"
   rm -f "$state" "$PROFILE_ROOT/$tag-server.log"
@@ -139,6 +159,9 @@ start_tag() {
   ( cd "$REPO_ROOT" && exec python3 -m http.server "$port" --bind 127.0.0.1 ) \
     >"$PROFILE_ROOT/$tag-server.log" 2>&1 &
   local server_pid=$!
+  SERVER_PID=$server_pid
+  SERVER_PORT=$port
+  SERVER_ROOT=$REPO_ROOT
   OWNED=1
   sleep 0.4
   alive "$server_pid" || die "서버가 즉시 종료했다 — $PROFILE_ROOT/$tag-server.log 를 보라"
@@ -193,7 +216,8 @@ cmd=${1:-}
 shift || true
 
 TAG='' PORT=8000 WANT_CHROME=0 HEADED=0 URL_PATH=/
-OWNED=0
+OWNED=0 SERVER_PID='' SERVER_PORT='' SERVER_ROOT=''
+VERIFY_PROFILE='' VERIFY_SERVER='' VERIFY_ROOT='' VERIFY_PORT=''
 CMDV=()
 HAS_CMD=0
 while [ $# -gt 0 ]; do

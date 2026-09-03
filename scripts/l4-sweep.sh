@@ -26,7 +26,7 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
 PROFILE_ROOT="$(printf '%s' "${TMPDIR:-/tmp}" | sed 's:/*$::')/grandmaster-dojo-l4"
-TMP_ROOT="$(printf '%s' "${TMPDIR:-/tmp}" | sed 's:/*$::')"
+TMP_ROOT="$(printf '%s' "${TMPDIR:-}" | sed 's:/*$::')"
 MAIN_CLONE=$(cd "$SCRIPT_DIR/.." && cd "$(git rev-parse --git-common-dir)" && cd .. && pwd -P) \
   || { printf 'l4-sweep: 저장소 루트를 못 찾았다 — 소유 판별 불가\n' >&2; exit 2; }
 
@@ -68,21 +68,28 @@ pids_by_profile() {
       if (tail == "" || tail == " ") print $1 }'
 }
 
-# 메인 클론과 그 이슈 워크트리(<메인>-issue-*)만 소유로 본다. 이름 규약이 어긋난
-# 워크트리는 공유 .git 대조가 받고, 삭제된 워크트리는 접두 분기가 받는다.
+# 디렉터리가 남아 있으면 공유 .git 대조가 유일한 근거다 — 이름 접두만으로 받으면 같은
+# 접두를 가진 무관한 저장소까지 소유가 된다. 이름 규약은 워크트리가 이미 삭제돼
+# git 대조가 원리적으로 불가능한 경우에만 대신 선다.
 own_cwd() {
   local d=$1 common
+  if [ -d "$d" ]; then
+    common=$(cd "$d" 2>/dev/null && git rev-parse --git-common-dir 2>/dev/null) || return 1
+    common=$(cd "$d" && cd "$common" && pwd -P) || return 1
+    [ "$common" = "$MAIN_CLONE/.git" ]
+    return $?
+  fi
   case "$d" in
     "$MAIN_CLONE"|"$MAIN_CLONE"/*|"$MAIN_CLONE"-issue-*) return 0 ;;
   esac
-  common=$(cd "$d" 2>/dev/null && git rev-parse --git-common-dir 2>/dev/null) || return 1
-  common=$(cd "$d" && cd "$common" && pwd -P) || return 1
-  [ "$common" = "$MAIN_CLONE/.git" ]
+  return 1
 }
 
 # 프로필은 이 스크립트의 프로필 루트, 또는 사용자 전용 TMPDIR 밑의 레거시 접두
 # (l4-* · <이슈번호>-chrome*)만 소유다 — 디렉터리 앵커가 없으면 basename 만 같은 남의
-# 프로필까지 삼킨다. 레거시 분기는 #231 이전 즉석 프로필용이라 그 잔재가 소진되면 지운다.
+# 프로필까지 삼킨다. TMPDIR 미설정 환경에서 레거시 접두를 인정하지 않는 것은 공유 /tmp
+# 의 남의 프로필이 그 규칙만으로 kill 대상이 되기 때문이다. 레거시 분기는 #231 이전
+# 즉석 프로필용이라 그 잔재가 소진되면 지운다.
 own_profile() {
   local p=$1 pid=$2 base cwd
   case "$p" in
@@ -96,6 +103,7 @@ own_profile() {
     [0-9]*-chrome*) [ -z "$(printf '%s' "${base%%-chrome*}" | tr -d '0-9')" ] || return 1 ;;
     *) return 1 ;;
   esac
+  [ -n "$TMP_ROOT" ] || return 1
   case "$p" in "$TMP_ROOT"/*) return 0 ;; esac
   return 1
 }
@@ -136,6 +144,25 @@ for f in "$PROFILE_ROOT"/*.env; do
     LIVE_PIDS="$LIVE_PIDS$(printf '%s' "$holders" | tr '\n' ' ') $server "
   fi
 done
+
+# 수집 시점과 시그널 시점 사이에 대상이 죽고 pid 가 재사용될 수 있다 — 죽이기 직전에
+# 커맨드라인·cwd 로 소유를 다시 확인한다.
+owned_now() {
+  local pid=$1 line udd cwd
+  line=$(ps -o command= -p "$pid" 2>/dev/null || true)
+  [ -n "$line" ] || return 1
+  case "$line" in
+    *--user-data-dir=*)
+      udd=$(printf '%s' "$line" | sed 's/.*--user-data-dir=//; s/ .*$//')
+      own_profile "$udd" "$pid" ;;
+    *http.server*)
+      case "$line" in *python*) : ;; *) return 1 ;; esac
+      cwd=$(proc_cwd "$pid" || true)
+      [ -n "$cwd" ] || return 1
+      own_cwd "$cwd" ;;
+    *) return 1 ;;
+  esac
+}
 
 TARGETS=''
 FOUND=0
@@ -211,7 +238,7 @@ purge_dead_states
 
 [ -n "$TARGETS" ] || { printf 'l4-sweep: 종료 대상 프로세스 없음\n'; exit 0; }
 
-for pid in $TARGETS; do alive "$pid" && kill "$pid" 2>/dev/null || true; done
+for pid in $TARGETS; do owned_now "$pid" && kill "$pid" 2>/dev/null || true; done
 rest=''
 for _ in 1 2 3 4 5 6; do
   rest=''
@@ -219,7 +246,7 @@ for _ in 1 2 3 4 5 6; do
   [ -z "$rest" ] && break
   sleep 0.5
 done
-for pid in $rest; do kill -9 "$pid" 2>/dev/null || true; done
+for pid in $rest; do owned_now "$pid" && kill -9 "$pid" 2>/dev/null || true; done
 
 left=''
 for pid in $TARGETS; do alive "$pid" && left="$left $pid"; done
