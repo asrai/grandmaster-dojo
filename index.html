@@ -1277,6 +1277,7 @@ button.ghost { background: transparent; }
   flex: none; display: flex; gap: var(--slip-gap); height: var(--slip-h);
   overflow-x: auto; scroll-snap-type: x mandatory;
 }
+/* `.slip` 을 죽간과 클래스째 공유하는 것이 「같은 규격」의 구현이다 — 죽간 조판을 바꾸면 이 스트립도 함께 움직인다. */
 .slots .slip { scroll-snap-align: start; }
 /* 빈 칸도 같은 규격을 지켜야 칸 수가 카드 폭으로 읽힌다 — 비었다는 사실만 점선으로 갈린다. */
 .slots .slip.empty { border-style: dashed; color: var(--dim); }

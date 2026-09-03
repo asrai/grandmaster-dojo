@@ -45,7 +45,7 @@ function slotWarning(session, entry) {
       cls: equipped ? 'ok' : 'risk',
       text: equipped
         ? `${name}${particle(name, '이', '가')} 슬롯에 들어왔다 — 절초를 받아칠 수 있다`
-        : `${name}${particle(name, '이', '가')} 빠져 있다 — 절초에 역파를 맞는다, 도장에서 바꾼다`,
+        : `${name}${particle(name, '이', '가')} 빠져 있다 — 절초에 역파를 맞는다, 도장에서 해제하고 장착한다`,
     };
   }
   if (entry.tier === REVEAL_TIER.RUMOR) {
@@ -118,13 +118,13 @@ export function renderSelect(ctx) {
    * 대련 죽간과 같은 세로 카드를 좌우 스크롤로 세워, 칸이 늘어도 규격이 그대로다 (REQ-824).
    */
   function slotStrip() {
-    // 칸이 넘쳐 스크롤이 생기면 이 상자가 유일한 탭 정지점이다 — 카드가 표시 전용이라 안에
-    // 포커스 받을 것이 없고, 그러면 키보드로는 뒤쪽 카드에 닿는 경로가 사라진다 (REQ-911).
+    // 카드가 표시 전용이라 스트립 안에 포커스 받을 것이 없다 — 이 상자가 탭 정지점을 지지 않으면
+    // 칸이 넘친 순간 키보드로 뒤쪽 카드에 닿는 경로가 사라진다 (REQ-911).
     return el('div', {
-      class: 'slots', role: 'group', 'aria-label': '내 슬롯', tabindex: '0',
+      class: 'slots', role: 'list', 'aria-label': '내 슬롯', tabindex: '0',
     }, session.slots.map((styleId) => {
       const style = styleId ? styleById(styleId) : null;
-      return el('div', { class: `slip${style ? '' : ' empty'}` }, [
+      return el('div', { class: `slip${style ? '' : ' empty'}`, role: 'listitem' }, [
         el('span', { class: 'slip-head' }, [
           el('b', { class: 'slip-rank', text: style ? `${rankOfStyle(session, style.id)}성` : '' }),
         ]),
