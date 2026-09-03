@@ -100,11 +100,17 @@ export function createTablets({ soloEmphasis = false } = {}) {
       const byId = new Map(items.map((item) => [item.style.id, item]));
       const states = tabletStates(drawn, next);
 
+      // 가라앉기와 미끄러짐은 같은 길이를 쓴다.
+      const exitMs = ledgerMs('--slip-exit');
       // 배경 탭에서는 `animationend` 가 오지 않는다 — 시효가 지난 유령은 렌더가 함께 걷어 낸다.
-      const stale = performance.now() - ledgerMs('--slip-exit');
+      const stale = performance.now() - exitMs;
       for (const [id, ghost] of [...sinking]) if (ghost.at <= stale) bury(id);
 
       // 새 매를 그리기 전에 잰다 — 뒤에 재면 폭 계단이 이미 바뀌어 옛 자리를 알 수 없다.
+      // 살아남는 매의 옛 자리도 같은 패스에서 잡는다 — 슬롯을 갈아타는 이동이 FLIP 의 출발점이다 (#152).
+      // 아직 미끄러지는 중이면 눈에 보이는 자리는 레이아웃 좌표가 아니라 그 잔여분만큼 옛 자리 쪽이다.
+      const before = new Map([...live].map(([id, slip]) => [id,
+        slip.node.offsetLeft + (Number.parseFloat(getComputedStyle(slip.node).translate) || 0)]));
       sink(states
         .filter(({ id, state }) => state === TABLET.EXIT && live.has(id))
         .map(({ id }) => {
@@ -131,6 +137,18 @@ export function createTablets({ soloEmphasis = false } = {}) {
       // 폭은 매수가 정한다 — 좁혀짐의 계단은 원장이 갖고 여기는 그 매수만 건넨다 (REQ-824).
       node.dataset.n = String(next.length);
       drawn = next;
+
+      // flex 슬롯의 위치는 전이 대상이 아니라, 옛 자리로 되돌린 뒤 풀어 미끄러짐을 짓는다 (#152).
+      // 개별 속성 `translate` 채널만 쓴다 — `transform` 은 `.slip.only` · `slip-in` 이 계속 쓴다.
+      for (const [id, from] of before) {
+        const slip = live.get(id);
+        if (!slip) continue;
+        const dx = from - slip.node.offsetLeft;
+        if (dx !== 0) {
+          slip.node.animate([{ translate: `${dx}px 0` }, { translate: '0px 0' }],
+            { duration: exitMs, easing: 'ease' });
+        }
+      }
 
       const confirmed = soloEmphasis && next.length === 1;
       // 확정 연출이 얼마나 오래 보였는지는 판정 대기의 입력이라 그 시각을 여기서 잡는다 (REQ-826).

@@ -2762,6 +2762,92 @@ suite('초식명·한자는 행에서 폭을 양보하지 않는다 (#139)', () 
 });
 
 
+// ------------------------- 12-a-7. 확정 매의 미끄러짐과 위아래 (#152)
+
+suite('확정 매는 옛 자리에서 미끄러져 오고 탈락 매 위에 선다 (#152)', () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'))
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => [m[1].trim(), m[2]]);
+  const heads = (sel) => rules.filter(([s]) => s === sel).length;
+  const body = (sel) => rules.find(([s]) => s === sel)?.[1] ?? null;
+
+  // ⓪ 모집단 앵커 — 이 전이가 발화하는 순간이 실재해야 아래 단정이 공허하지 않다.
+  deepEq(tabletStates(['a', 'b', 'c'], ['a']).map((t) => `${t.id}:${t.state}`),
+    ['a:only', 'b:exit', 'c:exit'], '3매에서 한 매만 남으면 확정 1 · 탈락 2 로 갈린다');
+
+  // ① 짝 단정 — 음수 z 는 그것을 받아 줄 쌓임 문맥이 있어야 뜻을 갖고, 문맥은 내려갈 것이 있어야
+  // 뜻을 갖는다. 한쪽만 남으면 탈락 매가 확정 매를 덮거나 곁판 배경 아래로 사라진다.
+  for (const sel of ['.slip-row', '.slip', '.slip.out']) {
+    ok(body(sel), `${sel} 규칙 블록을 실제로 떼어냈다`);
+    eq(heads(sel), 1, `${sel} 규칙 머리가 하나뿐이다 — 뒤에 온 재정의가 없다`);
+  }
+  ok(/isolation:\s*isolate/.test(body('.slip-row') ?? ''),
+    '탈락 매가 내려갈 바닥을 .slip-row 가 만든다');
+  const zOut = Number(body('.slip.out')?.match(/(^|[;{\s])z-index:\s*(-?\d+)/)?.[2]);
+  ok(Number.isFinite(zOut) && zOut < 0, `사라지는 매는 음수 z 로 내려간다 — .slip.out z-index=${zOut}`);
+  // 문맥만 만들고 자기 층은 갖지 않는 것이 계약이다 — 층을 가지면 무대의 z 순서에 함께 진입한다.
+  // 모집단은 이름이 아니라 선택자 매칭이다 — 합성·자손 갈래(`.pad .slip-row`)로 한 줄 들어와도
+  // 같은 결함이 되돌아오는데, 완전 일치 조회는 그 갈래를 통째로 못 본다.
+  const rowRules = rules.filter(([sel]) => /(^|[\s,>+~]|[\w\])])\.slip-row(?![\w-])/.test(sel));
+  ok(rowRules.length >= 1, `.slip-row 를 겨누는 규칙을 실제로 떼어냈다 — ${rowRules.length}건`);
+  deepEq(rowRules.filter(([, b]) => /(^|[;{\s])z-index:/.test(b)).map(([sel]) => sel), [],
+    '.slip-row 계열이 무대의 z 순서에 들어가지 않는다');
+  deepEq(rowRules.filter(([, b]) => /isolation:\s*auto/.test(b)).map(([sel]) => sel), [],
+    '.slip-row 계열이 그 문맥을 되돌리지 않는다');
+
+  // ② 합성 문면 — 위치는 WAAPI 의 `translate` 채널이 지므로 CSS 전이 목록은 그 속성을 갖지
+  // 않는다. 들어오면 되돌림 단계 자체에 전이가 걸려 미끄러짐이 제자리 흔들림으로 바뀐다.
+  // 모집단 = 선택자가 `.slip` 자체를 겨누는 규칙 전부 — `-` 는 단어 문자가 아니라 `\b` 로는
+  // `.slip-head` 류까지 물고, 합성·자손 갈래는 완전 일치 조회로는 보이지 않는다.
+  const slipRules = rules.filter(([sel]) => /(^|[\s,>+~]|[\w\])])\.slip(?![\w-])/.test(sel));
+  ok(slipRules.length >= 10, `.slip 자체를 겨누는 규칙을 실제로 떼어냈다 — ${slipRules.length}건`);
+  const transitioned = (b) => [...b.matchAll(/(^|[;{\s])transition(-property)?:\s*([^;}]+)/g)]
+    .flatMap((m) => m[3].split(',').map((item) => item.trim().split(/\s+/)[0]));
+  // 양성 대조 — 목록 자체가 사라지면 「그 목록에 translate 가 없다」가 공허하게 참이 된다.
+  const slipTransition = transitioned(body('.slip') ?? '');
+  ok(slipTransition.includes('width') && slipTransition.includes('transform'),
+    `.slip 의 전이 목록이 실재한다 — ${slipTransition.join(' · ')}`);
+  // `all` 은 이름을 대지 않고 같은 결과를 내므로 목록 항목으로 함께 문다.
+  deepEq(slipRules.filter(([, b]) => transitioned(b).some((prop) => prop === 'translate' || prop === 'all'))
+    .map(([sel]) => sel), [], '.slip 계열의 전이 목록이 translate 를 지지 않는다');
+
+  // ③ 미끄러짐의 담지자 — 죽간 렌더러는 DOM 을 만지므로 하네스가 import 하지 않는다(#138 핀과
+  // 같은 자리다). 그래서 선언 원문으로 문다: 실재하는가, 그리고 인라인 쓰기로 새지 않는가.
+  const src = readFileSync(new URL('../src/ui/tablets.mjs', import.meta.url), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  const keyframes = [...src.matchAll(/\.animate\(\s*\[([\s\S]*?)\]/g)].map((m) => m[1]);
+  eq(keyframes.length, 1, '슬롯 이동을 짓는 애니메이션 호출이 하나 있다');
+  ok(/translate:/.test(keyframes[0] ?? ''), '그 키프레임이 translate 채널을 쓴다');
+  ok(!/transform:/.test(keyframes[0] ?? ''),
+    '그 키프레임이 transform 을 건드리지 않는다 — 금테 확대·등장이 쥔 채널이다');
+  // 파일 어디에나 있는 `ledgerMs` 호출을 물면 이 단정은 공허하다 — 같은 문자열이 유령 시효 계산에도
+  // 있어 슬라이드 길이만 리터럴로 바꿔도 통과한다. 모집단을 그 호출의 옵션 객체로 좁힌다.
+  const opts = src.match(/\.animate\(\s*\[[\s\S]*?\]\s*,\s*(\{[\s\S]*?\})\s*\)/)?.[1] ?? '';
+  ok(opts, '그 호출의 옵션 객체를 실제로 떼어냈다');
+  const dur = opts.match(/duration:\s*([A-Za-z_$][\w$]*)/)?.[1];
+  ok(dur, `미끄러짐의 길이가 리터럴이 아니라 이름으로 온다 — ${opts.replace(/\s+/g, ' ')}`);
+  ok(dur && new RegExp(`const\\s+${dur}\\s*=\\s*ledgerMs\\(\\s*'--slip-exit'\\s*\\)`).test(src),
+    `그 이름이 시각 원장에서 온다 — ${dur}`);
+  // 옛 자리를 레이아웃 좌표로만 재면 미끄러지는 도중의 재좁힘·되돌리기가 눈에 보이던 자리를 버린다.
+  ok(/offsetLeft \+ \(Number\.parseFloat\(getComputedStyle\([^)]*\)\.translate\)/.test(src),
+    '옛 자리는 진행 중인 미끄러짐의 잔여분을 함께 진다');
+  // 부재 단정 — 인라인 쓰기는 CSS 가 쥔 채널을 JS 가 덮는 형태라 그 순간 금테 확대가 사라진다.
+  deepEq(src.match(/\.style\.(transform|translate)\s*=/g) ?? [], [],
+    '합성 채널을 인라인 대입으로 쓰지 않는다');
+  deepEq(src.match(/setProperty\(\s*'(transform|translate)'/g) ?? [], [],
+    '합성 채널을 setProperty 로도 쓰지 않는다');
+
+  // ④ 회귀 — `isolation` 은 쌓임 문맥만 만들고 포함 블록은 만들지 않는다. 죽간 줄이 그 축을
+  // 다시 물면 탈락 매의 좌표 기준이 매수 따라 움직이는 줄로 되돌아간다 (#138).
+  const POSITIONED = /(^|[;{\s])position\s*:\s*(relative|absolute|fixed|sticky)/i;
+  const CONTAINING = /(^|[;{\s])(transform|filter|backdrop-filter|will-change|contain)\s*:/i;
+  const tabletsRules = rules.filter(([sel]) => /(^|[\s,>+~]|[\w\])])\.tablets(?![\w-])/.test(sel));
+  ok(tabletsRules.length >= 2, `죽간 줄을 겨누는 규칙을 실제로 떼어냈다 — ${tabletsRules.length}건`);
+  deepEq(tabletsRules.filter(([, b]) => POSITIONED.test(b) || CONTAINING.test(b)).map(([sel]) => sel), [],
+    '죽간 줄이 포함 블록을 되찾지 않는다');
+});
+
 // ------------------------- 12-b. 결과 진입 1회 정산 · 판 원장 (#70 · REQ-871~873)
 
 suite('판 원장 — 그 판의 판정 분포·성 변화·결정타 (REQ-872·873·708)', () => {

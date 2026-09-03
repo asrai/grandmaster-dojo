@@ -105,7 +105,7 @@
      초에만 물린다. 120ms 는 실측 전 초기값이고, 히트스톱과 함께 판정 재생 앞의 예산을 이룬다 —
      둘의 합이 재생을 남기는지는 app.mjs 부팅 단정이 문다. */
   --only-hold: 120ms;
-  --slip-exit: 180ms;  /* 탈락 죽간이 흐려지며 가라앉는 시간 (REQ-825) */
+  --slip-exit: 180ms;  /* 탈락 죽간의 가라앉기와 살아남은 매의 미끄러짐이 함께 쓰는 시간 (REQ-825) */
 
   /* 3단 고정 (REQ-820) — 시안 실측 초기값이며 S3 수련이 같은 좌표를 상속한다 (REQ-840). */
   --band-h: 50px;
@@ -826,6 +826,8 @@ button.ghost { background: transparent; }
    흐름에서 뺀 매의 기준 상자이기도 하다 — 매수가 변해도 이 행의 폭·원점은 그대로다 (#138). */
 .slip-row {
   position: relative;
+  /* 가라앉는 매가 내려갈 음수 z 의 바닥 — 이 문맥이 없으면 그 매가 곁판 배경 아래로 빠진다 (#152). */
+  isolation: isolate;
   flex: none; height: var(--slip-h); display: flex; align-items: stretch;
   justify-content: center; gap: var(--slip-gap);
 }
@@ -885,6 +887,8 @@ button.ghost { background: transparent; }
    서는 자리는 매수와 무관하게 불변인 `.slip-row` 다 (#138). */
 .slip.out {
   position: absolute; top: 0; pointer-events: none;
+  /* 사라지는 것은 항상 살아남은 것 아래다 — 문서 순서에 맡기면 탈락 매가 확정 매를 덮는다 (#152). */
+  z-index: -1;
   animation: slip-out var(--slip-exit) ease-in forwards;
 }
 @keyframes slip-in { from { opacity: 0; transform: translateY(-6px) } to { opacity: 1; transform: none } }
