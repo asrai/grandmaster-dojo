@@ -175,8 +175,9 @@ function bandActions(ctx) {
       disabled: !session.transmitted,
       onclick: () => ctx.go('preview'),
     },
+  ]
     // 잠김과 완료는 같은 비활성이지만 다른 사실이다 — 자물쇠는 아직 열 수 있는 것에만 붙는다 (#167).
-  ].map((a) => ({ ...a, locked: Boolean(a.disabled && !a.done) }));
+    .map((a) => ({ ...a, locked: Boolean(a.disabled && !a.done) }));
 }
 
 /**

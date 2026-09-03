@@ -502,7 +502,7 @@ button.ghost { background: transparent; }
   mask: url('assets/icons/reset.svg') center / contain no-repeat;
   -webkit-mask: url('assets/icons/reset.svg') center / contain no-repeat;
 }
-/* 자물쇠는 오버레이(`::after`)로도 서므로 그 선택자를 여기에 함께 묶는다 — 경로가 표 밖으로 새지 않는다. */
+/* 자물쇠는 오버레이(`::after`)로 서지만 경로는 이 표 하나에 둔다 — 그래서 선택자를 여기에 함께 묶는다. */
 .icon-lock, .band-actions button.locked::after {
   mask: url('assets/icons/lock.svg') center / contain no-repeat;
   -webkit-mask: url('assets/icons/lock.svg') center / contain no-repeat;
