@@ -59,7 +59,7 @@ function dispatchWarning(session, unlocked) {
     return { cls: 'risk', text: '아직 내보낼 제자가 없다 — 도장에서 전수하면 열린다' };
   }
   const lack = shortfall.map((st) => `${st.name} ${st.rank}성`).join(' · ');
-  return { cls: 'risk', text: `${lack} · 권장 ${need}성 — 도장 제자 카드에서 그 초식을 수련시킨다` };
+  return { cls: 'risk', text: `${lack} · 권장 ${need}성 — 도장 제자 카드에서 수련시킨다` };
 }
 
 /**
