@@ -726,10 +726,13 @@ button.ghost { background: transparent; }
 .hall.transmit.waving .fig.pupil > .part.arm {
   animation: tm-wave-pupil var(--tm-cycle-ms) ease-in-out var(--tm-echo-delay) var(--tm-waves);
 }
-/* 4초 내내 도는 합성이라 저프레임·모션 감소에서는 반복 없이 대기 자세로 둔다 (#223). */
-.hall.transmit.flat .part.arm { animation: none; }
+/* 4초 내내 도는 합성이라 저프레임·모션 감소에서는 반복 없이 대기 자세로 둔다. 두 예외가 위 짝을
+   그대로 되풀이하는 것은 특이도가 모자라면 규칙이 조용히 지기 때문이다 (#223). */
+.hall.transmit.flat.waving .fig.master > .part.arm,
+.hall.transmit.flat.waving .fig.pupil > .part.arm { animation: none; }
 @media (prefers-reduced-motion: reduce) {
-  .hall.transmit .part.arm { animation: none; }
+  .hall.transmit.waving .fig.master > .part.arm,
+  .hall.transmit.waving .fig.pupil > .part.arm { animation: none; }
 }
 
 /* 무공 인장 (REQ-862·863) — 화면에서 유일하게 빛나는 것이고, 세로 조판이라 아래 목록이 부속이 된다. */
