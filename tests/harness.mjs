@@ -923,14 +923,14 @@ suite('절초 공개 3층 전이 (REQ-882·883·884·894)', () => {
   settleDuel(session, { win: true, stage: ult.stage });
   eq(challengerEntry(session, ult).tier, REVEAL_TIER.COUNTER, '한 번 이긴 뒤로 파해가 공개된다');
 
-  // 목록 소유가 홈과 S7 사이를 오가도 파생은 한 자리다 — 두 화면이 다른 층을 말하면 예고가 함정이 된다.
+  // 목록과 그 마지막 항은 파생이 한 자리다 — 자리마다 각자 파생하면 S7 의 목록과 브리핑이 다른 층을 말한다.
   const roster = challengerRoster(session);
   eq(roster.length, session.stage, '목록은 해금된 차수까지다 (REQ-834)');
   deepEq(roster.map((e) => e.challenger.stage), roster.map((_, i) => i + 1), '목록 순서가 곧 차수다 (REQ-887)');
-  const home = nextChallengerEntry(session);
-  eq(home.challenger.id, roster[roster.length - 1].challenger.id, '홈 요약은 가장 최근에 열린 차수다');
-  eq(home.tier, roster[roster.length - 1].tier, '홈 요약과 목록이 같은 공개 층을 쓴다 (REQ-835)');
-  eq(home.firstEncounter, isFirstEncounterOf(session, home.challenger.id), '요약의 대면 이력도 같은 술어에서 나온다');
+  const latest = nextChallengerEntry(session);
+  eq(latest.challenger.id, roster[roster.length - 1].challenger.id, '다음 상대는 가장 최근에 열린 차수다');
+  eq(latest.tier, roster[roster.length - 1].tier, '다음 상대와 목록 항이 같은 공개 층을 쓴다 (REQ-835)');
+  eq(latest.firstEncounter, isFirstEncounterOf(session, latest.challenger.id), '그 항의 대면 이력도 같은 술어에서 나온다');
 
   const fresh = createSession({ now: () => 0 });
   eq(challengerRoster(fresh).length, 1, '첫 진입에는 해금된 도전자가 하나뿐이다');

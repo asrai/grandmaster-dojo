@@ -60,7 +60,7 @@ function slotWarning(session, entry) {
 export function renderSelect(ctx) {
   const { session, params } = ctx;
   const roster = challengerRoster(session);
-  // 진입 시 지목된 차수가 곧 선택이고, 지목이 목록 밖이면 가장 최근에 열린 차수다.
+  // 도장 밴드가 차수를 지목해 들어오므로 그 지목이 곧 선택이고, 목록 밖이면 가장 최근에 열린 차수로 떨어진다.
   const asked = roster.findIndex((e) => e.challenger.stage === params.stage);
   let pickedFoe = asked < 0 ? roster.length - 1 : asked;
   // 슬롯을 먼저 고르고 후보를 고른다 — 두 번의 탭이 곧 「무엇을 빼고 무엇을 넣는가」다.

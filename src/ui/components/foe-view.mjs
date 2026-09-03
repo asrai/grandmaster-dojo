@@ -1,5 +1,6 @@
 // 도전자 공개 조각 (REQ-882~885·887) — S7 의 목록 행과 브리핑이 **같은 공개 층**을 보여야
 // 예고가 함정이 되지 않으므로 (REQ-835), 층에서 화면으로 가는 번역을 여기 한 벌만 둔다.
+// 소비처가 S7 하나여도 `components/` 에 두는 것은, 화면끼리 직접 import 하는 방향을 열지 않기 위해서다.
 // 층 자체를 정하는 것은 `session.mjs` 의 `challengerEntry` 이고 문구는 `theme.mjs` 가 진다.
 
 import { REVEAL_TIER, foeStyleById, styleById } from '../../core.mjs';
