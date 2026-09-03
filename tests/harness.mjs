@@ -1347,10 +1347,19 @@ suite('B-2 하드 잠금 = 전 초식 최소 성 (REQ-743)', () => {
   deepEq(missionShortfallOf(session), [], '열린 뒤에는 부족 초식이 없다');
   eq(nextDojoAction(session).kind, 'preview', '자격이 차면 예고로 간다');
 
-  // 조합은 한 판에 한 번 확정된다 — 예고 재진입이 공짜 리롤이면 가장 쉬운 조합에 눌러앉을 수 있다.
+  // 상대는 한 판에 한 번 확정된다 — 예고 재진입이 공짜 리롤이면 최약체가 나올 때까지 돌릴 수 있다.
+  session.duelWins = { 'A-1': 1, 'A-2': 1, 'A-3': 1, 'A-4': 1 };
   const drawnOnce = currentMission(session, { random: createSeededRandom(7) });
-  deepEq(currentMission(session, { random: createSeededRandom(11) }).foeSet, drawnOnce.foeSet,
-    '예고에 다시 들어와도 같은 조합을 본다');
+  eq(currentMission(session, { random: createSeededRandom(11) }).challenger.id, drawnOnce.challenger.id,
+    '예고에 다시 들어와도 같은 상대를 본다');
+  // 관전 중 이탈은 그 판을 비우지 않는다 — 「이탈했으니 새로 뽑는다」가 곧 리롤 경로다.
+  logDispatchAbort(session, { mission: session.mission });
+  eq(currentMission(session, { random: createSeededRandom(13) }).challenger.id, drawnOnce.challenger.id,
+    '관전 중 이탈 후 재진입도 같은 상대다');
+  // 캐시 키는 `dispatchStage` 라 대련 차수가 늘어도 그 판의 상대는 그대로다.
+  session.stage = 1;
+  eq(currentMission(session, { random: createSeededRandom(17) }).challenger.id, drawnOnce.challenger.id,
+    '대련 차수가 줄어도(모집단이 바뀌어도) 그 판의 상대는 안 바뀐다');
   settleDispatch(session, { win: true });
   eq(session.mission, null, '한 판이 끝나면 그 임무는 소비된다');
   eq(session.dispatchStage, 3, '이긴 차수만 다음 임무를 연다');
