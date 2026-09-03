@@ -36,7 +36,7 @@ const unknownNotice = () => el('div', { class: 'unknown' }, [
  */
 function slotWarning(session, entry) {
   // 빈 슬롯을 먼저 본다 — 「대련 시작」을 잠근 술어가 그것이라, 절초 경고에 가리면 비활성 사유가 화면에서 사라진다.
-  if (!session.slots.some(Boolean)) return { cls: 'risk', text: '슬롯이 비어 있다 — 낼 초식이 없으면 매 초 피격이다, 도장에서 채운다' };
+  if (!session.slots.some(Boolean)) return { cls: 'risk', text: '슬롯이 비어 있다 — 낼 초식이 없으면 매 초 피격이다, 도장에서 장착한다' };
   const counter = counterPairOf(entry);
   if (counter) {
     const { name } = counter.answer;
