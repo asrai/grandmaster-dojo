@@ -11,7 +11,7 @@ import { attrMark, attrTone } from '../components/attr-mark.mjs';
 import { hanja } from '../components/hanja.mjs';
 import { rankStair } from '../components/rank-stair.mjs';
 import {
-  ART_ID, ART_NAME, DISPATCH_CHALLENGER, canDiscipleTrain, canDispatch, canEquip, canTransmitNow,
+  ART_ID, ART_NAME, canDiscipleTrain, canDispatch, canEquip, canTransmitNow,
   challengerOfStage, consumeTooltip, designateDiscipleTraining, discipleTrainProgress, equip,
   learnStyle, missionLockRankOf, missionShortfallOf, pickTooltip, settleDiscipleTraining,
   simulateTraining, unequip,
@@ -171,7 +171,7 @@ function bandActions(ctx) {
       id: 'dispatch', text: '파견',
       // 차수는 대련과 같은 「N차」로 부른다 — 스펙 식별자는 데이터·로그에만 남는다 (REQ-895·896).
       sub: canDispatch(session) || !behind
-        ? `${DISPATCH_CHALLENGER.name} 임무 ${session.dispatchStage}차`
+        ? `임무 ${session.dispatchStage}차`
         : `${behind.name} ${behind.rank}성 · 권장 ${missionLockRankOf(session)}성`,
       lockedSub: '전수 후 열린다',
       disabled: !session.transmitted,

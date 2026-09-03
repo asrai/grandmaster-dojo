@@ -10,7 +10,7 @@ import {
   discipleTrainMsPerRank, finisherRevealTier, foeRankOf, isEffectiveSuccess, isFirstEncounter,
   isMissionUnlocked,
   ladderBandAt, learn,
-  missionFoeRank, missionFoeSet, missionLockRank, missionShortfall, rematchFoeRank, setStyleRank,
+  missionFoeRank, missionLockRank, missionShortfall, pickMissionFoe, rematchFoeRank, setStyleRank,
   styleById, styleRank, trainHitsToNext, transmit,
 } from '../core.mjs';
 
@@ -19,7 +19,7 @@ import {
  * 항목 스키마가 비호환으로 바뀌면 함께 오른다: 구 판본을 봉투에서 거절하는 것이, 다섯 이벤트의
  * `sv` 를 일일이 대조해야 드러나는 결손보다 먼저 그리고 분명하게 말한다 (REQ-791).
  */
-export const EXPORT_SCHEMA = 'grandmaster-dojo/log-export@2';
+export const EXPORT_SCHEMA = 'grandmaster-dojo/log-export@3';
 
 /**
  * 판독기가 로그 밖에서 끌어다 쓰는 밸런스 값 — 창 길이·유효 성공 절단선.
@@ -41,7 +41,14 @@ export const ART_NAME = ART_SETS[0].name;
 export const ART_HANJA = ART_SETS[0].hanja;
 export const DUEL_STAGES = CHALLENGERS.filter((c) => c.mode === 'duel')
   .slice().sort((a, b) => a.stage - b.stage);
+/**
+ * `mode:'dispatch'` 행 — 화면에도 추출 풀에도 등장하지 않고 M2 준보스 자리로만 남는다 (#217).
+ * 지우면 `checkContentJoins` 의 `hp`·`challengerRank` 1:1 이 부팅에서 터진다.
+ */
 export const DISPATCH_CHALLENGER = CHALLENGERS.find((c) => c.mode === 'dispatch');
+
+/** 파견 1차의 고정 상대이자 추출 풀이 빈 차수의 폴백 (REQ-741) — 절초 무대가 늘 보장된다. */
+export const LAST_DUEL_CHALLENGER = DUEL_STAGES.at(-1);
 
 /**
  * 플레이 경로 로그 싱크. 적재는 비엄격이라 어떤 위반도 게임을 멈추지 않고(필드 오타 하나가
@@ -526,21 +533,34 @@ export const canDispatch = (session) => session.transmitted
   && isMissionUnlocked(session.disciple, ART_ID, session.dispatchStage);
 
 /**
- * 그 차수의 임무를 확정한다 (REQ-741·742) — B-1 만 고정 상대이고, B-2 부터는 아키타입 풀에서
- * 매 임무 새로 뽑아 눌러앉기를 구조로 막는다. 난이도는 성으로만 오른다 (파견 무대는 하나다).
+ * 그 차수의 상대 (REQ-741·742) — 1차는 고정이고 2차부터 사부가 이긴 도전자에서 뽑는다.
+ * 모집단이 `beatenChallengers` 인 것은 「사부가 겪은 세계를 제자가 이어받는다」가 문면이라
+ * 해금만 되고 안 싸운 차수는 그 전제에 어긋나기 때문이다. 치트 경로는 승수 없이 파견이
+ * 열리므로(REQ-781~783) 빈 풀의 폴백이 방어가 아니라 시연 경로 그 자체다 (#217).
+ */
+function missionFoeOf(session, stage, random) {
+  if (stage <= 1) return LAST_DUEL_CHALLENGER;
+  return pickMissionFoe(beatenChallengers(session), random) ?? LAST_DUEL_CHALLENGER;
+}
+
+/**
+ * 그 차수의 임무를 확정한다 (REQ-741·742) — 상대의 초식 구성을 그대로 받으므로 난이도의 몸통은
+ * 그 도전자의 HP·초식 수가 지고, 차수 계단은 그 위에 성 보정으로 얹힌다.
+ * 화면은 이것을 직접 부르지 않는다 — 부르는 자리가 곧 공짜 리롤이라 `currentMission` 이 문이다.
  */
 export function beginMission(session, { random = Math.random } = {}) {
   const stage = session.dispatchStage;
-  const foeSet = stage <= 1 ? DISPATCH_CHALLENGER.styles.slice() : missionFoeSet(random);
+  const foe = missionFoeOf(session, stage, random);
+  const foeSet = foe.styles.slice();
   session.mission = {
     stage,
     label: `B-${stage}`,
     foeSet,
-    foeRank: missionFoeRank(stage, foeRankOf(DISPATCH_CHALLENGER.id)),
+    foeRank: missionFoeRank(stage, foeRankOf(foe.id)),
     // 판 시작 시점의 **투입된** 성 — 판 사이의 성 상승은 다음 판에 반영되고, 판 도중의 상승은
     // 그 판의 귀속에 섞이지 않는다 (REQ-744).
     ranks: discipleRanks(session),
-    challenger: { ...DISPATCH_CHALLENGER, styles: foeSet },
+    challenger: foe,
   };
   return session.mission;
 }
@@ -724,6 +744,8 @@ export function settleDuel(session, { win, stage }) {
 
 /** 파견 결과 정산 (REQ-406·604). `cycle_done` 이 kill (d) 의 종점이라 승패와 무관하게 찍힌다. */
 export function settleDispatch(session, { win }) {
+  // 결과 화면이 읽을 신원을 먼저 뜬다 — 아래에서 임무를 비우고 나면 세션에 상대가 남지 않는다.
+  const challenger = session.mission?.challenger ?? LAST_DUEL_CHALLENGER;
   if (win) addCoins(session, BALANCE.reward.dispatchWin, 'dispatch_win');
   logEvent(session, 'cycle', { phase: 'cycle_done' });
   // 판독기는 첫 사이클만 세므로 그 종점의 상태를 통째로 붙잡는다 — 이후 화면의 전환은 그 사이클을 오염시키지 않는다.
@@ -732,7 +754,7 @@ export function settleDispatch(session, { win }) {
   if (win && session.mission?.stage === session.dispatchStage) session.dispatchStage += 1;
   // 임무는 한 판에 소비된다 — 남겨 두면 다음 진입이 지난 차수의 조합으로 싸운다.
   session.mission = null;
-  return { reward: win ? BALANCE.reward.dispatchWin : 0 };
+  return { reward: win ? BALANCE.reward.dispatchWin : 0, challenger };
 }
 
 /**
@@ -758,6 +780,8 @@ export function settleResult(session, params) {
     reward: moved.reward,
     unlocked: moved.unlocked ?? null,
     cleared: Boolean(moved.cleared),
+    // 파견 상대는 여기서만 건너간다 — 정산이 임무를 비우므로 결과 화면이 세션에서 다시 읽을 수 없다.
+    challenger: moved.challenger ?? null,
     ...ledger,
   };
   return params.settled;

@@ -481,8 +481,8 @@ function headlessDuel({ session, stage, pace, timer, random }) {
   return ended;
 }
 
-function headlessDispatch({ session, timer }) {
-  const mission = currentMission(session);
+function headlessDispatch({ session, timer, random = Math.random }) {
+  const mission = currentMission(session, { random });
   const styles = discipleStyles(session.disciple, ART_ID);
   let ended = null;
   let match = null;
@@ -515,7 +515,7 @@ function headlessDispatch({ session, timer }) {
  * 나오는 항목은 판독기의 첫 사이클 밖이다. 실시간 방치를 기다리지 않고 주입 시계를 앞당겨 돈다.
  * @param {object} p.timer `runHeadlessCycle` 이 돌려준 가상 시계
  * @param {number} [p.stages] 이어서 돌 임무 수
- * @returns {{stage: string, foeSet: string[], foeRank: number, win: boolean}[]}
+ * @returns {{stage: string, challenger: string, foeSet: string[], foeRank: number, win: boolean}[]}
  */
 export function runHeadlessMissions({
   session, timer, stages = 1, random = Math.random, maxTrainSteps = 80,
@@ -534,11 +534,15 @@ export function runHeadlessMissions({
     enterPhase(session, 'preview');
     const mission = beginMission(session, { random });
     enterPhase(session, 'dispatch');
-    const view = headlessDispatch({ session, timer });
+    const view = headlessDispatch({ session, timer, random });
     enterPhase(session, 'result');
     settleResult(session, { kind: 'dispatch', win: view.outcome.win });
     results.push({
-      stage: mission.label, foeSet: mission.foeSet, foeRank: mission.foeRank, win: view.outcome.win,
+      stage: mission.label,
+      challenger: mission.challenger.id,
+      foeSet: mission.foeSet,
+      foeRank: mission.foeRank,
+      win: view.outcome.win,
     });
   }
   return results;
@@ -619,7 +623,7 @@ export function runHeadlessCycle({
       continue;
     }
     if (phase === 'dispatch') {
-      const view = headlessDispatch({ session, timer });
+      const view = headlessDispatch({ session, timer, random });
       go('result', { kind: 'dispatch', win: view.outcome.win });
       continue;
     }

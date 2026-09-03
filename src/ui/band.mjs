@@ -8,7 +8,7 @@ import { hanja } from './components/hanja.mjs';
 /**
  * @param {object} p
  * @param {Function} p.onLeave 물러나기 — 띠를 쓰는 화면의 좌측 첫 자리다 (REQ-897)
- * @param {string} p.name 이 화면이 마주한 대상 (도전자·초식)
+ * @param {?string} p.name 이 화면이 마주한 대상 (도전자·초식) — 아직 정해지지 않았으면 null 이라 자리째 빈다
  * @param {?string} [p.hanja]
  * @param {?string} [p.cap] 이름 앞의 갈래 표기 — 상대가 아닌 것을 이름 자리에 세우는 화면만 쓴다
  * @param {?string} [p.seal] 주사 낙관 (REQ-811)
@@ -21,7 +21,7 @@ export function stageBand({ onLeave, name, hanja: hj = null, cap = null, seal = 
     el('button', { class: 'leave', text: '←', 'aria-label': '물러나기', onclick: onLeave }),
     el('div', { class: 'stage-name' }, [
       cap ? el('span', { class: 'cap', text: cap }) : null,
-      el('b', { text: name }),
+      name ? el('b', { text: name }) : null,
       hj ? hanja(hj) : null,
     ]),
     seal ? el('span', { class: 'seal', text: seal }) : null,
