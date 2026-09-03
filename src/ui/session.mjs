@@ -540,8 +540,8 @@ export function beginMission(session, { random = Math.random } = {}) {
     label: `B-${stage}`,
     foeSet,
     foeRank: missionFoeRank(stage, foeRankOf(DISPATCH_CHALLENGER.id)),
-    // 그 임무에 **투입된** 성 — 파견 중에도 성이 오르므로, 종료 시점에 읽으면 승패가 실제보다
-    // 여문 성에 귀속돼 「어느 조합을 어느 성으로 이겼는가」(REQ-744)가 조용히 틀린다.
+    // 판 시작 시점의 **투입된** 성 — 배선이 판을 열 때마다 다시 뜨므로 판 사이의 성 상승은 다음
+    // 판에 반영되고, 판 도중의 상승은 그 판의 귀속에 섞이지 않는다 (REQ-744).
     ranks: discipleRanks(session),
     challenger: { ...DISPATCH_CHALLENGER, styles: foeSet },
   };

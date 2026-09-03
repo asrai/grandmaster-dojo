@@ -5,8 +5,9 @@
 
 import { responseWindowMs, styleById } from '../core.mjs';
 import {
-  beginBout, beginDuel, beginTrainVisit, claimBoutResult, equippedStyles, logEvent, logTimeout,
-  missionLockRankOf, noteLogViolation, recordDispatchVerdict, recordDuelVerdict, recordEffectiveSuccess,
+  beginBout, beginDuel, beginTrainVisit, claimBoutResult, discipleRanks, equippedStyles, logEvent,
+  logTimeout, missionLockRankOf, noteLogViolation, recordDispatchVerdict, recordDuelVerdict,
+  recordEffectiveSuccess,
 } from './session.mjs';
 
 /**
@@ -105,6 +106,9 @@ export function duelWiring(session, { input }) {
 export function dispatchWiring(session, { disciple, instructed = () => null }) {
   // 파견의 판은 여기서 열린다 — 임무는 차수가 같은 동안 재사용되므로 그 확정 시점은 판이 아니다.
   beginBout(session);
+  // 투입된 성도 판마다 다시 뜬다 — 재진입 사이에 정산된 제자 수련이 그 판의 귀속에 들어와야
+  // 「어느 조합을 어느 성으로 이겼는가」가 실제와 맞는다 (REQ-744).
+  if (session.mission) session.mission.ranks = discipleRanks(session);
   return {
     onTelegraph: () => disciple.arm(),
     // 지시는 그 초 한정이라 매 프레임 현재 값을 다시 읽는다.

@@ -258,8 +258,12 @@ function metricsOf(cycle, all) {
     disciple_train_ranks: trains.reduce((acc, e) => acc + (Number(e.to) - Number(e.from) || 0), 0),
     // 병렬성의 유일한 증거 — 사부가 그동안 무엇을 하고 있었는가 (REQ-754).
     disciple_train_activity: count(trains, 'master_activity'),
+    // 투입 성을 함께 싣는다 — 「어느 조합을 어느 성으로 이겼는가」(REQ-744)는 조합만으로는 안 선다.
     dispatch_by_stage: dispatches
-      .map((e) => ({ stage: e.stage, result: e.result, foe_set: e.foe_set, locked_until: e.locked_until })),
+      .map((e) => ({
+        stage: e.stage, result: e.result, foe_set: e.foe_set,
+        disciple_ranks: e.disciple_ranks, locked_until: e.locked_until,
+      })),
     // 이탈은 싸움이 끝나지 않은 판이라 승패 어느 쪽도 아니다 — 세되 승률의 분모에는 넣지 않는다 (REQ-744).
     dispatch_aborts: dispatches.filter((e) => e.result === 'abort').length,
     dispatch_win_rate: rate(dispatches.filter((e) => e.result === 'win').length,
@@ -272,6 +276,11 @@ function metricsOf(cycle, all) {
 const secs = (ms) => (ms == null ? '—' : `${(ms / 1000).toFixed(1)}s`);
 const pct = (v) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`);
 const mark = (pass) => (pass == null ? '  ?' : pass ? '  ✓' : '  ✗');
+
+/** 파견 항목의 투입 성 한 토막 — 구 판본 파일은 필드가 없으므로 그 부재도 값으로 보인다. */
+const ranksBrief = (ranks) => (ranks
+  ? `{${Object.entries(ranks).map(([id, rank]) => `${id}${rank}`).join('/')}}`
+  : '{?}');
 
 /**
  * kill 4항 pass/fail — `null` 은 미달이 아니라 **판독 불가**다. 무효 조건 넷이 각각 다른 축을 막는다:
@@ -321,7 +330,7 @@ function report(result) {
   console.log(`    사부 축  재대련 회차 ${JSON.stringify(metrics.rematch_attempts)} (최심 ${metrics.rematch_deepest})`
     + ` · 슬롯 교체 ${JSON.stringify(metrics.slot_by_challenger)} · 결정타 ${JSON.stringify(metrics.finish_by_style)}`
     + ` (의도 일치 ${pct(metrics.finish_intended_rate)}) · 8성 벽 ${metrics.rank_wall}회`);
-  console.log(`    제자 축  파견 ${metrics.dispatch_by_stage.map((m) => `${m.stage}:${m.result}[${m.foe_set?.join('+') ?? '?'}]`).join(' · ') || '—'}`
+  console.log(`    제자 축  파견 ${metrics.dispatch_by_stage.map((m) => `${m.stage}:${m.result}[${m.foe_set?.join('+') ?? '?'}]${ranksBrief(m.disciple_ranks)}`).join(' · ') || '—'}`
     + ` (승률 ${pct(metrics.dispatch_win_rate)}${metrics.dispatch_aborts ? ` · 이탈 ${metrics.dispatch_aborts}건은 분모 밖` : ''})`
     + ` · 수련 ${metrics.disciple_train_events}회 ${metrics.disciple_train_ranks}성`
     + ` · 8성 벽 ${metrics.disciple_rank_wall}회 · 병렬 ${JSON.stringify(metrics.disciple_train_activity)}`);
