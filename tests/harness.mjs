@@ -2997,6 +2997,35 @@ suite('쓰러진 사람은 접어 쓰는 무대의 바닥을 기준으로 앉는
 });
 
 
+// ------------------------- 12-a-10. 밴드 잠김의 자물쇠 (#167 · REQ-836)
+
+suite('잠긴 밴드 버튼의 자물쇠는 흐림에 함께 지워지지 않는다 (#167)', () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'))
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => [m[1].trim(), m[2]]);
+  const body = (sel) => rules.find(([s]) => s === sel)?.[1] ?? null;
+
+  // 자물쇠는 버튼의 의사요소라 그룹 투명도를 함께 받는다 — 잠김이 `opacity` 로 흐려지는 순간
+  // 유일한 잠김 기호가 같이 사라지므로, 그 되돌림은 주석이 아니라 여기가 진다.
+  ok(/(^|[;{\s])opacity:\s*1\b/.test(body('.band-actions button.locked') ?? ''),
+    '잠긴 밴드 버튼은 자기 불투명도를 1 로 되돌린다');
+  const after = rules.find(([s]) => /\.band-actions button\.locked::after\s*$/.test(s.split(',').pop() ?? ''));
+  ok(after && /content:\s*''/.test(after[1]), '자물쇠 오버레이 규칙이 실재한다');
+  ok(after && /background:\s*var\(--c5\)/.test(after[1]), '자물쇠는 막힘의 주사색을 쓴다 (REQ-811)');
+
+  // 마스크 경로가 빗나가면 CSS 는 조용히 아무것도 그리지 않는다 — 잠김이 무음으로 말을 잃는 갈래다.
+  const masked = rules.filter(([, b]) => /mask:\s*url\('assets\/icons\/lock\.svg'\)/.test(b));
+  ok(masked.length > 0, '자물쇠 마스크를 선언한 규칙이 있다');
+  ok(existsSync(new URL('../assets/icons/lock.svg', import.meta.url)), '그 마스크의 실파일이 있다');
+
+  // 완료(전수 뒤)는 같은 비활성이어도 자물쇠를 달지 않으므로, 술어가 `done` 을 실제로 뺀다.
+  const dojo = readFileSync(new URL('../src/ui/screens/dojo.mjs', import.meta.url), 'utf8');
+  ok(/locked:\s*Boolean\(a\.disabled && !a\.done\)/.test(dojo),
+    '잠김 술어가 완료를 제외한다 — 잠김과 완료는 다른 사실이다');
+});
+
+
 // ------------------------- 12-b. 결과 진입 1회 정산 · 판 원장 (#70 · REQ-871~873)
 
 suite('판 원장 — 그 판의 판정 분포·성 변화·결정타 (REQ-872·873·708)', () => {
