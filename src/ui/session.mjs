@@ -296,7 +296,7 @@ export const isRematch = (session, challengerId) => !isFirstEncounterOf(session,
 export const duelFoeRank = (session, challengerId) =>
   rematchFoeRank(foeRankOf(challengerId), duelWinsOf(session, challengerId));
 
-/** 그 대면에 실린 강화량 — 도전자 선택 화면과 홈 요약이 같은 수를 말하게 하는 한 자리. */
+/** 그 대면에 실린 강화량 — 목록 행과 브리핑이 같은 수를 말하게 하는 한 자리. */
 export const rematchBonusOf = (session, challengerId) =>
   duelFoeRank(session, challengerId) - foeRankOf(challengerId);
 

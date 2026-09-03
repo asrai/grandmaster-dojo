@@ -1,6 +1,6 @@
 // S7 도전자 선택 (REQ-880~887·894) — 목록 위 / 브리핑 아래의 2단. 고르기와 준비하기가 화면
 // 전환으로 갈리면 왕복 잡무가 되므로, 목록만 스크롤하고 브리핑과 「대련 시작」은 바닥에 고정한다
-// (REQ-881). 목록의 원본은 `session.mjs` 의 `challengerRoster` 하나이고 홈 요약이 같은 것을 읽는다.
+// (REQ-881). 목록의 원본은 `session.mjs` 의 `challengerRoster` 하나이고 브리핑이 그 항을 그대로 받는다.
 
 import { BALANCE, STYLES } from '../../balance.mjs';
 import { REVEAL_TIER, styleById } from '../../core.mjs';
@@ -60,7 +60,7 @@ function slotWarning(session, entry) {
 export function renderSelect(ctx) {
   const { session, params } = ctx;
   const roster = challengerRoster(session);
-  // 진입 시 지목된 차수가 곧 선택이고, 지목이 목록 밖이면 가장 최근에 열린 차수다 (홈 요약과 같은 자리).
+  // 진입 시 지목된 차수가 곧 선택이고, 지목이 목록 밖이면 가장 최근에 열린 차수다.
   const asked = roster.findIndex((e) => e.challenger.stage === params.stage);
   let pickedFoe = asked < 0 ? roster.length - 1 : asked;
   // 슬롯을 먼저 고르고 후보를 고른다 — 두 번의 탭이 곧 「무엇을 빼고 무엇을 넣는가」다.
