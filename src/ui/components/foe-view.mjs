@@ -1,9 +1,9 @@
 // 도전자 공개 조각 (REQ-882~885·887) — S7 의 목록 행과 브리핑이 **같은 공개 층**을 보여야
 // 예고가 함정이 되지 않으므로 (REQ-835), 층에서 화면으로 가는 번역을 여기 한 벌만 둔다.
-// 소비처가 S7 하나여도 `components/` 에 두는 것은, 화면끼리 직접 import 하는 방향을 열지 않기 위해서다.
+// `components/` 에 두는 것은 화면끼리 직접 import 하는 방향을 열지 않기 위해서다.
 // 층 자체를 정하는 것은 `session.mjs` 의 `challengerEntry` 이고 문구는 `theme.mjs` 가 진다.
 
-import { REVEAL_TIER, foeStyleById, styleById } from '../../core.mjs';
+import { REVEAL_TIER, finisherOf, foeStyleById, styleById } from '../../core.mjs';
 import { el } from '../dom.mjs';
 import { REVEAL_VIEW, attrLabel } from '../theme.mjs';
 import { attrMark, attrTone } from './attr-mark.mjs';
@@ -16,7 +16,7 @@ export const revealedStyles = (entry) =>
 /** 절초와 그 파해 대상 — 공개 층이 `COUNTER` 일 때만 존재한다 (REQ-884). */
 export function counterPairOf(entry) {
   if (entry.tier !== REVEAL_TIER.COUNTER) return null;
-  const finisher = entry.challenger.styles.map(foeStyleById).find((s) => s && s.finisher);
+  const finisher = finisherOf(entry.challenger);
   return { finisher, answer: styleById(finisher.counters) };
 }
 
@@ -34,8 +34,11 @@ export function foeChips(entry) {
   return el('div', { class: 'attrs' }, chips);
 }
 
-/** 상대 초식 카드 (REQ-884) — 절초는 금테와 태그로 갈린다. 첫 대면에는 카드 자체가 없다. */
-export const foeStyleCards = (entry) => el('div', { class: 'foe-styles' }, revealedStyles(entry).map((foe) => el('div', {
+/**
+ * 상대 초식 카드 (REQ-884·888) — 절초는 금테와 태그로 갈린다. 목록이 아니라 초식을 받는 것은,
+ * S7 은 대면 이력이 고른 공개분을 주고 파견 예고는 그 차수의 임무 조합을 주기 때문이다.
+ */
+export const foeStyleCards = (foes) => el('div', { class: 'foe-styles' }, foes.map((foe) => el('div', {
   class: `fs${foe.finisher ? ' ult' : ''}`, style: `--attr:${attrTone(foe.attr)}`,
 }, [
   el('span', { class: 'n', text: foe.name }),
@@ -53,8 +56,14 @@ export function revealNotice(entry) {
   if (entry.tier === REVEAL_TIER.NONE && entry.firstEncounter) return null;
   const view = REVEAL_VIEW[entry.tier];
   const parts = counterPairOf(entry) ?? {};
-  return el('p', { class: `tell ${view.cls}`.trim() }, [
-    el('b', { text: view.title(parts) }),
-    el('span', { text: ` — ${view.note(parts)}` }),
-  ]);
+  return tellLine({ cls: view.cls, title: view.title(parts), note: view.note(parts) });
 }
+
+/**
+ * 절초 한 줄의 조판 — 층 문구(`REVEAL_VIEW`)든 화면 고유 문면이든 같은 자리에 같은 모양으로 선다.
+ * 파견 예고는 층을 갖지 않고(상대가 늘 공개다) 이 조판만 빌린다 (REQ-888).
+ */
+export const tellLine = ({ cls = '', title, note }) => el('p', { class: `tell ${cls}`.trim() }, [
+  el('b', { text: title }),
+  el('span', { text: ` — ${note}` }),
+]);

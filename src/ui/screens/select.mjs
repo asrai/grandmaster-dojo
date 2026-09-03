@@ -7,7 +7,8 @@ import { REVEAL_TIER, styleById } from '../../core.mjs';
 import { clear, composeScreen, el, topBand } from '../dom.mjs';
 import { particle } from '../theme.mjs';
 import { hanja } from '../components/hanja.mjs';
-import { counterPairOf, foeChips, foeStyleCards, revealNotice } from '../components/foe-view.mjs';
+import { counterPairOf, foeChips, foeStyleCards, revealedStyles, revealNotice } from '../components/foe-view.mjs';
+import { styleStrip } from '../components/style-strip.mjs';
 import { ART_NAME, challengerRoster, rankOfStyle } from '../session.mjs';
 
 /** 대면 상태 (REQ-887) — 이미 이긴 상대는 회색 보통 굵기이고 주사색은 쓰지 않는다 (REQ-811). */
@@ -118,22 +119,13 @@ export function renderSelect(ctx) {
    * 대련 죽간과 같은 세로 카드를 좌우 스크롤로 세워, 칸이 늘어도 규격이 그대로다 (REQ-824).
    */
   function slotStrip() {
-    // 카드가 표시 전용이라 스트립 안에 포커스 받을 것이 없다 — 이 상자가 탭 정지점을 지지 않으면
-    // 칸이 넘친 순간 키보드로 뒤쪽 카드에 닿는 경로가 사라진다 (REQ-911).
-    return el('div', {
-      class: 'slots', role: 'list', 'aria-label': '내 슬롯', tabindex: '0',
-    }, session.slots.map((styleId) => {
-      const style = styleId ? styleById(styleId) : null;
-      return el('div', { class: `slip${style ? '' : ' empty'}`, role: 'listitem' }, [
-        el('span', { class: 'slip-head' }, [
-          el('b', { class: 'slip-rank', text: style ? `${rankOfStyle(session, style.id)}성` : '' }),
-        ]),
-        el('span', { class: 'slip-body' }, [
-          el('span', { class: 'slip-name', text: style ? style.name : '빈 슬롯' }),
-          style ? hanja(style.hanja, { stacked: true }) : null,
-        ]),
-      ]);
-    }));
+    return styleStrip({
+      label: '내 슬롯',
+      items: session.slots.map((styleId) => {
+        const style = styleId ? styleById(styleId) : null;
+        return { style, rank: style ? rankOfStyle(session, style.id) : null };
+      }),
+    });
   }
 
   function paintBrief() {
@@ -141,7 +133,7 @@ export function renderSelect(ctx) {
     const warn = slotWarning(session, row);
     clear(briefEl).append(...[
       row.firstEncounter ? unknownNotice() : el('span', { class: 'cap', text: '상대 초식' }),
-      row.firstEncounter ? null : foeStyleCards(row),
+      row.firstEncounter ? null : foeStyleCards(revealedStyles(row)),
       revealNotice(row),
       el('span', { class: 'cap', text: '내 슬롯' }),
       slotStrip(),

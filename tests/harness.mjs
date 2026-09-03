@@ -2533,7 +2533,7 @@ suite('크롬 원장은 한 토큰 한 값 (#133)', () => {
   deepEq(outside.match(HIT44) ?? [], [], ':root 밖에 44px 리터럴이 없다');
   // 부재만 두면 「그 규칙을 통째로 지웠다」도 통과한다 — 치환이 실제로 앉았음을 함께 문다.
   // 계수 문턱은 선재 호출부가 이미 채워 부분 소실을 못 본다: 세 자리를 이름으로 하나씩 문다.
-  for (const sel of ['.row-head', '.tele-attr', '.cand']) {
+  for (const sel of ['.row-head', '.tele-attr', '.top-band .mute::after']) {
     const block = outside.match(new RegExp(`^\\${sel} \\{([\\s\\S]*?)\\n?\\}`, 'm'))?.[1];
     ok(block, `${sel} 규칙 블록을 실제로 떼어냈다`);
     eq(heads(sel), 1, `${sel} 규칙 머리가 하나뿐이다 — 뒤에 온 재정의가 없다`);
@@ -2890,7 +2890,7 @@ suite('이름·한자 병기의 간격은 부모의 flex gap 이 짓는다 (#159
     '표찰이 접힌 줄까지 가운데로 둔다 — 병기 줄 클래스가 떨어져도 남는 축이다');
 
   // ④ 부착 지점 — 화면 모듈은 DOM 을 만지므로 하네스가 import 하지 않는다(#152 핀과 같은 자리다).
-  // 그래서 선언 원문으로 문다: 간격 0 이던 세 부모가 여전히 그 클래스를 지고 있는가.
+  // 그래서 선언 원문으로 문다: 간격 0 이던 부모가 여전히 그 클래스를 지고 있는가.
   const srcOf = (path) => readFileSync(new URL(path, import.meta.url), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
   // 모집단을 파일이 아니라 함수 몸통으로 좁힌다 — 파일 전역 조회는 클래스가 결함 부모에서 장식
@@ -2902,11 +2902,12 @@ suite('이름·한자 병기의 간격은 부모의 flex gap 이 짓는다 (#159
     const end = rest.search(/\n(?:export )?function /);
     return end < 0 ? rest : rest.slice(0, end);
   };
+  // 파견 예고의 두 자리는 #173 이 S7 브리핑 규격으로 갈아엎으며 사라졌다 — 이름·한자는 상단 띠가,
+  // 절초 줄은 `foe-view` 의 공유 조판이 진다. 남은 모집단이 1건이라 아래 계수가 그 양성 대조다.
   const SITES = [
     ['../src/ui/screens/result.mjs', 'foeTag', 'div', '결과 상대 표찰'],
-    ['../src/ui/screens/dispatch.mjs', 'finisherTell', 'p', '파견 예고 절초 줄'],
-    ['../src/ui/screens/dispatch.mjs', 'renderPreview', 'h2', '파견 예고 제목 줄'],
   ];
+  eq(SITES.length, 1, '병기 줄 부착 지점을 실제로 훑었다');
   for (const [path, fn, tag, label] of SITES) {
     const scope = fnBody(srcOf(path), fn);
     ok(scope, `${fn}() 몸통을 실제로 떼어냈다`);

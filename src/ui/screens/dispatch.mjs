@@ -5,108 +5,112 @@
 
 import { BALANCE } from '../../balance.mjs';
 import { createDiscipleHand } from '../../bot.mjs';
-import { discipleStyleRank, discipleStyles, finisherOf, foeStyleById } from '../../core.mjs';
-import { clear, composeScreen, el, topBand } from '../dom.mjs';
+import { REVEAL_TIER, discipleStyleRank, discipleStyles, finisherOf, foeStyleById, styleById } from '../../core.mjs';
+import { clear, composeScreen, el } from '../dom.mjs';
 import { stageBand } from '../band.mjs';
-import { REASON_VIEW, attrLabel, winAttrOf } from '../theme.mjs';
+import { REASON_VIEW, REVEAL_VIEW } from '../theme.mjs';
 import { attrMark, attrTone } from '../components/attr-mark.mjs';
-import { hanja } from '../components/hanja.mjs';
+import { foeStyleCards, tellLine } from '../components/foe-view.mjs';
+import { styleStrip } from '../components/style-strip.mjs';
 import { CUE, play, playVerdict } from '../audio.mjs';
 import { SPOT, createArena } from '../arena.mjs';
 import { createMatch } from '../match.mjs';
 import {
-  ART_ID, ART_NAME, DISPATCH_CHALLENGER, canDispatch, currentMission,
+  ART_ID, DISPATCH_CHALLENGER, canDispatch, currentMission,
   missionLockRankOf, missionShortfallOf,
 } from '../session.mjs';
 import { createTablets } from '../tablets.mjs';
 import { createVerdictOverlay } from '../verdict-overlay.mjs';
 import { composeHooks, dispatchWiring, logDispatchAbort, logDispatchResult } from '../wiring.mjs';
 
-const styleIcon = (style, extra = '', rankTag = null) => el('div', {
-  class: `cand${extra ? ` ${extra}` : ''}`, style: `--attr:${attrTone(style.attr)}`,
-}, [
-  attrMark(style.attr),
-  el('span', { class: 'cand-name', text: style.name }),
-  rankTag ? el('span', { class: 'tag', text: rankTag }) : null,
-]);
-
 /**
- * 절초 공개 (REQ-732·742) — 절초는 역파라는 특별 벌칙을 가진 유일한 초식이라 답을 미리 가르친다.
- * B-2 부터는 조합이 랜덤이라 절초가 없는 임무도 있고, 그때는 공개할 것 자체가 없다.
+ * 절초 공개 (REQ-732·742·888) — 절초는 역파라는 특별 벌칙을 가진 유일한 초식이라 답을 미리
+ * 가르친다. 파견 상대는 대면 이력을 갖지 않아 늘 공개 층이고, 그래서 층을 고르는 대신 S7 이
+ * 재대련에서 쓰는 문면(`COUNTER`)을 그대로 빌린다. 부재 문면만 원장(`REVEAL_VIEW[NONE]`)을
+ * 안 쓰는 것은 그쪽이 「이 도전자는」으로 도전자를 주어로 삼기 때문이다 — 파견 상대는 늘 같고
+ * 매 차수 새로 뽑히는 것은 조합이라, 없다고 말할 대상이 도전자가 아니라 이번 임무다.
  */
 function finisherTell(finisher) {
-  if (!finisher) return el('p', { class: 'dim', text: '이번 임무에 절초는 없다 — 역파가 나올 자리가 없다.' });
-  return el('div', {}, [
-    el('div', { class: 'icons' }, [styleIcon(finisher, 'big-icon')]),
-    el('p', { class: 'hj-line' }, [
-      el('b', { text: `절초 ${finisher.name}` }),
-      hanja(finisher.hanja),
-      el('span', { class: 'dim', text: ` · ${attrLabel(finisher.attr)} · ${finisher.len}수 · 이기는 색 ${attrLabel(winAttrOf(finisher.attr))}` }),
-    ]),
-  ]);
+  if (!finisher) {
+    return tellLine({ cls: 'none', title: '이번 임무에 절초는 없다', note: '역파가 나올 자리가 없다' });
+  }
+  const view = REVEAL_VIEW[REVEAL_TIER.COUNTER];
+  const parts = { finisher, answer: styleById(finisher.counters) };
+  return tellLine({ cls: view.cls, title: view.title(parts), note: view.note(parts) });
 }
 
 /**
- * 하드 잠금 표시 (REQ-743) — 버튼 비활성 + 권장 성 + **부족한 초식**. 확인 팝업이 아닌 것이 결정이다:
- * 팝업은 습관적으로 넘겨져 유저가 실패를 고를 경로를 남긴다.
+ * 파견 잠금 사유 (REQ-743·836·888) — S7 슬롯 경고와 같은 자리라, 「무엇이 없는지」가 아니라
+ * 「없으면 무슨 일이 나는지」로 쓴다. 확인 팝업이 아닌 것이 결정이다: 팝업은 습관적으로 넘겨져
+ * 유저가 실패를 고를 경로를 남긴다.
  */
-function lockNotice(need, shortfall) {
+function dispatchWarning(session, unlocked) {
+  if (unlocked) {
+    return {
+      cls: 'ok',
+      text: session.dispatchStage <= 1
+        ? '첫 임무는 고정 상대다 — 갓 전수받은 제자도 이긴다'
+        : '임무마다 상대 구성이 새로 짜인다 — 같은 자리에 눌러앉을 수 없다',
+    };
+  }
+  const need = missionLockRankOf(session);
+  const shortfall = missionShortfallOf(session);
   // 전수 전에는 요구 성도 제자 초식도 없다 — 그 상태에 잠금 문구를 쓰면 「null 성이어야 한다」가 뜬다.
   if (need === null || !shortfall.length) {
-    return el('div', { class: 'card lock' }, [
-      el('p', {}, [el('b', { text: '아직 내보낼 제자가 없다 — 전수 후 열린다' })]),
-    ]);
+    return { cls: 'risk', text: '아직 내보낼 제자가 없다 — 도장에서 전수하면 열린다' };
   }
-  return el('div', { class: 'card lock' }, [
-    el('p', {}, [el('b', { text: `임무 잠김 — 제자의 전 초식이 ${need}성이어야 한다` })]),
-    el('p', { class: 'dim', text: `모자란 초식: ${shortfall.map((s) => `${s.name} ${s.rank}성`).join(' · ')}` }),
-    el('p', { class: 'dim', text: '도장 제자 카드에서 그 초식을 지정해 수련시켜라.' }),
-  ]);
+  const lack = shortfall.map((st) => `${st.name} ${st.rank}성`).join(' · ');
+  return { cls: 'risk', text: `${lack} · 권장 ${need}성 — 도장 제자 카드에서 수련시킨다` };
 }
 
 /**
- * 임무 예고 (REQ-732·742·743). **잠긴 차수도 이 화면에 들어온다** — 부족 초식 표시가 하드 잠금의
- * 절반이라(팝업 대신 그것을 고른 것이 결정이다) 잠긴 동안 닿을 수 없으면 그 절반이 없는 것과 같다.
+ * 파견 예고 (REQ-732·742·743·888) — S7 브리핑 규격을 상속하되 목록이 없다: 임무는 한 번에
+ * 하나라 고를 것이 없고, 브리핑 시트가 본문을 통째로 채운다. **잠긴 차수도 이 화면에 들어온다**
+ * — 부족 초식 표시가 하드 잠금의 절반이라(팝업 대신 그것을 고른 것이 결정이다) 잠긴 동안
+ * 닿을 수 없으면 그 절반이 없는 것과 같다.
  */
 export function renderPreview(ctx) {
-  const { session, root } = ctx;
+  const { session } = ctx;
   const unlocked = canDispatch(session);
   // 잠긴 차수는 조합을 뽑지 않는다 — 나갈 수 없는 상대를 미리 굴리면 그 판이 무엇이었는지가 흐려진다.
   const mission = unlocked ? currentMission(session) : null;
   const challenger = mission ? mission.challenger : DISPATCH_CHALLENGER;
+  const styles = discipleStyles(session.disciple, ART_ID);
+  const warn = dispatchWarning(session, unlocked);
 
   composeScreen(ctx, {
-    top: topBand(session, ART_NAME, { onLeave: () => ctx.go('dojo') }),
-    body: el('section', { class: 'card' }, [
     // 차수는 대련과 같은 「N차」로 부른다 — 스펙 식별자(`B-n`)만 사라지고 데이터·로그에는 남는다 (REQ-895·896).
-    el('h2', { class: 'hj-line' }, [
-      el('span', { text: `임무 ${session.dispatchStage}차 — ${challenger.name}` }),
-      hanja(challenger.hanja),
-    ]),
-    el('p', {
-      class: 'dim',
-      text: session.dispatchStage <= 1
-        ? '첫 임무는 고정 상대다 — 갓 전수받은 제자도 이긴다.'
-        : '임무마다 상대 구성이 새로 짜인다 — 같은 자리에 눌러앉을 수 없다.',
+    top: stageBand({
+      onLeave: () => ctx.go('dojo'),
+      cap: '파견',
+      name: challenger.name,
+      hanja: challenger.hanja,
+      seal: `${session.dispatchStage}차`,
     }),
-    mission ? finisherTell(finisherOf(challenger)) : null,
-    mission
-      ? el('div', { class: 'icons' }, mission.foeSet.map((id) => styleIcon(foeStyleById(id), 'mini')))
-      : lockNotice(missionLockRankOf(session), missionShortfallOf(session)),
-    el('h2', { text: `제자 — ${ART_NAME}` }),
-    el('div', { class: 'icons' }, discipleStyles(session.disciple, ART_ID).map((s) => styleIcon(s,
-      '', `${discipleStyleRank(session.disciple, ART_ID, s.id)}성`))),
-    el('div', { class: 'actions' }, [
+    body: el('div', { class: 'brief preview' }, [
+      mission ? el('span', { class: 'cap', text: '상대 초식' }) : null,
+      mission ? foeStyleCards(mission.foeSet.map(foeStyleById)) : null,
+      mission ? finisherTell(finisherOf(challenger)) : null,
+      styles.length ? el('span', { class: 'cap', text: '제자' }) : null,
+      // 성은 사부의 진척이 아니라 제자의 것이다 — 도장에서 키운 값이 여기서 읽혀야 전수의 보상이 닫힌다 (REQ-856).
+      styles.length ? styleStrip({
+        label: '제자 초식',
+        tone: 'disciple',
+        items: styles.map((style) => ({ style, rank: discipleStyleRank(session.disciple, ART_ID, style.id) })),
+      }) : null,
+      el('p', { class: `warn ${warn.cls}`.trim(), text: warn.text }),
       el('button', {
-        class: 'primary',
+        class: 'go',
         text: '파견 보내기',
-        // 잠긴 차수의 사유는 위 잠금 카드가 전부 지므로 버튼은 잠겼다는 사실만 말한다 (REQ-911·743).
+        // 잠긴 차수의 사유는 바로 위 경고 줄이 전부 지므로 버튼은 잠겼다는 사실만 말한다 (REQ-911·743).
         disabled: !unlocked,
         'aria-disabled': String(!unlocked),
         onclick: () => ctx.go('dispatch'),
       }),
     ]),
-  ].filter(Boolean)) });
+    // 브리핑 시트가 본문이라 여백은 시트가 진다 — 조립이 덧대면 S7 과 조판이 갈린다 (REQ-880).
+    padded: false,
+  });
 }
 
 export function startDispatch(ctx) {
