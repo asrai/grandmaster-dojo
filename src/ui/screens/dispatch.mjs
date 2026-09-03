@@ -31,7 +31,7 @@ import { composeHooks, dispatchWiring, logDispatchAbort, logDispatchResult } fro
  */
 function finisherTell(finisher) {
   if (!finisher) {
-    return tellLine({ cls: 'none', title: '절초 없음', note: '이번 임무에 절초는 없다 — 역파가 나올 자리가 없다' });
+    return tellLine({ cls: 'none', title: '이번 임무에 절초는 없다', note: '역파가 나올 자리가 없다' });
   }
   const view = REVEAL_VIEW[REVEAL_TIER.COUNTER];
   const parts = { finisher, answer: styleById(finisher.counters) };
