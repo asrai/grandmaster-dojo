@@ -2787,8 +2787,14 @@ suite('확정 매는 옛 자리에서 미끄러져 오고 탈락 매 위에 선�
   const zOut = Number(body('.slip.out')?.match(/(^|[;{\s])z-index:\s*(-?\d+)/)?.[2]);
   ok(Number.isFinite(zOut) && zOut < 0, `사라지는 매는 음수 z 로 내려간다 — .slip.out z-index=${zOut}`);
   // 문맥만 만들고 자기 층은 갖지 않는 것이 계약이다 — 층을 가지면 무대의 z 순서에 함께 진입한다.
-  ok(!/(^|[;{\s])z-index:/.test(body('.slip-row') ?? ''),
-    '.slip-row 는 문맥만 만들고 무대의 z 순서에 들어가지 않는다');
+  // 모집단은 이름이 아니라 선택자 매칭이다 — 합성·자손 갈래(`.pad .slip-row`)로 한 줄 들어와도
+  // 같은 결함이 되돌아오는데, 완전 일치 조회는 그 갈래를 통째로 못 본다.
+  const rowRules = rules.filter(([sel]) => /(^|[\s,>+~]|[\w\])])\.slip-row\b/.test(sel));
+  ok(rowRules.length >= 1, `.slip-row 를 겨누는 규칙을 실제로 떼어냈다 — ${rowRules.length}건`);
+  deepEq(rowRules.filter(([, b]) => /(^|[;{\s])z-index:/.test(b)).map(([sel]) => sel), [],
+    '.slip-row 계열이 무대의 z 순서에 들어가지 않는다');
+  deepEq(rowRules.filter(([, b]) => /isolation:\s*auto/.test(b)).map(([sel]) => sel), [],
+    '.slip-row 계열이 그 문맥을 되돌리지 않는다');
 
   // ② 합성 문면 — 위치는 WAAPI 의 `translate` 채널이 지므로 CSS 전이 목록은 그 속성을 갖지
   // 않는다. 들어오면 되돌림 단계 자체에 전이가 걸려 미끄러짐이 제자리 흔들림으로 바뀐다.
@@ -2815,7 +2821,14 @@ suite('확정 매는 옛 자리에서 미끄러져 오고 탈락 매 위에 선�
   ok(/translate:/.test(keyframes[0] ?? ''), '그 키프레임이 translate 채널을 쓴다');
   ok(!/transform:/.test(keyframes[0] ?? ''),
     '그 키프레임이 transform 을 건드리지 않는다 — 금테 확대·등장이 쥔 채널이다');
-  ok(/ledgerMs\('--slip-exit'\)/.test(src), '미끄러짐의 길이는 시각 원장이 정한다');
+  // 파일 어디에나 있는 `ledgerMs` 호출을 물면 이 단정은 공허하다 — 같은 문자열이 유령 시효 계산에도
+  // 있어 슬라이드 길이만 리터럴로 바꿔도 통과한다. 모집단을 그 호출의 옵션 객체로 좁힌다.
+  const opts = src.match(/\.animate\(\s*\[[\s\S]*?\]\s*,\s*(\{[\s\S]*?\})\s*\)/)?.[1] ?? '';
+  ok(opts, '그 호출의 옵션 객체를 실제로 떼어냈다');
+  const dur = opts.match(/duration:\s*([A-Za-z_$][\w$]*)/)?.[1];
+  ok(dur, `미끄러짐의 길이가 리터럴이 아니라 이름으로 온다 — ${opts.replace(/\s+/g, ' ')}`);
+  ok(dur && new RegExp(`const ${dur} = ledgerMs\\('--slip-exit'\\)`).test(src),
+    `그 이름이 시각 원장에서 온다 — ${dur}`);
   // 부재 단정 — 인라인 쓰기는 CSS 가 쥔 채널을 JS 가 덮는 형태라 그 순간 금테 확대가 사라진다.
   deepEq(src.match(/\.style\.(transform|translate)\s*=/g) ?? [], [],
     '합성 채널을 인라인 대입으로 쓰지 않는다');
