@@ -1,6 +1,6 @@
 // 도장 (REQ-707·711·713·715·830~837) — 배우기 · 수련 · 장착 · 전수 · 대련/파견 진입.
-// 홈은 「지금 무엇을 할 수 있나」의 요약이라 다음 상대 1건만 지고, 도전자 전체 목록은 그 행동의
-// 진입 화면인 S7 `select.mjs` 가 진다 (REQ-834). 두 화면은 `challengerEntry` 한 자리를 읽는다.
+// 홈은 「지금 무엇을 할 수 있나」의 요약이라 도전자 정보를 지지 않는다 — 다음 상대도 전체 목록도
+// 그 행동의 진입 화면인 S7 `select.mjs` 한 자리가 진다 (REQ-834).
 
 import { BALANCE, STYLES } from '../../balance.mjs';
 import {
@@ -10,13 +10,12 @@ import { clear, composeScreen, el, tipAnchor, topBand } from '../dom.mjs';
 import { particle } from '../theme.mjs';
 import { attrMark, attrTone } from '../components/attr-mark.mjs';
 import { hanja } from '../components/hanja.mjs';
-import { foeChips, revealNotice } from '../components/foe-view.mjs';
 import { rankStair } from '../components/rank-stair.mjs';
 import {
   ART_ID, ART_NAME, DISPATCH_CHALLENGER, canDiscipleTrain, canDispatch, canEquip, canTransmitNow,
   challengerOfStage, consumeTooltip, designateDiscipleTraining, discipleTrainProgress, equip,
-  learnStyle, missionLockRankOf, missionShortfallOf, nextChallengerEntry, pickTooltip,
-  settleDiscipleTraining, simulateTraining, unequip,
+  learnStyle, missionLockRankOf, missionShortfallOf, pickTooltip, settleDiscipleTraining,
+  simulateTraining, unequip,
 } from '../session.mjs';
 
 // 만성도 「N성」 하나뿐이다 — 배지가 폭을 양보해야 4자 초식명·한자가 한 줄에 서고,
@@ -287,25 +286,6 @@ function pupilBlock(ctx, bar) {
 }
 
 /**
- * 다음 상대 요약 (REQ-834·835) — 홈에는 1건만 서고 전체 목록은 S7 이 진다. 공개 층을 S7 과
- * 같은 자리(`challengerEntry`)에서 받아, 같은 정보를 두 화면이 다르게 말하지 않는다.
- */
-function nextFoeSummary(session) {
-  const entry = nextChallengerEntry(session);
-  const { challenger } = entry;
-  return el('section', { class: 'foe-sum' }, [
-    el('div', { class: 'foe-head' }, [
-      el('span', { class: 'cap', text: '다음 상대' }),
-      el('b', { class: 'nm', text: challenger.name }),
-      hanja(challenger.hanja),
-      entry.firstEncounter ? null : el('span', { class: 'tag', text: `${entry.attempt}번째 대면` }),
-    ]),
-    foeChips(entry),
-    revealNotice(entry),
-  ]);
-}
-
-/**
  * 걸어 둔 수련은 화면 전이와 무관하게 흐르므로 (REQ-752) 도장에 머무는 동안 막대만 따로 민다.
  * 성이 실제로 오른 순간에는 초식별 성 표시도 함께 낡으므로 그때만 화면을 다시 그린다.
  */
@@ -377,7 +357,6 @@ export function renderDojo(ctx) {
         session.slots.some(Boolean) ? null : el('p', {
           class: 'dim', text: `초식을 수련해 ${BALANCE.rankGate.equip}성에 닿으면 실전 슬롯에 자동으로 장착된다.`,
         }),
-        nextFoeSummary(session),
         pupilBlock(ctx, bar),
       ].filter(Boolean)),
     ],
