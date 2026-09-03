@@ -401,7 +401,7 @@ tags:
 > AI 생성에 바로 쓸 프롬프트 등급 묘사는 아래 `## 아트 생성 브리프` 의 `[{id}]` 블록 참조 (이 표의 `semantic_intent` 는 1~2문장 앵커일 뿐).
 > **스캔 루트는 `assets/`** — 이 프로젝트는 Unity 가 아니라 HTML5(빌드 스텝 없음)이므로 `repo_path` 는 repo 루트 상대 경로다.
 > **실루엣 캔버스는 512×1024 로 통일**한다 — 자세마다 실제 점유 영역이 달라도(엎드림·잘린 뒷모습) 같은 캔버스를 쓰면 conformance 대조와 배치 좌표가 함께 단순해진다.
-> **폰트와 아이콘(되돌리기·자물쇠)은 이 표에 없다** — 이미 실파일로 존재하는 자산이고 `format` enum(png/jpg/ogg/wav)이 ttf·woff2·svg 를 표현하지 못한다. 각각 REQ-930 · REQ-931 이 명세한다.
+> **폰트와 아이콘(되돌리기·자물쇠)은 이 표에 없다** — 이미 실파일로 존재하는 자산이고 `format` enum(png/jpg/ogg/wav)이 ttf·woff2·svg 를 표현하지 못한다. 폰트는 REQ-930, 아이콘 둘은 REQ-931 이 명세한다.
 
 | id | class | spec_ref | filename | format | dimensions | alpha | bgm_loop | count | tier | consistency_group | semantic_intent | license_meta | repo_path |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
