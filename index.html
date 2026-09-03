@@ -276,6 +276,9 @@ body {
   background: var(--bg); border-radius: 18px; overflow: hidden;
   box-shadow: 0 0 0 1px var(--line);
 }
+/* 모듈이 늦게 오면 배율 없는 무대가 먼저 그려져 잘린 채 보였다가 튄다 — 실측된 창이라, 잰
+   배율이 붙기 전까지는 레터박스 색만 남긴다. 부팅이 첫 측정에서 `.fit` 을 준다 (#187). */
+#stage:not(.fit) { visibility: hidden; }
 /* 흔들림이 걸리는 유일한 노드 — 스테이지는 `transform: scale(var(--k))` 를 이미 쓰므로 거기 걸면
    완파·역파마다 그 배율이 날아가 화면이 100% 로 튄다 (REQ-816). */
 .shell { position: relative; height: 100%; }

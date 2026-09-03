@@ -3052,13 +3052,23 @@ suite('무대 배율은 상자에 축소로만 맞고 0 을 넘는다 (#187)', (
   // 레이아웃 전·측정 실패의 갈래도 같은 계약을 진다 — 접힌 상자에서 무대가 사라지지 않는다.
   eq(stageScale({ w: 0, h: 0 }, STAGE), 1, '접힌 상자는 배율 없음으로 접힌다');
   eq(stageScale({ w: 393, h: 852 }, { w: 0, h: 0 }), 1, '무대를 못 잰 순간도 배율 없음이다');
+  // 한 축만 0 이면 그 축의 비율이 Infinity 로 걸러져, 남은 축이 그럴듯한 값을 내던 갈래다.
+  eq(stageScale({ w: 393, h: 852 }, { w: 0, h: 852 }), 1, '무대의 한 축만 못 재도 배율 없음이다');
   eq(stageScale({ w: NaN, h: 852 }, STAGE), 1, '잴 수 없는 값은 배율 없음이다');
 
   // 산식이 CSS 로 돌아가면 같은 결함이 조용히 재발한다 — 자동 검사가 렌더를 못 보기 때문이다.
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   ok(!/atan2\s*\(/.test(html), '스타일시트에 길이 인자를 삼각함수에 넣는 트릭이 없다');
+  // 이 픽스처는 CSS 가 못박은 논리 해상도의 사본이라, 그 집이 움직이면 위 산술이 허구가 된다.
+  ok(new RegExp(`#stage\\s*\\{[\\s\\S]*?width:\\s*${STAGE.w}px;\\s*height:\\s*${STAGE.h}px`).test(html),
+    `논리 해상도 ${STAGE.w}x${STAGE.h} 의 집은 CSS 하나뿐이다`);
+  // 배율이 붙기 전 프레임은 잘린 무대를 그린다 — 실측된 창이라 CSS 가 그동안 무대를 감춘다.
+  ok(/#stage:not\(\.fit\)\s*\{[^}]*visibility:\s*hidden/.test(html),
+    '배율이 붙기 전의 무대는 감춰진다');
+
   const app = readFileSync(new URL('../src/ui/app.mjs', import.meta.url), 'utf8');
-  ok(/\bResizeObserver\b/.test(app), '부팅이 크기 변화를 관찰한다');
+  ok(/classList\.add\('fit'\)/.test(app), '부팅이 첫 측정에서 그 감춤을 푼다');
+  ok(/new ResizeObserver\(/.test(app), '부팅이 크기 변화를 관찰한다');
   // 창이 아니라 상자를 봐야 도구 띠의 높이·접힘이 배율에 반영된다.
   ok(/\.observe\(stageBoxNode\)/.test(app), '관찰 대상은 창이 아니라 무대 상자다');
 

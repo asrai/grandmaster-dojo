@@ -9,6 +9,9 @@
  * @returns {number} `0 < k <= 1`
  */
 export function stageScale(box, stage) {
+  // 무대를 못 잰 축의 비율은 Infinity 라 min() 에서 조용히 걸러진다 — 남은 축이 그럴듯한 값을
+  // 내므로 「잴 수 없으면 배율 없음」이 술어로 서지 않는다. 그 판정을 입력 쪽에 세운다.
+  if (!(stage.w > 0) || !(stage.h > 0)) return 1;
   const k = Math.min(box.w / stage.w, box.h / stage.h, 1);
   // 레이아웃 전이거나 상자가 접힌 순간에는 비율이 0·음수·NaN 으로 나온다. 그 값이 그대로
   // `scale()` 에 들어가면 무대가 사라지거나 점대칭으로 뒤집히므로, 배율 없음으로 접는다.
