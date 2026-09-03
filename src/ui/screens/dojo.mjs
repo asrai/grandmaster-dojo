@@ -46,7 +46,7 @@ const tipText = (id, lead) => `${TIP_LEAD[lead]} — ${TIPS[tipRank(id)][1]}`;
 // 초식 줄의 액션 id 만 `<종류>:<초식 id>` 꼴이라, 이 분해가 곧 「밴드 액션인가 줄 액션인가」다.
 const rowStyleId = (id) => (String(id).includes(':') ? String(id).split(':')[1] : null);
 
-// 재렌더가 누른 버튼 노드를 파기하므로, 포커스를 되돌리려면 같은 줄의 토글을 id 로 다시 찾아야 한다.
+// 재렌더가 노드를 파기해도 조립이 이 id 로 같은 줄의 토글을 되찾는다 (#133).
 const rowToggleId = (styleId) => `row-toggle-${styleId}`;
 
 /**
@@ -199,9 +199,16 @@ function bandActions(ctx) {
   ];
 }
 
+/**
+ * 액션 id 를 DOM id 로 (#133) — 재렌더 뒤 같은 액션을 다시 찾는 열쇠라, 서술자의 id 에서
+ * 기계적으로 나와야 두 벌이 갈리지 않는다. `:` 를 펴는 것은 선택자로도 부를 수 있게 두기 위해서다.
+ */
+const actionDomId = (id) => `dojo-act-${String(id).replace(':', '-')}`;
+
 /** 서술자 → 버튼. 안내 대상이면 툴팁 앵커로 감싸고, 그 버튼을 누르는 순간 안내를 소비한다. */
 function actionButton(ctx, action, target) {
   const button = el('button', {
+    id: actionDomId(action.id),
     class: action.class ?? '',
     // 잠금은 상태이지 장식이 아니다 — 네이티브 `disabled` 가 포커스를 막고 `aria-disabled` 가
     // 그 사실을 낭독으로 말한다. 왜 잠겼는지는 밴드의 부제·행 안내가 따로 진다 (REQ-911·836).
@@ -236,7 +243,6 @@ function styleRow(ctx, style, actions, target, guidedRow, open) {
         onclick: () => {
           chosen = { row: open ? null : style.id, against: guidedRow };
           ctx.go('dojo');
-          document.getElementById(rowToggleId(style.id))?.focus();
         },
       }, [
         attrMark(style.attr),
@@ -335,10 +341,7 @@ function trackDiscipleTraining(ctx, bar) {
     settleDiscipleTraining(ctx.session);
     const after = discipleTrainProgress(ctx.session);
     if (!before || !after || before.rank !== after.rank || before.styleId !== after.styleId) {
-      // 사용자 조작 없이 도는 재렌더라, 포커스를 되돌리지 않으면 30분마다 예고 없이 자리를 잃는다.
-      const focused = document.activeElement?.id;
       ctx.go('dojo');
-      if (focused) document.getElementById(focused)?.focus();
       return;
     }
     paintTrainBar(bar, after);

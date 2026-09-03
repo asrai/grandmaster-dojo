@@ -74,6 +74,7 @@ export function renderSelect(ctx) {
   const entry = () => roster[pickedFoe];
   // 재렌더가 누른 버튼 노드를 파기하므로, 포커스를 되돌리려면 같은 자리를 id 로 다시 찾아야 한다.
   const slotId = (i) => `select-slot-${i}`;
+  // `composeScreen` 을 거치지 않는 부분 갱신이라 조립의 포커스 계약 밖이다 — 그 일반해로 존치한다 (#133).
   function repaint(paint, focusId = document.activeElement?.id) {
     paint();
     if (focusId) document.getElementById(focusId)?.focus();

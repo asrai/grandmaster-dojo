@@ -2421,6 +2421,84 @@ suite('원장 ms 판독은 한 벌 (#132)', () => {
   }
 });
 
+// ------------------------- 12-a-3. 크롬 조립 계약 — 띠 원장 · 히트 축 · 포커스 소유 (#133)
+
+suite('크롬 원장은 한 토큰 한 값 (#133)', () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+
+  // (I2) 두 띠가 같은 토큰을 쓰는가. 규칙 블록을 떼어내지 못하면 아래 부재 단정이 전부 공허하게
+  // 참이 되므로, 블록 실재 → 토큰 실재 → px 리터럴 부재 순으로 물린다.
+  // 첫 블록만 떼어내면 뒤에 온 같은 선택자의 재정의가 캐스케이드로 이기고도 핀을 통과한다.
+  const heads = (sel) => (html.match(new RegExp(`^\\${sel} \\{`, 'gm')) ?? []).length;
+  for (const sel of ['.top-band', '.stage-band']) {
+    const block = html.match(new RegExp(`^\\${sel} \\{([\\s\\S]*?)\\n\\}`, 'm'))?.[1];
+    ok(block, `${sel} 규칙 블록을 실제로 떼어냈다`);
+    eq(heads(sel), 1, `${sel} 규칙 머리가 하나뿐이다 — 뒤에 온 재정의가 없다`);
+    ok(/height:\s*var\(--band-h\)/.test(block ?? ''), `${sel} 의 높이가 --band-h 다`);
+    ok(!/(^|[;\s])height:\s*\d/.test(block ?? ' height: 1'), `${sel} 에 px 리터럴 높이가 없다`);
+  }
+
+  // (I3) 히트 축 44 의 정본은 `--hit-min` 하나다. 경계 인식이 없으면 `-144px` 같은 부분 문자열이
+  // 히트로 잡혀, 이름 열거 예외 목록을 달게 되고 그 목록이 토큰마다 낡는다.
+  const HIT44 = /(?<![\d-])44px/g;
+  const rootAt = html.match(/^:root \{[\s\S]*?\n\}/m);
+  ok(rootAt, ':root 블록을 실제로 떼어냈다');
+  const rootBlock = rootAt?.[0] ?? '';
+  // 양성 대조 — 모집단이 0 으로 접히면 아래 둘이 먼저 무너진다. 절대 계수를 박지 않는 것은
+  // 무관한 토큰(판정 시프트·낙관 좌표)이 44 를 쓰기 시작하면 핀이 래칫 카운터로 퇴화해서다.
+  ok((rootBlock.match(HIT44) ?? []).length >= 1, ':root 의 44px 리터럴을 경계 인식 검색이 실제로 문다');
+  ok(/--hit-min:\s*44px/.test(rootBlock), '히트 축 44 의 정본은 --hit-min 이다');
+  // 경계가 실제로 걸러내는지 — `--watch-y: -144px` 는 44px 리터럴이 아닌데 부분 문자열로는 걸린다.
+  ok(/--watch-y:\s*-144px/.test(rootBlock), '부분 문자열로만 걸리는 토큰이 :root 에 실재한다');
+  ok((rootBlock.match(/44px/g) ?? []).length > (rootBlock.match(HIT44) ?? []).length,
+    '경계 인식이 그 부분 문자열 히트를 실제로 걸러낸다');
+
+  // 추출이 빗나갔을 때 예외로 죽으면 아래 단정이 통째로 건너뛰어진다 — 계수로 red 를 낸다.
+  const outside = rootAt ? html.slice(0, rootAt.index) + html.slice(rootAt.index + rootBlock.length) : '';
+  ok(outside.length > 1000, `:root 밖 모집단이 실재한다 — ${outside.length}자`);
+  deepEq(outside.match(HIT44) ?? [], [], ':root 밖에 44px 리터럴이 없다');
+  // 부재만 두면 「그 규칙을 통째로 지웠다」도 통과한다 — 치환이 실제로 앉았음을 함께 문다.
+  // 계수 문턱은 선재 호출부가 이미 채워 부분 소실을 못 본다: 세 자리를 이름으로 하나씩 문다.
+  for (const sel of ['.row-head', '.tele-attr', '.cand']) {
+    const block = outside.match(new RegExp(`^\\${sel} \\{([\\s\\S]*?)\\n?\\}`, 'm'))?.[1];
+    ok(block, `${sel} 규칙 블록을 실제로 떼어냈다`);
+    eq(heads(sel), 1, `${sel} 규칙 머리가 하나뿐이다 — 뒤에 온 재정의가 없다`);
+    ok(/var\(--hit-min\)/.test(block ?? ''), `${sel} 의 히트 축이 --hit-min 이다`);
+  }
+
+  // 두 원장이 만나는 자리 — 실효 히트는 `min(buttonHitPx, --band-h)` 이고 REQ-910 하한은
+  // `--hit-min` 이다. 어느 한쪽만 내려도 확장 상자가 조용히 44 밑으로 잘리므로 셋을 함께 문다.
+  const px = (name) => Number(rootBlock.match(new RegExp(`${name}:\\s*(\\d+)px`))?.[1]);
+  const hitMin = px('--hit-min'); const bandH = px('--band-h');
+  ok(Number.isFinite(hitMin) && Number.isFinite(bandH),
+    `원장에서 두 값을 실제로 읽었다 — --hit-min ${hitMin} · --band-h ${bandH}`);
+  ok(hitMin <= bandH, `띠가 확장 상자를 하한 밑으로 자르지 않는다 — ${hitMin} <= ${bandH}`);
+  ok(hitMin <= BALANCE.buttonHitPx,
+    `주입 히트 크기가 하한을 밑돌지 않는다 — ${hitMin} <= ${BALANCE.buttonHitPx}`);
+});
+
+// 원장 축과 스위트를 가르는 것은 격리다 — 한쪽 추출이 무너져도 다른 축의 단정이 함께 침묵하지 않는다.
+suite('화면 모듈은 포커스를 직접 조작하지 않는다 (#133)', () => {
+  // (I4) 재렌더 포커스의 소유는 `dom.mjs` 의 `composeScreen` 한 곳이다. 화면이 자기 손으로
+  // 되돌리면 id 가 전이하는 경로에서 헛돌고, 그 헛돎이 화면마다 따로 재발한다.
+  // 모집단은 화면 모듈뿐 — `composeScreen` 의 소유 호출은 이 계약의 정본이라 의도적으로 밖이다.
+  const screensDir = new URL('../src/ui/screens/', import.meta.url);
+  const screens = readdirSync(screensDir).filter((name) => name.endsWith('.mjs')).sort();
+  ok(screens.length >= 7, `화면 모듈을 실제로 훑었다 — ${screens.length}개`);
+  // 주석의 언급은 조작이 아니다. 과다 제거는 아래 건수 단정이 0 으로 무너뜨려 잡는다.
+  const read = (name) => readFileSync(new URL(name, screensDir), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  // 옵셔널 체이닝 유무와 무관하게 물어야 한다 — `node.focus()` 로 쓴 복원은 `?.focus()` 패턴을
+  // 그대로 빠져나간다. 계약의 정본(`main.focus(...)`)이 바로 그 형태다.
+  const TOUCH = /\.focus\(|activeElement/g;
+  const touched = screens.filter((name) => (read(name).match(TOUCH) ?? []).length > 0);
+  deepEq(touched.map((name) => `src/ui/screens/${name}`), ['src/ui/screens/select.mjs'],
+    '포커스를 직접 조작하는 화면은 select 하나뿐이다');
+  // 집합은 파일 단위로 접히므로 한 파일 안의 재발을 못 본다 — 출현 건수가 그 짝의 양성 대조다.
+  const touches = screens.reduce((n, name) => n + (read(name).match(TOUCH) ?? []).length, 0);
+  eq(touches, 2, '그 한 곳이 실재한다 — 조작 출현 건수(activeElement 1 · focus 1)');
+});
+
 // ------------------------- 12-b. 결과 진입 1회 정산 · 판 원장 (#70 · REQ-871~873)
 
 suite('판 원장 — 그 판의 판정 분포·성 변화·결정타 (REQ-872·873·708)', () => {

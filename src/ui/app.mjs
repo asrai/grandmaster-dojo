@@ -3,7 +3,7 @@
 
 import { BALANCE } from '../balance.mjs';
 import { createBot } from '../bot.mjs';
-import { $, LEDGER_MS, ledgerMs } from './dom.mjs';
+import { $, LEDGER_MS, focusables, ledgerMs } from './dom.mjs';
 import { initAudio, resumeAudio } from './audio.mjs';
 import { createFrameBudget } from './frame-budget.mjs';
 import { SCREEN } from './theme.mjs';
@@ -41,6 +41,8 @@ const ctx = {
   root: $('app'),
   pad: createPad(),
   params: {},
+  // 재렌더가 파기할 자리 — `composeScreen` 이 읽고 비운다 (#133).
+  focusHint: null,
   go,
   ownTop,
   refreshTop,
@@ -68,10 +70,30 @@ function refreshTop() {
   paintTop();
 }
 
+/**
+ * 재렌더가 지금 밟고 선 자리 (#133) — 조립이 노드를 파기하기 전에만 읽을 수 있다. 순번은
+ * `focusables` 목록의 첨자라 채집과 복원이 같은 정의를 본다. 목록 밖(본문·`<main>`)이면
+ * 되돌릴 자리가 없다는 뜻이라 `null` 이고, 그때는 조립이 본문에 포커스를 둔다.
+ * 전환은 이 채집을 타지 않는다 — 새 화면의 본문으로 옮기는 것이 그쪽의 계약이다 (#102).
+ */
+function captureFocusHint() {
+  const active = document.activeElement;
+  // 스테이지 밖(도구 띠)에 있던 포커스는 조립이 소유한 적이 없다 — 끌어오면 남의 자리를 뺏는다.
+  if (active && active !== document.body && !ctx.root.contains(active)) return { keep: true };
+  const seats = focusables(ctx.root);
+  const at = seats.indexOf(active);
+  return at < 0 ? null : { id: active.id, ordinal: at };
+}
+
 /** 화면 전환의 유일한 경로 — 이전 화면의 루프·리스너·입력 회수가 여기 한 곳에 묶인다. */
 function go(nextPhase, params = {}) {
+  // 같은 화면을 다시 여는 것은 전환이 아니다 — 이 갈래가 예산·낭독·포커스 소유를 함께 가른다.
+  // `cycle` 발화를 여기로 접는 것도 같은 술어 위에 서지만 그것은 #127 의 자리다.
+  const rerender = nextPhase === phase;
   // 화면을 떠나기 전에 낸다 — teardown 뒤에는 그 화면의 노드도 표본의 주인도 남지 않는다.
-  if (nextPhase !== phase) flushFrameBudget();
+  if (!rerender) flushFrameBudget();
+  // 전환의 포커스는 조립이 본문으로 소유한다 (#102) — 되찾을 자리는 재렌더에만 있다.
+  ctx.focusHint = rerender ? captureFocusHint() : null;
   if (teardown) teardown();
   teardown = null;
   paintTop = () => {};
@@ -226,6 +248,19 @@ function paintBotButton() {
 const refreshCheat = mountCheatPanel({
   session,
   refresh: () => { refreshTop(); if (phase === 'dojo') go('dojo'); },
+});
+
+// 응수 창 ×1.3 은 디버그 컨트롤이라 스테이지 밖 도구 띠에 산다 — 접근성 옵션의 정착지는 M3
+// 설정 화면이고, 그때까지 게임 화면이 그 자리를 빌려 주지 않는다.
+// 조립이 만들던 컨트롤을 마크업이 소유한다 — 사라지면 접근성 옵션이 에러 없이 없어진다.
+if (!$('a11y-window')) throw new Error('응수 창 ×1.3 (#a11y-window) 이 스테이지에 없다');
+const a11yBox = $('a11y-window');
+a11yBox.checked = session.accessibility;
+a11yBox.addEventListener('change', () => {
+  // 데이터 테이블은 시드로 두고 런타임 값은 세션이 갖는다 — 다음 창부터 반영된다.
+  session.accessibility = a11yBox.checked;
+  // 사이클 도중에 창 배율이 바뀐 세션은 모집단이 섞인 것이라, 판독기가 그 사실을 알아야 한다.
+  session.accessibilityToggles += 1;
 });
 
 // 도구 띠가 세로를 먹어 무대 배율이 1 밑으로 내려가므로, 목업 대조 스크린샷은 이 스위치로 1:1 을 되찾는다.
