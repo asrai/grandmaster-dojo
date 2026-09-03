@@ -2499,6 +2499,37 @@ suite('화면 모듈은 포커스를 직접 조작하지 않는다 (#133)', () =
   eq(touches, 2, '그 한 곳이 실재한다 — 조작 출현 건수(activeElement 1 · focus 1)');
 });
 
+// ------------------------- 12-a-4. 파츠 배경 — 단축이 이미지를 되돌리지 않는가 (#137)
+
+suite('파츠 규칙은 background 단축을 쓰지 않는다 (#137)', () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const style = html.slice(html.indexOf('<style>'), html.indexOf('</style>'))
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  // 모집단 = 선택자에 `.part` 가 든 선언 블록 전부 — 파츠 이미지를 덮을 수 있는 자리는 그뿐이다 (#137).
+  const rules = [...style.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .map((m) => [m[1].trim(), m[2]])
+    .filter(([sel]) => /(^|[\s,>+~])\.part\b/.test(sel));
+
+  // 양성 대조 ① — 추출이 실패해 모집단이 비면 아래 부재 단정이 공허하게 참이 된다.
+  ok(rules.length >= 5, `.part 계열 규칙을 실제로 떼어냈다 — ${rules.length}건`);
+  // 양성 대조 ② — 덮일 대상인 파츠 이미지 선언 자체가 실재하는가. 이름으로 물어 부분 소실도 잡는다.
+  deepEq(rules.filter(([, body]) => /background-image:/.test(body)).map(([sel]) => sel).sort(), [
+    '.part.sil_disciple_follow_arm', '.part.sil_disciple_follow_body',
+    '.part.sil_master_demo_arm', '.part.sil_master_demo_body',
+  ], '전수 4파츠의 background-image 선언이 실재한다');
+
+  // 부재 단정 — 단축은 명시 안 한 하위 속성을 initial 로 되돌리므로, 같은 특이도의 파츠 규칙보다
+  // 뒤에 오는 순간 이미지가 none 이 된다. 경계 인식이 없으면 `background-image:` 를 물어 공허해진다.
+  const SHORTHAND = /(^|[;{\s])background\s*:/;
+  deepEq(rules.filter(([, body]) => SHORTHAND.test(body)).map(([sel]) => sel), [],
+    '.part 계열에 background 단축이 없다');
+  // 부재만 두면 「규칙을 통째로 지웠다」도 통과한다 — 풀어 쓴 개별 속성이 실제로 앉았음을 함께 문다.
+  const part = rules.find(([sel]) => sel === '.fig > .part')?.[1] ?? '';
+  ok(/background-position:\s*center bottom/.test(part), '.fig > .part 의 배치가 개별 속성으로 남아 있다');
+  ok(/background-size:\s*contain/.test(part) && /background-repeat:\s*no-repeat/.test(part),
+    '.fig > .part 의 크기·반복이 개별 속성으로 남아 있다');
+});
+
 // ------------------------- 12-b. 결과 진입 1회 정산 · 판 원장 (#70 · REQ-871~873)
 
 suite('판 원장 — 그 판의 판정 분포·성 변화·결정타 (REQ-872·873·708)', () => {
