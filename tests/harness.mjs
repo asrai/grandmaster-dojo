@@ -2848,6 +2848,73 @@ suite('확정 매는 옛 자리에서 미끄러져 오고 탈락 매 위에 선�
     '죽간 줄이 포함 블록을 되찾지 않는다');
 });
 
+// ------------------------- 12-a-8. 이름·한자 병기 줄 — 간격은 부모가 짓는다 (#159)
+
+suite('이름·한자 병기의 간격은 부모의 flex gap 이 짓는다 (#159)', () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'))
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => [m[1].trim(), m[2]]);
+  const heads = (sel) => rules.filter(([s]) => s === sel).length;
+  const body = (sel) => rules.find(([s]) => s === sel)?.[1] ?? null;
+
+  // ① 짝 단정 — display 와 gap 은 함께여야 뜻을 갖는다. gap 만 남으면 인라인 상자라 무효고,
+  // display 만 남으면 간격이 0 으로 되돌아간다 — 그것이 #159 의 결함 형태 그대로다.
+  ok(body('.hj-line'), '.hj-line 규칙 블록을 실제로 떼어냈다');
+  eq(heads('.hj-line'), 1, '.hj-line 규칙 머리가 하나뿐이다 — 뒤에 온 재정의가 없다');
+  ok(/display:\s*flex/.test(body('.hj-line') ?? ''), '병기 줄이 flex 상자다');
+  const gapDecl = body('.hj-line')?.match(/(^|[;{\s])gap:\s*(\d*\.?\d+)(px|rem|em)/);
+  ok(Number(gapDecl?.[2]) > 0, `병기 줄이 0 아닌 간격을 짓는다 — gap=${gapDecl?.[2] ?? '없음'}${gapDecl?.[3] ?? ''}`);
+  // 인라인 흐름은 넘치면 줄을 바꿨다 — nowrap 으로 두면 표찰이 사는 `.scene` 의 overflow:hidden 이
+  // 그 초과분을 잘라내, 간격을 얻는 대신 이름·한자를 잃는다.
+  ok(/flex-wrap:\s*wrap/.test(body('.hj-line') ?? ''), '병기 줄이 넘치면 잘리지 않고 줄을 바꾼다');
+  ok(/(^|[;{\s])overflow:\s*hidden/.test(body('.scene') ?? ''),
+    '표찰이 사는 무대가 실제로 초과분을 잘라낸다 — 위 단정의 모집단 앵커다');
+
+  // ② 기각된 대안의 부재 단정 — `.hj` 가 자기 margin 으로 간격을 지면 부모 gap 을 이미 가진
+  // 나머지 병기 자리에서 이중으로 붙는다. 모집단은 이름이 아니라 선택자 매칭이다.
+  const hjRules = rules.filter(([sel]) => /(^|[\s,>+~]|[\w\])])\.hj(?![\w-])/.test(sel));
+  ok(hjRules.length >= 2, `.hj 를 겨누는 규칙을 실제로 떼어냈다 — ${hjRules.length}건`);
+  deepEq(hjRules.filter(([, b]) => /(^|[;{\s])margin(-[\w-]+)?:/.test(b))
+    .map(([sel]) => sel), [], '.hj 가 자기 margin 으로 간격을 짓지 않는다');
+
+  // ③ 표찰의 가운데는 두 축이 함께 진다 — `justify-content` 는 상자가 flex 일 때만 뜻을 갖고
+  // 그 flex 는 화면 모듈의 클래스 부착에 달렸다. `text-align` 이 접힌 줄과 그 이탈을 함께 받는다.
+  ok(body('.scene .foe-tag'), '상대 표찰 규칙 블록을 실제로 떼어냈다');
+  ok(/justify-content:\s*center/.test(body('.scene .foe-tag') ?? ''), '표찰이 매를 가운데로 모은다');
+  ok(/text-align:\s*center/.test(body('.scene .foe-tag') ?? ''),
+    '표찰이 접힌 줄까지 가운데로 둔다 — 병기 줄 클래스가 떨어져도 남는 축이다');
+
+  // ④ 부착 지점 — 화면 모듈은 DOM 을 만지므로 하네스가 import 하지 않는다(#152 핀과 같은 자리다).
+  // 그래서 선언 원문으로 문다: 간격 0 이던 세 부모가 여전히 그 클래스를 지고 있는가.
+  const srcOf = (path) => readFileSync(new URL(path, import.meta.url), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  // 모집단을 파일이 아니라 함수 몸통으로 좁힌다 — 파일 전역 조회는 클래스가 결함 부모에서 장식
+  // 노드로 옮겨 앉아도 통과한다(태그도 한자 호출도 그쪽에 함께 따라가므로).
+  const fnBody = (src, name) => {
+    const at = src.indexOf(`function ${name}(`);
+    if (at < 0) return null;
+    const rest = src.slice(at + 1);
+    const end = rest.search(/\n(?:export )?function /);
+    return end < 0 ? rest : rest.slice(0, end);
+  };
+  const SITES = [
+    ['../src/ui/screens/result.mjs', 'foeTag', 'div', '결과 상대 표찰'],
+    ['../src/ui/screens/dispatch.mjs', 'finisherTell', 'p', '파견 예고 절초 줄'],
+    ['../src/ui/screens/dispatch.mjs', 'renderPreview', 'h2', '파견 예고 제목 줄'],
+  ];
+  for (const [path, fn, tag, label] of SITES) {
+    const scope = fnBody(srcOf(path), fn);
+    ok(scope, `${fn}() 몸통을 실제로 떼어냈다`);
+    const open = new RegExp(`el\\('${tag}', \\{ class: '([^']*)' \\}, \\[([^\\]]*)`).exec(scope ?? '');
+    ok(open, `${label} 의 여는 선언을 실제로 떼어냈다`);
+    ok((open?.[1] ?? '').split(/\s+/).includes('hj-line'),
+      `${label} 이 병기 줄 클래스를 진다 — '${open?.[1]}'`);
+    ok(/hanja\(/.test(open?.[2] ?? ''), `${label} 이 그 상자 안에서 한자를 곧바로 잇는다`);
+  }
+});
+
+
 // ------------------------- 12-b. 결과 진입 1회 정산 · 판 원장 (#70 · REQ-871~873)
 
 suite('판 원장 — 그 판의 판정 분포·성 변화·결정타 (REQ-872·873·708)', () => {

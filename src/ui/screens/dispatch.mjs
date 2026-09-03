@@ -38,7 +38,7 @@ function finisherTell(finisher) {
   if (!finisher) return el('p', { class: 'dim', text: '이번 임무에 절초는 없다 — 역파가 나올 자리가 없다.' });
   return el('div', {}, [
     el('div', { class: 'icons' }, [styleIcon(finisher, 'big-icon')]),
-    el('p', {}, [
+    el('p', { class: 'hj-line' }, [
       el('b', { text: `절초 ${finisher.name}` }),
       hanja(finisher.hanja),
       el('span', { class: 'dim', text: ` · ${attrLabel(finisher.attr)} · ${finisher.len}수 · 이기는 색 ${attrLabel(winAttrOf(finisher.attr))}` }),
@@ -79,7 +79,7 @@ export function renderPreview(ctx) {
     top: topBand(session, ART_NAME, { onLeave: () => ctx.go('dojo') }),
     body: el('section', { class: 'card' }, [
     // 차수는 대련과 같은 「N차」로 부른다 — 스펙 식별자(`B-n`)만 사라지고 데이터·로그에는 남는다 (REQ-895·896).
-    el('h2', {}, [
+    el('h2', { class: 'hj-line' }, [
       el('span', { text: `임무 ${session.dispatchStage}차 — ${challenger.name}` }),
       hanja(challenger.hanja),
     ]),

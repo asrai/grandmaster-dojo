@@ -195,7 +195,7 @@ function foeTag(settled, foe) {
     settled.attempt > 1 ? `재대련 ${settled.attempt}차` : null,
     `${settled.exchanges}초`,
   ].filter(Boolean);
-  return el('div', { class: 'foe-tag' }, [
+  return el('div', { class: 'foe-tag hj-line' }, [
     el('b', { text: foe.name }),
     hanja(foe.hanja),
     el('span', { class: 'sub', text: ` · ${marks.join(' · ')}` }),
