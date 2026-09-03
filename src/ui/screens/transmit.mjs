@@ -63,7 +63,8 @@ export function renderTransmit(ctx) {
   const masterRanks = Object.fromEntries(mastered.map((s) => [s.id, rankOfStyle(session, s.id)]));
 
   const master = figure('sil_master_demo', 'master');
-  const pupil = figure('sil_disciple_follow', 'pupil following');
+  // 어긋난 팔은 「아직 전수하지 않았다」의 표현이라, 이미 받은 제자에게는 처음부터 없다 (#70).
+  const pupil = figure('sil_disciple_follow', session.transmitted ? 'pupil' : 'pupil following');
   const rows = el('div', { class: 'moves' });
   let shown = 0;
   // 제자의 성은 전수가 실행된 뒤에야 존재하므로 행을 붙이는 그 시점에 읽는다 (REQ-761).
@@ -107,7 +108,6 @@ export function renderTransmit(ctx) {
     phase = 'after';
     clearTimeout(timer);
     clearInterval(rowTimer);
-    pupil.classList.remove('following');
     while (shown < mastered.length) appendRow(false);
     action.className = 'primary';
     action.textContent = '도장으로';
