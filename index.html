@@ -1286,6 +1286,10 @@ button.ghost { background: transparent; }
     // 부팅에 성공한 뒤의 런타임 예외까지 덮으면 플레이 중 화면이 통째로 날아간다 — 백지일 때만 쓴다.
     const el = document.getElementById('app');
     if (!el || el.childNodes.length > 0) return;
+    // 배율이 붙기 전의 무대는 감춰져 있고, 부팅이 죽으면 그 배율은 영영 안 붙는다 — 문면을
+    // 남기려면 이 경로가 직접 걷어야 한다. 잘린 크기로 보이더라도 백지보다 낫다 (#187).
+    const stage = document.getElementById('stage');
+    if (stage) stage.style.visibility = 'visible';
     el.style.whiteSpace = 'pre-wrap';
     el.style.padding = '16px';
     el.textContent = text;

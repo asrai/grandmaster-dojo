@@ -3065,6 +3065,9 @@ suite('무대 배율은 상자에 축소로만 맞고 0 을 넘는다 (#187)', (
   // 배율이 붙기 전 프레임은 잘린 무대를 그린다 — 실측된 창이라 CSS 가 그동안 무대를 감춘다.
   ok(/#stage:not\(\.fit\)\s*\{[^}]*visibility:\s*hidden/.test(html),
     '배율이 붙기 전의 무대는 감춰진다');
+  // 부팅이 죽으면 배율이 영영 안 붙으므로, 그 감춤이 치명 문면까지 덮어 백지가 되던 자리다.
+  ok(/showFatal[\s\S]*?getElementById\('stage'\)[\s\S]{0,120}?visibility = 'visible'/.test(html),
+    '치명 문면은 그 감춤을 스스로 걷는다');
 
   const app = readFileSync(new URL('../src/ui/app.mjs', import.meta.url), 'utf8');
   ok(/classList\.add\('fit'\)/.test(app), '부팅이 첫 측정에서 그 감춤을 푼다');
