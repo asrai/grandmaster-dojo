@@ -115,13 +115,22 @@ function go(nextPhase, params = {}) {
 }
 
 /**
- * 이 프레임이 무엇을 그리고 있었나 (REQ-915) — 측정 대상은 「흔들림 + 96px 글로우 + 스크림이
- * 겹치는 프레임」이라, 판정이 재생 중인 프레임을 다른 것과 섞지 않는 것이 이 구분의 전부다.
+ * 이 프레임이 무엇을 그리고 있었나 (REQ-915) — 측정 대상은 무대가 실제로 합성 비용을 내는
+ * 프레임이라, 판정이 재생 중인 프레임을 다른 것과 섞지 않는 것이 이 구분의 전부다.
  */
 function sceneOfFrame() {
   if (overlayNode?.classList.contains('on')) return 'verdict';
-  if (sceneNode && !sceneNode.classList.contains('flat')) return 'parallax';
+  if (stageBusy() && !sceneNode.classList.contains('flat')) return 'parallax';
   return 'idle';
+}
+
+/**
+ * 지금 이 무대가 합성 비용을 내고 있나 — 아레나는 상시지만 전수 무대는 손짓이 도는 동안만이다.
+ * 정지 구간을 표본에 넣으면 시작도 하지 않은 연출이 그 프레임으로 강등된다 (#223).
+ */
+function stageBusy() {
+  if (!sceneNode) return false;
+  return sceneNode.classList.contains('scene') || sceneNode.classList.contains('waving');
 }
 
 /** 떠나는 화면의 프레임 예산을 장면별로 낸다 — 표본이 모자란 장면은 말하지 않는다. */

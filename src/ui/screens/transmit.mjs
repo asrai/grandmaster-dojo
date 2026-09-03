@@ -117,16 +117,22 @@ export function renderTransmit(ctx) {
     action.className = 'primary';
     action.textContent = '도장으로';
   }
-  /** 정보가 닫히는 시점 — 제자의 마지막 손짓은 여기서 반 박자 더 흐르다 스스로 멈춘다. */
+  /** 손짓이 멎었다는 선언 — 프레임 예산이 이 표지로 무대의 합성 구간을 가르므로 꼬리까지 정확해야 한다. */
+  function still() {
+    clearTimeout(timer);
+    hall.classList.remove('waving');
+  }
+  /** 정보가 닫히는 시점 — 제자의 마지막 손짓만 반 박자 더 흐르고 그 꼬리 끝에서 손짓이 멎는다. */
   function land() {
     if (phase === 'after') return;
     settle();
+    timer = setTimeout(still, ledgerMs('--tm-echo-delay'));
     play(CUE.TRANSMIT);
   }
   /** 건너뛰기는 꼬리까지 걷어낸다 — 손짓이 남아 있으면 조작 가능해진 화면이 아직 연출로 읽힌다. */
   function skip() {
     land();
-    hall.classList.remove('waving');
+    still();
   }
   /** 유저가 이 버튼을 누른 순간이 전수의 실행이다 — 화면 진입이 아니라 (REQ-761). */
   function begin() {
