@@ -2681,6 +2681,87 @@ suite('흐름에서 뺀 죽간은 매수 불변 상자를 기준으로 선다 (#
   ok(!/--slip-w/.test(body('.slip-row') ?? ''), '.slip-row 의 폭 결정자에 매수 계단이 없다');
 });
 
+// ------------------------- 12-a-6. 도장 초식 행 — 이름은 한 줄, 양보는 말줄임으로 (#139)
+
+suite('초식명·한자는 행에서 폭을 양보하지 않는다 (#139)', () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'))
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => [m[1].trim(), m[2]]);
+  const heads = (sel) => rules.filter(([s]) => s === sel).length;
+  const body = (sel) => rules.find(([s]) => s === sel)?.[1] ?? null;
+
+  // ① 폭 예산의 한쪽 끝은 배지 문구가 정한다. 도장 화면은 하네스가 import 하지 않으므로(DOM 접촉이
+  // 허용된 자리다) 선언 원문에서 라벨의 정적 텍스트를 떼어내 문다.
+  const dojo = readFileSync(new URL('../src/ui/screens/dojo.mjs', import.meta.url), 'utf8');
+  const label = dojo.match(/^const rankLabel = \([^)]*\) =>(.+?);\s*(?:\/\/.*)?$/m);
+  ok(label, 'dojo.mjs 가 rankLabel 을 한 줄 선언으로 둔다');
+  const literals = [...(label?.[1] ?? '').matchAll(/`([^`]*)`/g)].map((m) => m[1]);
+  eq(literals.length, 1, '성 라벨은 갈래 없이 템플릿 하나로 정해진다');
+  eq((literals[0] ?? '').replace(/\$\{[^}]*\}/g, ''), '성',
+    '배지 문구는 성 수와 「성」 한 글자뿐이다 — 문구가 길어지면 그 행이 다시 접힌다');
+  // 선언만 물면 호출부에서 다시 이어 붙이는 갈래가 그대로 통과한다 — 문구는 라벨이 낸 그대로 쓰인다.
+  ok(!/\$\{\s*rankLabel\(/.test(dojo) && !/rankLabel\([^)]*\)\s*\+/.test(dojo),
+    '호출부가 라벨에 문구를 이어 붙이지 않는다');
+  // 부재 단정만 두면 「배지를 통째로 지웠다」도 통과한다 — 호출 실재가 그 양성 대조다.
+  eq((dojo.match(/\brankLabel\(/g) ?? []).length, 2, '접힌 행의 배지와 성 계단이 그 라벨을 쓴다');
+  // 축약이 성립하는 것은 만성 문구를 다른 자리가 지기 때문이다 — 그 자리가 사라지면 문구가 게임에서 소멸한다.
+  const duel = readFileSync(new URL('../src/ui/screens/duel.mjs', import.meta.url), 'utf8');
+  ok(/완벽히 깨달음/.test(duel), '만성 문구는 성이 오르는 순간의 대련 토스트가 진다');
+
+  // ② 행 이름 상자를 이루는 규칙이 실재한다. 추출이 빗나가면 아래가 전부 공허해진다.
+  const NAME_KIDS = '.row-name > b, .row-name > .hj';
+  const YIELDERS = '.row-name > .badge, .row-name > .tag';
+  for (const sel of ['.row-name', NAME_KIDS, YIELDERS, '.row-head', '.row-head button']) {
+    ok(body(sel), `${sel} 규칙 블록을 실제로 떼어냈다`);
+    eq(heads(sel), 1, `${sel} 규칙 머리가 하나뿐이다 — 뒤에 온 재정의가 없다`);
+  }
+  ok(/white-space:\s*nowrap/.test(body(NAME_KIDS) ?? '')
+    && /flex-shrink:\s*0/.test(body(NAME_KIDS) ?? ''),
+    '초식명·한자는 줄바꿈도 압축도 하지 않는다');
+
+  // ③ 부재 단정의 모집단은 이름이 아니라 **선택자 매칭**이다 — 합성·그룹 선택자로 한 줄 들어와도
+  // 같은 결함이 되돌아오는데, 완전 일치 조회는 그 갈래를 통째로 못 본다.
+  // `.row-name` 은 button 이라 `button.row-name`·`.row-name.open` 같은 합성 형태가 자연스럽다 —
+  // 앞 문자를 공백류로만 보면 그 갈래를 통째로 놓친다.
+  const rowName = rules.filter(([sel]) => /(^|[\s,>+~]|[\w\])])\.row-name\b/.test(sel));
+  ok(rowName.length >= 3, `.row-name 을 겨누는 규칙을 실제로 떼어냈다 — ${rowName.length}건`);
+  // `white-space` 는 `text-wrap-mode` 의 단축이라 뒤에 온 `text-wrap: wrap` 한 줄이 nowrap 을 무력화한다.
+  const WRAPS = /(white-space|text-wrap(-mode)?):\s*(normal|wrap|pre-wrap|pre-line|break-spaces)/;
+  deepEq(rowName.filter(([, b]) => WRAPS.test(b)).map(([sel]) => sel), [],
+    '.row-name 계열에 줄바꿈을 되살리는 선언이 없다');
+  // `flex` 단축은 명시하지 않은 shrink 를 1 로 되돌린다 — 이름·한자에 붙는 순간 압축이 되살아난다.
+  deepEq(rowName.filter(([, b]) => /(^|[;{\s])flex\s*:/.test(b)).map(([sel]) => sel), ['.row-name'],
+    'flex 단축은 행 이름 상자 자신에만 있다');
+  // 개별 속성으로 압축을 되살리는 갈래는 단축 필터에 걸리지 않는다 — 이름·한자를 겨누는 자리에만 문다.
+  deepEq(rowName.filter(([sel, b]) => /(b|\.hj)\s*$/.test(sel.split(',').pop() ?? '')
+    && /flex-shrink:\s*[1-9]/.test(b)).map(([sel]) => sel), [],
+    '이름·한자의 flex-shrink 를 되살리는 규칙이 없다');
+
+  // ④ 차이 단정 — 폭이 모자랄 때 양보하는 쪽은 배지·태그이고, 그 양보는 줄바꿈이 아니라 말줄임이다.
+  // 플렉스 자식의 기본 min-width:auto 가 남아 있으면 nowrap 텍스트가 줄지 않아 말줄임이 발화하지 않는다.
+  const yielders = body(YIELDERS) ?? '';
+  for (const decl of ['min-width: 0', 'white-space: nowrap', 'overflow: hidden', 'text-overflow: ellipsis']) {
+    ok(new RegExp(decl.replace(': ', ':\\s*')).test(yielders), `배지·태그가 ${decl} 을 갖춘다`);
+  }
+  // 단일 블록만 보면 다른 규칙 한 줄이 양보를 멈추는 갈래를 못 본다 — 여기서도 모집단은 선택자 매칭이다.
+  deepEq(rowName.filter(([sel, b]) => /(\.badge|\.tag)\s*$/.test(sel.split(',').pop() ?? '')
+    && /flex-shrink:\s*0/.test(b)).map(([sel]) => sel), [],
+    '양보하는 쪽의 압축을 막는 규칙이 없다');
+
+  // ⑤ 동일 단정 (회귀) — 행 높이 40 은 시안 축이고 `.row-head` 의 `--hit-min` 은 탭 히트 하한이라
+  // 서로 다른 계약이다. 그리고 손가락 몫은 의사요소가 지므로, 높이를 지키자고 그것을 줄이면 교환이 된다.
+  ok(/min-height:\s*40px/.test(body('.row-head button') ?? ''), '이름 행 버튼의 시안 높이 40 이 그대로다');
+  // 압축을 거부한 이름이 갈 곳은 넘침뿐이라, 그 처분이 없으면 폴백 서체에서 액션 버튼을 덮는다.
+  ok(/overflow:\s*hidden/.test(body('.row-name') ?? ''), '행 이름 상자가 자기 넘침을 안에서 잘라 둔다');
+  ok(/min-height:\s*var\(--hit-min\)/.test(body('.row-head') ?? ''), '행의 탭 히트 하한은 --hit-min 이다');
+  const hit = body('.row-head button::after, .band-sim::after') ?? '';
+  ok(/width:\s*100%/.test(hit) && /height:\s*var\(--hit-min\)/.test(hit)
+    && /min-width:\s*var\(--hit-min\)/.test(hit),
+    '히트 영역 의사요소가 REQ-910 하한을 그대로 진다');
+});
+
+
 // ------------------------- 12-b. 결과 진입 1회 정산 · 판 원장 (#70 · REQ-871~873)
 
 suite('판 원장 — 그 판의 판정 분포·성 변화·결정타 (REQ-872·873·708)', () => {

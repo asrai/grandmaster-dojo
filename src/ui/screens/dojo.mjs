@@ -19,7 +19,9 @@ import {
   settleDiscipleTraining, simulateTraining, unequip,
 } from '../session.mjs';
 
-const rankLabel = (rank) => (rank >= BALANCE.rankMax ? `${rank}성 · 완벽히 깨달음` : `${rank}성`);
+// 만성도 「N성」 하나뿐이다 — 배지가 폭을 양보해야 4자 초식명·한자가 한 줄에 서고,
+// 「완벽히 깨달음」은 도달하는 순간의 대련 토스트가 진다 (#139).
+const rankLabel = (rank) => `${rank}성`;
 
 /** 순차 해금에서 이 초식 다음에 오는 식 — 계단 안내가 「무엇이 열리는가」를 이름으로 댄다. */
 const heirOf = (style) => STYLES.find((s) => s.set === style.set && s.order === style.order + 1) ?? null;
