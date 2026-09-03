@@ -3635,6 +3635,44 @@ suite('프레임 예산 (REQ-914·915)', () => {
   deepEq(budget.scenes(), [], '화면 전이는 원장을 비운다 — 화면별 표본이 섞이면 축이 무너진다');
 });
 
+// ------------------------- 12-a-12. 곁판이 선 죽간 줄의 폭 (#168 · REQ-843·844)
+
+suite('곁판이 선 줄에서만 죽간이 4매 폭으로 서고 대련의 계단은 그대로다 (#168)', () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'))
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => [m[1].trim(), m[2]]);
+  const body = (sel) => rules.find(([s]) => s === sel)?.[1] ?? null;
+  const heads = (sel) => rules.filter(([s]) => s === sel).length;
+
+  // 후보 계단(REQ-824)의 정점은 대련의 것이라, 곁판 규칙이 그것을 덮어 쓰지 않았음을 먼저 묻는다.
+  ok(/width:\s*var\(--slip-w1\)/.test(body('.tablets[data-n="1"] .slip') ?? ''),
+    '대련의 1매는 여전히 계단의 정점 폭이다');
+  eq(heads('.tablets[data-n="1"]:has(+ .detail) .slip'), 1, '곁판 문맥의 폭 규칙이 하나 있다');
+  ok(/width:\s*var\(--slip-w4\)/.test(body('.tablets[data-n="1"]:has(+ .detail) .slip') ?? ''),
+    '곁판이 선 줄의 죽간은 4매 폭 토큰을 그대로 재사용한다 — 84 를 두 번 적지 않는다');
+  ok(/width:\s*var\(--slip-w4\)/.test(body('.slip') ?? ''),
+    '그 토큰이 죽간의 기본 폭과 같다 — 곁판 문맥은 계단을 타지 않는 상태로 되돌리는 것이다');
+
+  // 인접 형제로 문맥을 잡았으므로 그 인접이 곧 계약이다 — 사이에 무엇이 끼면 폭이 무음으로 되돌아간다.
+  const pad = readFileSync(new URL('../src/ui/pad.mjs', import.meta.url), 'utf8');
+  ok(/el\('div', \{ class: 'slip-row' \}, \[tablets\.node\]\)/.test(pad),
+    '죽간 줄은 죽간만 담고 시작한다');
+  ok(/slipRow\.appendChild\(aside\)/.test(pad), '곁판은 그 뒤에 붙어 죽간의 인접 형제가 된다');
+
+  // 창안 줄만 접히고, 접힘이 연 세로 성장 축을 곁판이 자기 상자 안에서 받는다.
+  ok(/flex-wrap:\s*wrap/.test(body('.detail .v.wrap') ?? ''), '창안 줄만 접힌다');
+  ok(/white-space:\s*nowrap/.test(body('.detail .v') ?? ''), '나머지 두 줄은 한 줄로 남는다');
+  ok(/text-overflow:\s*ellipsis/.test(body('.detail .v > :not(.mark)') ?? ''),
+    '넘치는 값은 잘림이 아니라 말줄임으로 끝난다');
+  ok(/flex:\s*none/.test(body('.detail .v > .mark') ?? ''),
+    '속성 표식은 옆 값이 넘쳐도 자기 몫을 내주지 않는다');
+  ok(/(^|[;{\s])overflow:\s*hidden/.test(body('.detail') ?? ''),
+    '곁판 높이는 죽간 줄이 못박으므로 넘침이 테두리 밖으로 새지 않는다');
+});
+
+
+
 // ------------------------------------------------------------------ 결과
 
 // suite() 가 예외를 삼키므로, 하한이 없으면 스위트가 통째로 건너뛰어도 실패 1건으로만 보인다.

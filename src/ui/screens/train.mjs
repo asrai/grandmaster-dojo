@@ -52,16 +52,16 @@ function gugyeolScroll(style) {
  */
 function styleDetail(style) {
   const answer = foeStyleById(style.counters);
-  const line = (key, children) => el('div', { class: 'ln' }, [
+  const line = (key, children, mod = '') => el('div', { class: 'ln' }, [
     el('span', { class: 'k', text: key }),
-    el('span', { class: 'v' }, children),
+    el('span', { class: `v ${mod}`.trim() }, children),
   ]);
   return el('div', { class: 'detail' }, [
     line('창안', [
       el('b', { text: style.founder.name }),
       hanja(style.founder.hanja),
       el('span', { class: 'sub', text: ` · ${ART_NAME} 제${style.order}초식` }),
-    ]),
+    ], 'wrap'),
     line('특성', [
       attrMark(style.attr, { silent: true }),
       el('b', { text: attrLabel(style.attr) }),
