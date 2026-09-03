@@ -176,7 +176,7 @@ export const REVEAL_TIER = {
 };
 
 /**
- * 그 대면에서 절초를 어디까지 공개하는가 (REQ-882~884) — 홈 요약과 도전자 선택 화면이 같은
+ * 그 대면에서 절초를 어디까지 공개하는가 (REQ-882~884) — S7 의 목록 행과 브리핑이 같은
  * 층을 읽어야 예고가 함정이 되지 않는다 (REQ-835).
  * @param {object} challenger
  * @param {boolean} firstEncounter `isFirstEncounter` 의 결과 — 회차 0 이 곧 첫 대면이다 (REQ-894)

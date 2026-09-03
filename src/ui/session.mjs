@@ -304,8 +304,8 @@ export const rematchBonusOf = (session, challengerId) =>
 export const beatenChallengers = (session) => DUEL_STAGES.filter((c) => isRematch(session, c.id));
 
 /**
- * 한 도전자를 화면이 읽는 형태로 (REQ-835) — 홈 요약과 도전자 선택 화면이 **이 함수 하나**를
- * 지난다. 두 화면이 각자 파생하면 「같은 공개 층」이 두 구현으로 갈려 선택 화면이 함정이 된다.
+ * 한 도전자를 화면이 읽는 형태로 (REQ-835) — S7 의 목록 행도 브리핑도 **이 함수 하나**를
+ * 지난다. 자리마다 각자 파생하면 「같은 공개 층」이 두 구현으로 갈려 선택 화면이 함정이 된다.
  */
 export function challengerEntry(session, challenger) {
   const firstEncounter = isFirstEncounterOf(session, challenger.id);
@@ -325,7 +325,7 @@ export function challengerEntry(session, challenger) {
 export const challengerRoster = (session) =>
   DUEL_STAGES.slice(0, session.stage).map((c) => challengerEntry(session, c));
 
-/** 홈이 요약 1건으로 세우는 다음 상대 (REQ-834) — 가장 최근에 열린 차수다. */
+/** 가장 최근에 열린 차수의 도전자 (REQ-834) — `challengerRoster` 의 마지막 항과 같은 자리다. */
 export const nextChallengerEntry = (session) => challengerEntry(session, challengerOfStage(session.stage));
 
 /**
