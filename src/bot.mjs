@@ -300,7 +300,10 @@ export function createBot({
     }
     if (phase === 'select') { screen.go('duel', screen.params()); return; }
     if (phase === 'preview') { screen.go('dispatch'); return; }
-    if (phase === 'transmit' || phase === 'result') { screen.go('dojo'); return; }
+    // 봇에는 바닥 버튼을 누를 손이 없어, 실행 입구가 사람 경로와 둘로 갈리는 대가를 알고 헤드리스
+    // 사이클과 같은 자리에서 직접 부른다 — 안 부르면 도장을 무한 왕복하고 사이클이 끝나지 않는다 (#172).
+    if (phase === 'transmit') { enterTransmit(session); screen.go('dojo'); return; }
+    if (phase === 'result') { screen.go('dojo'); return; }
     if (phase !== 'dojo') return;
     // 방치 축은 버튼 한 번으로만 체감되므로 사이클당 한 번 눌러 본다 (REQ-604).
     if (!simulated) {
