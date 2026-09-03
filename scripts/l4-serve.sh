@@ -9,9 +9,11 @@
 #   scripts/l4-serve.sh status
 #
 # up/down 은 여러 턴에 걸친 대화형 순회용이고, run 은 명령 하나를 감싸 trap 으로 정리한다.
-# run 이 실행하는 명령에는 L4_URL·L4_PORT·L4_PROFILE 이 환경변수로 전달되며,
+# run 이 실행하는 명령에는 L4_URL·L4_PORT·L4_PROFILE·L4_DEBUG_PORT 가 환경변수로 전달되며,
 # 그 명령이 L4_PROFILE 을 --user-data-dir 로 쓴 크롬도 정리 대상에 함께 들어간다.
 # 비정상 종료(kill -9·크래시·재부팅)로 남은 잔여분은 scripts/l4-sweep.sh 가 걷는다.
+# 태그 기본값은 브랜치의 이슈 번호이고, 프로필 basename 이 그대로 소유 표지가 된다.
+#
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
@@ -20,11 +22,12 @@ PROFILE_ROOT="$(printf '%s' "${TMPDIR:-/tmp}" | sed 's:/*$::')/grandmaster-dojo-
 
 CHROME_BIN=${CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}
 
-usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '/^# 사용법:/,/^#$/p' "$0" | sed 's/^# \{0,1\}//'; }
 
 die() { printf 'l4-serve: %s\n' "$*" >&2; exit 1; }
 
-# 브랜치명의 이슈 번호를 기본 태그로 쓴다 — 프로필 basename 이 그대로 소유 표지가 된다.
+need_value() { [ "$1" -ge 2 ] || die "$2 에는 값이 필요하다"; }
+
 default_tag() {
   local branch
   branch=$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')
@@ -34,7 +37,7 @@ default_tag() {
   esac
 }
 
-sanitize_tag() { printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '-'; }
+sanitize_tag() { printf '%s' "$1" | tr -c 'A-Za-z0-9._' '-'; }
 
 port_busy() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
 
@@ -51,7 +54,7 @@ ancestor_pids() {
   local p=$$
   while [ -n "$p" ] && [ "$p" != "0" ] && [ "$p" != "1" ]; do
     printf '%s\n' "$p"
-    p=$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')
+    p=$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ' || true)
   done
 }
 
@@ -61,6 +64,7 @@ alive() { kill -0 "$1" 2>/dev/null; }
 term_then_kill() {
   local pid rest
   for pid in "$@"; do alive "$pid" && kill "$pid" 2>/dev/null || true; done
+  rest=''
   for _ in 1 2 3 4 5 6; do
     rest=''
     for pid in "$@"; do alive "$pid" && rest="$rest $pid"; done
@@ -73,10 +77,14 @@ term_then_kill() {
 state_get() { sed -n "s/^$2=//p" "$1" 2>/dev/null | tail -1; }
 
 # 프로필 경로를 --user-data-dir 로 물고 있는 프로세스 전부 (크롬 본체 + 헬퍼).
+# 값 뒤가 공백이거나 줄 끝일 때만 일치시켜, 접두가 같은 남의 프로필을 삼키지 않는다.
 pids_by_profile() {
   [ -n "${1:-}" ] || die "내부 오류: 빈 프로필 경로로는 조회하지 않는다"
-  ps -axo pid=,command= \
-    | L4_PAT=$1 awk 'index($0, "--user-data-dir=" ENVIRON["L4_PAT"]) { print $1 }'
+  ps -axo pid=,command= | L4_PAT=$1 awk '
+    { pat = "--user-data-dir=" ENVIRON["L4_PAT"]; i = index($0, pat)
+      if (i == 0) next
+      tail = substr($0, i + length(pat), 1)
+      if (tail == "" || tail == " ") print $1 }'
 }
 
 stop_tag() {
@@ -107,15 +115,19 @@ stop_tag() {
 }
 
 start_tag() {
-  local tag=$1 port=$2 want_chrome=$3 headed=$4 url_path=$5
-  local state="$PROFILE_ROOT/$tag.env" profile="$PROFILE_ROOT/$tag-chrome"
+  local tag=$1 port=$2 want_chrome=$3 headed=$4 url_path=$5 mode=$6
+  local state="$PROFILE_ROOT/$tag.env"
+  local profile="$PROFILE_ROOT/$tag-chrome"
   mkdir -p "$PROFILE_ROOT"
+  chmod 700 "$PROFILE_ROOT"
   [ -f "$state" ] && die "[$tag] 세션이 이미 있다 — 먼저 down 하라 ($state)"
   port=$(pick_port "$port")
 
   ( cd "$REPO_ROOT" && exec python3 -m http.server "$port" --bind 127.0.0.1 ) \
     >"$PROFILE_ROOT/$tag-server.log" 2>&1 &
   local server_pid=$!
+  sleep 0.4
+  alive "$server_pid" || die "서버가 즉시 종료했다 — $PROFILE_ROOT/$tag-server.log 를 보라"
   local url="http://127.0.0.1:$port$url_path"
 
   local chrome_pid='' dbg=''
@@ -133,6 +145,8 @@ start_tag() {
 
   {
     printf 'L4_TAG=%s\n' "$tag"
+    printf 'L4_MODE=%s\n' "$mode"
+    printf 'L4_OWNER_PID=%s\n' "$([ "$mode" = run ] && printf '%s' "$$")"
     printf 'L4_PORT=%s\n' "$port"
     printf 'L4_URL=%s\n' "$url"
     printf 'L4_ROOT=%s\n' "$REPO_ROOT"
@@ -157,9 +171,9 @@ CMDV=()
 HAS_CMD=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    --tag) TAG=$2; shift 2 ;;
-    --port) PORT=$2; shift 2 ;;
-    --url) URL_PATH=$2; shift 2 ;;
+    --tag) need_value $# --tag; TAG=$2; shift 2 ;;
+    --port) need_value $# --port; PORT=$2; shift 2 ;;
+    --url) need_value $# --url; URL_PATH=$2; shift 2 ;;
     --chrome) WANT_CHROME=1; shift ;;
     --headed) HEADED=1; WANT_CHROME=1; shift ;;
     --) shift; HAS_CMD=1; while [ $# -gt 0 ]; do CMDV[${#CMDV[@]}]=$1; shift; done ;;
@@ -172,28 +186,35 @@ TAG=$(sanitize_tag "$TAG")
 
 case "$cmd" in
   up)
-    start_tag "$TAG" "$PORT" "$WANT_CHROME" "$HEADED" "$URL_PATH"
+    start_tag "$TAG" "$PORT" "$WANT_CHROME" "$HEADED" "$URL_PATH" up
     ;;
   down)
     stop_tag "$TAG"
     ;;
   run)
-    [ "$HAS_CMD" = 1 ] || die "run 은 -- 뒤에 명령이 필요하다"
-    trap 'stop_tag "$TAG"' EXIT INT TERM
-    start_tag "$TAG" "$PORT" "$WANT_CHROME" "$HEADED" "$URL_PATH"
+    { [ "$HAS_CMD" = 1 ] && [ "${#CMDV[@]}" -gt 0 ]; } || die "run 은 -- 뒤에 명령이 필요하다"
+    # 세션을 실제로 획득한 뒤에만 정리한다 — 중복 태그로 거절당한 실행이
+    # 남의 살아있는 세션을 걷어 버리는 것을 막는 플래그다.
+    OWNED=0
+    trap '[ "$OWNED" = 1 ] && stop_tag "$TAG"' EXIT INT TERM
+    start_tag "$TAG" "$PORT" "$WANT_CHROME" "$HEADED" "$URL_PATH" run
+    OWNED=1
     rc=0
     "${CMDV[@]}" || rc=$?
     exit "$rc"
     ;;
   status)
+    found=0
     for f in "$PROFILE_ROOT"/*.env; do
-      [ -f "$f" ] || { printf 'l4-serve: 활성 세션 없음\n'; break; }
+      [ -f "$f" ] || continue
+      found=1
       s=$(state_get "$f" L4_SERVER_PID); c=$(state_get "$f" L4_CHROME_PID)
       printf '%s url=%s server=%s(%s) chrome=%s(%s)\n' \
         "$(state_get "$f" L4_TAG)" "$(state_get "$f" L4_URL)" \
         "$s" "$(alive "$s" && echo alive || echo dead)" \
         "${c:--}" "$([ -n "$c" ] && { alive "$c" && echo alive || echo dead; } || echo -)"
     done
+    [ "$found" = 1 ] || printf 'l4-serve: 활성 세션 없음\n'
     ;;
   *) die "알 수 없는 서브커맨드: $cmd" ;;
 esac
