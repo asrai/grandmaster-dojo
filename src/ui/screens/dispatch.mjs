@@ -49,7 +49,7 @@ function dispatchWarning(session, unlocked) {
       cls: 'ok',
       text: session.dispatchStage <= 1
         ? '첫 임무는 고정 상대다 — 갓 전수받은 제자도 이긴다'
-        : '사부가 이긴 상대 중 하나가 나온다 — 고를 수 없으니 눌러앉을 자리도 없다',
+        : '사부가 이긴 상대 중 하나가 선다 — 고를 수 없으니 눌러앉을 자리도 없다',
     };
   }
   const need = missionLockRankOf(session);
