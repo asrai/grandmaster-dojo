@@ -16,10 +16,10 @@ export function blockPinchZoom(target) {
 export const DOUBLE_TAP_MS = 300;
 
 /** 제자리 탭으로 셀 이동 상한(px) — 더 움직인 끝은 타깃 밖으로 뺀 취소라 브라우저도 그 자리를 누르지 않는다. */
-const TAP_SLOP_PX = 10;
+export const TAP_SLOP_PX = 10;
 
 /** 두 탭을 한 짝으로 셀 거리 상한(px) — 화면 양끝을 번갈아 치는 연타는 확대 판정 대상이 아니다. */
-const TAP_PAIR_PX = 40;
+export const TAP_PAIR_PX = 40;
 
 const tapPoint = (touch) => (touch ? { x: touch.clientX, y: touch.clientY } : null);
 const apart = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -27,6 +27,7 @@ const apart = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 /**
  * 더블 탭 확대 차단 — iOS 가 `touch-action` 으로는 이 억제를 걸지 않아 JS 층이 대신 진다 (#215).
  * 막힌 탭은 그 `click` 까지 함께 죽으므로 같은 타깃으로 직접 흘린다 — 코어 입력 무손실이 확대 차단보다 앞선다.
+ * 핀치 차단과 합쳐 페이지 확대 수단이 남지 않으므로, 확대는 OS 손쉬운 사용 줌에 맡긴다.
  *
  * @param {{addEventListener: Function}} target 배선을 받을 대상 — 문서를 주입해 표면 전역을 덮는다
  * @param {() => number} now 밀리초 시계 — 탭 간격 판정의 유일한 시간 출처다
@@ -55,6 +56,8 @@ export function blockDoubleTapZoom(target, now) {
       && apart(lastTap, ended) <= TAP_PAIR_PX;
     lastTap = { ...ended, at };
     if (!paired) return;
+    // 흘릴 곳이 없는 타깃에서 막기만 하면 그 탭의 press 가 사라진다 — 그럴 바에는 확대를 내준다.
+    if (typeof event.target?.click !== 'function') return;
     event.preventDefault();
     // 방향키는 글리프만 든 버튼이고 되돌리기는 자식 span 을 두므로, 버블링이 두 경우를 함께 덮는다.
     event.target.click();

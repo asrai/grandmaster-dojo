@@ -36,7 +36,7 @@ import {
 } from '../src/ui/theme.mjs';
 import { TABLET, tabletStates } from '../src/ui/tablet-state.mjs';
 import { stageScale } from '../src/ui/stage-scale.mjs';
-import { blockPinchZoom, blockDoubleTapZoom, DOUBLE_TAP_MS } from '../src/ui/gesture-block.mjs';
+import { blockPinchZoom, blockDoubleTapZoom, DOUBLE_TAP_MS, TAP_SLOP_PX, TAP_PAIR_PX } from '../src/ui/gesture-block.mjs';
 import { BOT_UNREACHABLE, BROWSER_ONLY, KILL, killVerdicts, readout } from './kill-readout.mjs';
 import {
   REVEAL_TIER, SELECT_REASON,
@@ -3744,14 +3744,29 @@ suite('확대 차단의 선언과 리스너가 제자리에 있다 (#204)', () =
     '창을 넘긴 간격은 더블 탭이 아니다 — 느린 두 탭까지 가로채면 클릭이 두 번 난다');
 
   // 십자는 좌우 키가 떨어져 있어, 시간만 보면 정상 교대 연타가 통째로 합성 click 경로로 넘어간다.
-  deepEq(tap(9100, { from: { x: 300, y: 700 } }), { prevented: 0, clicked: 0 },
+  deepEq(tap(9100, { from: { x: 100 + TAP_PAIR_PX + 1, y: 700 } }), { prevented: 0, clicked: 0 },
     '창 안이어도 멀리 떨어진 둘째 탭은 확대 판정 대상이 아니다');
 
   // touchend 의 타깃은 터치가 시작된 요소로 고정되므로, 이동량을 안 보면 취소 제스처가 press 로 둔갑한다.
-  deepEq(tap(30000, { from: { x: 300, y: 700 }, to: { x: 300, y: 760 } }), { prevented: 0, clicked: 0 },
+  deepEq(tap(30000, { from: { x: 300, y: 700 }, to: { x: 300, y: 700 + TAP_SLOP_PX + 1 } }), { prevented: 0, clicked: 0 },
     '타깃 밖으로 뺀 끝은 press 를 만들지 않는다 — 브라우저도 그 자리를 누르지 않는다');
-  deepEq(tap(30100, { from: { x: 300, y: 760 } }), { prevented: 0, clicked: 0 },
+  deepEq(tap(30100, { from: { x: 300, y: 700 + TAP_SLOP_PX + 1 } }), { prevented: 0, clicked: 0 },
     '그 취소는 탭으로 적히지도 않는다 — 적히면 뒤따르는 제자리 탭이 짝으로 묶인다');
+
+  // 확대만 막고 press 를 못 흘리면 그 탭이 통째로 사라진다 — 차단급 기준이 무는 자리다.
+  clock = 40000;
+  onStart({ touches: { length: 1 }, changedTouches: [{ clientX: 100, clientY: 700 }] });
+  onEnd({ touches: { length: 0 }, changedTouches: [{ clientX: 100, clientY: 700 }], target: {}, preventDefault: () => {} });
+  clock = 40100;
+  let blockedWithoutClick = 0;
+  onStart({ touches: { length: 1 }, changedTouches: [{ clientX: 100, clientY: 700 }] });
+  onEnd({
+    touches: { length: 0 },
+    changedTouches: [{ clientX: 100, clientY: 700 }],
+    target: {},
+    preventDefault: () => { blockedWithoutClick += 1; },
+  });
+  eq(blockedWithoutClick, 0, 'click 을 못 받는 타깃에서는 확대를 내주고 입력을 지킨다');
 
   // 핀치의 꼬리는 탭이 아니다 — 여기서 세면 손을 뗄 때마다 확대 차단이 엉뚱한 곳에서 발화한다.
   deepEq(tap(9250, { fingers: 2 }), { prevented: 0, clicked: 0 },
