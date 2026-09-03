@@ -1272,7 +1272,7 @@ button.ghost { background: transparent; }
 .fs .tag { border: 0; color: var(--gold); letter-spacing: 2px; }
 .fs.ult { background: color-mix(in srgb, var(--c4) 10%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--c4) 35%, transparent) inset; }
 /* 슬롯은 대련 죽간과 같은 세로 카드로 서고, 칸이 늘면 폭이 아니라 스크롤이 받는다 (REQ-886·824).
-   3칸은 한 줄에 들어가고 그 이상부터 마지막 매가 잘려 보이는 것이 스크롤 단서다. */
+   넘치는 순간 마지막 매가 우측에서 잘려 보이는 것이 그 스크롤 단서다. */
 .slots {
   flex: none; display: flex; gap: var(--slip-gap); height: var(--slip-h);
   overflow-x: auto; scroll-snap-type: x mandatory;
@@ -1280,6 +1280,8 @@ button.ghost { background: transparent; }
 .slots .slip { scroll-snap-align: start; }
 /* 빈 칸도 같은 규격을 지켜야 칸 수가 카드 폭으로 읽힌다 — 비었다는 사실만 점선으로 갈린다. */
 .slots .slip.empty { border-style: dashed; color: var(--dim); }
+/* 성이 없는 칸도 그 줄만큼은 차지한다 — 비면 머리가 접혀 「빈 슬롯」만 한 줄 위에서 시작한다. */
+.slots .slip-rank { display: block; min-height: 1.5em; }
 .slots .slip.empty .slip-name { font-size: 13px; font-weight: 400; letter-spacing: 1px; }
 /* 경고 줄은 유무와 무관하게 한 줄을 차지한다 — 바닥 시트가 높이를 바꾸면 위 목록이 함께 흔들린다. */
 .brief .warn { margin: 0; min-height: 17px; font-size: 11px; line-height: 17px; color: var(--dim); }

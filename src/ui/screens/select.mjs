@@ -118,7 +118,11 @@ export function renderSelect(ctx) {
    * 대련 죽간과 같은 세로 카드를 좌우 스크롤로 세워, 칸이 늘어도 규격이 그대로다 (REQ-824).
    */
   function slotStrip() {
-    return el('div', { class: 'slots' }, session.slots.map((styleId) => {
+    // 칸이 넘쳐 스크롤이 생기면 이 상자가 유일한 탭 정지점이다 — 카드가 표시 전용이라 안에
+    // 포커스 받을 것이 없고, 그러면 키보드로는 뒤쪽 카드에 닿는 경로가 사라진다 (REQ-911).
+    return el('div', {
+      class: 'slots', role: 'group', 'aria-label': '내 슬롯', tabindex: '0',
+    }, session.slots.map((styleId) => {
       const style = styleId ? styleById(styleId) : null;
       return el('div', { class: `slip${style ? '' : ' empty'}` }, [
         el('span', { class: 'slip-head' }, [
