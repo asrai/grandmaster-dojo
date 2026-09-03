@@ -19,7 +19,7 @@ import {
  * 항목 스키마가 비호환으로 바뀌면 함께 오른다: 구 판본을 봉투에서 거절하는 것이, 다섯 이벤트의
  * `sv` 를 일일이 대조해야 드러나는 결손보다 먼저 그리고 분명하게 말한다 (REQ-791).
  */
-export const EXPORT_SCHEMA = 'grandmaster-dojo/log-export@2';
+export const EXPORT_SCHEMA = 'grandmaster-dojo/log-export@3';
 
 /**
  * 판독기가 로그 밖에서 끌어다 쓰는 밸런스 값 — 창 길이·유효 성공 절단선.
@@ -546,6 +546,7 @@ function missionFoeOf(session, stage, random) {
 /**
  * 그 차수의 임무를 확정한다 (REQ-741·742) — 상대의 초식 구성을 그대로 받으므로 난이도의 몸통은
  * 그 도전자의 HP·초식 수가 지고, 차수 계단은 그 위에 성 보정으로 얹힌다.
+ * 화면은 이것을 직접 부르지 않는다 — 부르는 자리가 곧 공짜 리롤이라 `currentMission` 이 문이다.
  */
 export function beginMission(session, { random = Math.random } = {}) {
   const stage = session.dispatchStage;

@@ -122,14 +122,14 @@ tags:
 
 ### 요구사항 (EARS)
 
-- **REQ-791** *(Ubiquitous)*: The system shall 로그 스키마를 좌표 모델 변경에 재정합한다 — **소멸**: `mastery`·`initiate` (개념 소멸) / **뜻-바뀜 (schema 판별 필드 `sv: 2` 부여)**: `rank` (무공 `style_set`+`pts` → 초식 `actor, style, from, to, via`) · `unlock` (발화점 숙련 100% → 5성, `style, prev_style_rank`) · `transmit` (`style_set` → `art, styles: [{id, rank}], t_ms`) · `dispatch` (`challenger` → `stage, foe_set, disciple_ranks, locked_until, result`) · `slot` (`challenger` 필드 추가) / **신설**: `rank_wall`·`rematch`·`finish`·`disciple_train`·`cheat` (신설 이벤트는 `sv` 불요 — 구 스키마가 없다) / **불변**: `key`·`ignore`·`reset`·`narrow`·`fire`·`timeout`·`verdict`·`select`·`coins`·`cycle`·`session`. *(depends: REQ-701, REQ-705)*
+- **REQ-791** *(Ubiquitous)*: The system shall 로그 스키마를 좌표 모델 변경에 재정합한다 — **소멸**: `mastery`·`initiate` (개념 소멸) / **뜻-바뀜 (schema 판별 필드 `sv: 2` 부여)**: `rank` (무공 `style_set`+`pts` → 초식 `actor, style, from, to, via`) · `unlock` (발화점 숙련 100% → 5성, `style, prev_style_rank`) · `transmit` (`style_set` → `art, styles: [{id, rank}], t_ms`) · `dispatch` (`challenger` → `stage, foe_set, disciple_ranks, locked_until, result`; **`sv: 3`** — #217 이 `challenger` 를 되살리고 `foe_set` 의 뜻을 아키타입 조합에서 그 도전자의 초식으로 바꿨다) · `slot` (`challenger` 필드 추가) / **신설**: `rank_wall`·`rematch`·`finish`·`disciple_train`·`cheat` (신설 이벤트는 `sv` 불요 — 구 스키마가 없다) / **불변**: `key`·`ignore`·`reset`·`narrow`·`fire`·`timeout`·`verdict`·`select`·`coins`·`cycle`·`session`. *(depends: REQ-701, REQ-705)*
 - **REQ-792** *(Ubiquitous)*: The system shall 지인 kill 판정 범위를 **B-1 종료까지** 로 긋는다 — (a) 자명성·(b) 손 숙달·(c) 전수 정서는 전부 B-1 이전에 발현하므로 판정 손실 0. B-2 이후·제자 방치 루프는 구현하되 판정하지 않고 로그로 셀프 관측 (재방문은 하루 이상 걸리는 관측 — 한 자리 판정 세션의 성질이 아니다). *(depends: REQ-741)*
 - **REQ-793** *(Ubiquitous)*: The system shall kill (b) 완주율을 재확정한다 — **산식 불변** (`fire(oneTap=false) / (fire(oneTap=false) + timeout) ≥ 0.5`), 원터치 제외 시점만 숙련 100% → **7성** 으로 이동. 판독 유효 조건으로 **최소 수동 창 표본** (시드 20창) 을 추가한다 — 모집단 축소로 인한 소표본 오판 방지. **수련 창은 분모 밖**이다 — 무벌 재시도라 「놓침」의 뜻이 대련과 달라 두 모집단을 한 분수에 섞지 않는다. (역질문 확정 2026-09-02) *(depends: REQ-713, REQ-791)*
 - **REQ-794** *(Ubiquitous)*: The system shall 로그만으로 산출 가능하게 한다 — kill 4항 개인별 pass/fail (1.01 REQ-603 승계 + (b) 재확정 반영. **(b) 의 모집단은 대련 창 한정** — 수련 창은 REQ-793 대로 분모 밖) + 신규 지표: 재대련 중단 지점 (`rematch.attempt_n` 분포) · 결정타 배분·의도 일치 (`finish{intended}`) · 8성 벽 충돌 횟수 (`rank_wall`) · 제자 수련 병렬성 (`disciple_train.master_activity`) · 파견 중도 이탈 수 (`dispatch{result: 'abort'}`, 승률 분모 밖). *(depends: REQ-791)*
 
 ### 통합 로그 스키마
 
-> 통합 spec 의 all-or-nothing 방지 장치 — 지표는 이벤트 단위로 남아 어느 서브시스템이 미달인지 분리 식별한다. 전 이벤트 `t_ms` 공통. 뜻-바뀜 이벤트는 `sv: 2` 필드 동반 (REQ-791).
+> 통합 spec 의 all-or-nothing 방지 장치 — 지표는 이벤트 단위로 남아 어느 서브시스템이 미달인지 분리 식별한다. 전 이벤트 `t_ms` 공통. 뜻-바뀜 이벤트는 `sv` 판별 토큰 동반 — 값은 이벤트마다 갈리므로 각 행의 마지막 열이 진다 (REQ-791).
 
 | 이벤트 | 발화 서브시스템 | 필드 | 지표·kill-criterion 입력 | 스키마 |
 |---|---|---|---|---|
@@ -140,7 +140,7 @@ tags:
 | `slot` | ④ | `action, styleId, challenger` | 슬롯을 실제로 바꿨는가 — 교체가 도장 전용이 된 뒤(REQ-736 개정) `challenger` 는 항상 `null` 이라 판독 축은 `action` 이다 | sv:2 (`challenger` 추가) |
 | `finish` | ① | `style, challenger, intended` | 결정타 배분 + 노린 초식과 일치했는가 | 신설 |
 | `disciple_train` | ⑥ | `style, from, to, elapsed_ms, master_activity` | 제자 수련 체감 시간 + 병렬성 검증 | 신설 |
-| `dispatch` | ⑤ | `stage: B-1\|B-2+, foe_set, disciple_ranks, locked_until, result: win\|loss\|abort` | B-1 무패 보장 · B-2 잠금 · 랜덤 조합별 승패 · 중도 이탈 · **(d)** 종점 (B-1) | sv:2 |
+| `dispatch` | ⑤ | `stage: B-1\|B-2+, challenger, foe_set, disciple_ranks, locked_until, result: win\|loss\|abort` | B-1 무패 보장 · B-2 잠금 · **상대별** 승패 · 중도 이탈 · **(d)** 종점 (B-1) | sv:3 |
 | `transmit` | ⑦ | `art, styles: [{id, rank}], t_ms` | 전 초식 12성 도달 시각 + 전수 시점 초식별 성 · **(c)** 보조 | sv:2 |
 | `cheat` | ⑨ | `action, session_flagged: true` | 플래그 세션 = balance-log 회차 + kill (b)(c)(d) 표본 전부 제외 | 신설 |
 | (불변) `key`·`ignore`·`reset`·`narrow`·`fire`·`timeout`·`verdict`·`select`·`coins`·`cycle`·`session` | ①~⑥ (1.01) | 1.01 통합 로그 스키마 그대로 | (a)(b)·`ignore_rate` 등 1.01 정의 그대로 (단 (b) 는 REQ-793 재확정) | 불변 |
@@ -151,11 +151,11 @@ tags:
 
 - **폐기**: `masteryTrainPct` · `masteryFullPct` · `threshold` · `rankPtsPerStyle` · `rankStep` · `rankStepMult` · `equipMasteryPct` · `challengerPower` (→ 도전자 성으로 통합)
 - **의미 유지**: `powerPerRank` (입력만 초식 성) · `trainGraduateHits` 류 수련 메커닉 · `discipleStartRank` 1 · `discipleRankMax` 10 · `discipleFireRatio` · `hp` (+ A-4 행 추가) · 판정·창·선기·빈틈 전 항목
-- **신설 (전부 시드 — 하네스 시뮬 확정 대상)**: 성 계단 비용 (1~7성 수련 3회/대련 1회 · 8~10성 대련 2회) · 수련 적립 상한 7성 · 장착 2성 · 해금 5성 · 원터치 7성 · 도전자 성 (A-1 1 · A-2 2 · A-3 3 · A-4 4 · B-1 2 · B-2+ 곡선) · A-4 HP (시드 90) · 재대련 성 +1 · 재대련 누적 상한 +3 · B-2 권장 성 5 (전 초식 최소 성 기준) · 제자 수련 1성당 시간 (시드 1800s) · 역파 `decayPerRank` (시드 0.05) · 역파 관통 하한 0.4 · kill (b) 최소 수동 창 표본 20 · B-2+ 임무 풀 테이블 (아키타입 조합·성 곡선)
+- **신설 (전부 시드 — 하네스 시뮬 확정 대상)**: 성 계단 비용 (1~7성 수련 3회/대련 1회 · 8~10성 대련 2회) · 수련 적립 상한 7성 · 장착 2성 · 해금 5성 · 원터치 7성 · 도전자 성 (A-1 1 · A-2 2 · A-3 3 · A-4 4 · B-1 2 · B-2+ 곡선) · A-4 HP (시드 90) · 재대련 성 +1 · 재대련 누적 상한 +3 · B-2 권장 성 5 (전 초식 최소 성 기준) · 제자 수련 1성당 시간 (시드 1800s) · 역파 `decayPerRank` (시드 0.05) · 역파 관통 하한 0.4 · kill (b) 최소 수동 창 표본 20 · B-2+ 임무 상대 추출 (#217 개정 — 아키타입 조합 테이블 대신 이긴 도전자 재활용 + 성 곡선)
 
 > **미해소 수치는 시뮬 산출로만 확정한다** — #38 D3 이 손 추정 시드표를 그대로 밀어넣어 사이클이 481s 가 된 전례 (`balance-log` 0-e). 위 시드값은 하네스 사이클 시뮬 (봇 v2 손 모델) 산출로 교체 후 커밋하며, 단 **운영자 판정 기준 지시 ①** 에 따라 시뮬 목적함수에 kill (d) 300s 를 제약으로 넣지 않는다 (관측치로만 기록).
 
-**도전자 데이터 확장** (1.01 REQ-503 대체): A-1 (α) · A-2 (α·β) · A-3 (α·β·γ) · **A-4 (α·γ·δ)** — 파해를 하나씩 가르치는 학습 계단이므로 **사부 대련은 랜덤화하지 않는다**. B-1 = 현행 B 고정 (α·γ+δ). B-2+ = 아키타입 풀 랜덤 조합. 도전자별 `rank` 필드 신설 (`challengerPower` 폐기).
+**도전자 데이터 확장** (1.01 REQ-503 대체): A-1 (α) · A-2 (α·β) · A-3 (α·β·γ) · **A-4 (α·γ·δ)** — 파해를 하나씩 가르치는 학습 계단이므로 **사부 대련은 랜덤화하지 않는다**. B-1 = **A-4 고정** (α·γ+δ). B-2+ = 사부가 이긴 도전자에서 추출 (#217 개정 — 최초 판본은 아키타입 풀 랜덤 조합이었다). 도전자별 `rank` 필드 신설 (`challengerPower` 폐기).
 
 ### 상태 머신 / 핵심 로직
 

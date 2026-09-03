@@ -1210,7 +1210,8 @@ function simulateDispatch({ challengerId, disciple, setId }) {
   };
 }
 
-suite('케이스 8 — B 밸런스 게이트 (REQ-403·506)', () => {
+// B 는 #217 이후 화면에도 추출 풀에도 없다 — 이 게이트는 그 행을 되살릴 M2 준보스의 선행 검사다.
+suite('케이스 8 — B 밸런스 게이트 (M2 준보스 선행 · 현행 파견 경로 밖) (REQ-403·506)', () => {
   const disciple = transmit(masteredProgress, createDisciple(), 'yuun-geom');
   const sim = simulateDispatch({ challengerId: 'B', disciple, setId: 'yuun-geom' });
 
@@ -1222,7 +1223,8 @@ suite('케이스 8 — B 밸런스 게이트 (REQ-403·506)', () => {
   ok(sim.trace.some((t) => t.grade === 'crush'), '완파가 최소 1회');
   eq(sim.trace.every((t) => t.grade !== 'reversal'), true, '역파 회피가 실제로 지켜진다');
   if (!sim.win) {
-    console.error('  ! B 밸런스 미달 — BALANCE.hp.B / challengerRank.B 하향 후 docs/balance-log.md 기록 필요');
+    console.error('  ! B 밸런스 미달 — 현행 파견 경로 밖(M2 준보스 자리)이라 게임 난이도에는 즉시 영향이 없다.'
+      + ' 되살릴 때 BALANCE.hp.B / challengerRank.B 하향 후 docs/balance-log.md 기록');
   }
   console.log(`    B 시뮬: ${sim.exchanges}수, 적 HP ${sim.foeHp}, 제자 HP ${sim.selfHp}, `
     + `등급 ${sim.trace.map((t) => BALANCE.grades[t.grade].label).join('·')}`);

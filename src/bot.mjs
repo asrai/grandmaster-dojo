@@ -481,8 +481,8 @@ function headlessDuel({ session, stage, pace, timer, random }) {
   return ended;
 }
 
-function headlessDispatch({ session, timer }) {
-  const mission = currentMission(session);
+function headlessDispatch({ session, timer, random = Math.random }) {
+  const mission = currentMission(session, { random });
   const styles = discipleStyles(session.disciple, ART_ID);
   let ended = null;
   let match = null;
@@ -534,7 +534,7 @@ export function runHeadlessMissions({
     enterPhase(session, 'preview');
     const mission = beginMission(session, { random });
     enterPhase(session, 'dispatch');
-    const view = headlessDispatch({ session, timer });
+    const view = headlessDispatch({ session, timer, random });
     enterPhase(session, 'result');
     settleResult(session, { kind: 'dispatch', win: view.outcome.win });
     results.push({
@@ -623,7 +623,7 @@ export function runHeadlessCycle({
       continue;
     }
     if (phase === 'dispatch') {
-      const view = headlessDispatch({ session, timer });
+      const view = headlessDispatch({ session, timer, random });
       go('result', { kind: 'dispatch', win: view.outcome.win });
       continue;
     }
