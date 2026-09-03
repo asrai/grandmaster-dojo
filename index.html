@@ -179,8 +179,10 @@
     color-mix(in srgb, var(--c1) 92%, var(--c3)) 54%, var(--c1) 100%);
   --dojo-master-x: 148px;
   --dojo-master-h: 96px;
-  --dojo-pupil-x: 212px;
+  /* 제자는 사부 왼쪽 — 자산이 오른쪽을 향하므로 이 자리라야 사부를 본다 (#175). */
+  --dojo-pupil-x: 92px;
   --dojo-pupil-h: 78px;
+  --dojo-tag-dx: 36px;     /* 표찰을 제자 발치에 걸치게 왼쪽으로 당기는 폭 */
   /* 유도 말풍선이 앉을 자리 — 행이 이만큼 비워 두므로 말풍선이 아래 블록을 덮지 않는다 (#50). */
   --tip-h: 22px;
 
@@ -1163,7 +1165,7 @@ button.ghost { background: transparent; }
 .plaque { position: absolute; left: 14px; top: 11px; display: flex; flex-direction: column; }
 .plaque b { font-size: 15px; font-weight: 700; letter-spacing: 2px; }
 .pupil-tag {
-  position: absolute; right: 12px; bottom: 8px; display: flex; align-items: baseline; gap: 5px;
+  position: absolute; left: calc(var(--dojo-pupil-x) - var(--dojo-tag-dx)); bottom: 8px; display: flex; align-items: baseline; gap: 5px;
   padding: 2px 8px; background: var(--sunken); box-shadow: 0 0 0 1px var(--line) inset; font-size: 12px;
 }
 .pupil-tag b { color: var(--gold); }
