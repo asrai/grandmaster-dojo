@@ -515,7 +515,8 @@ button.ghost { background: transparent; }
    표는 여기 한 곳뿐이라 후속 아트 개선이 파일 스왑으로 닫힌다 (REQ-931). */
 .fig {
   position: absolute; pointer-events: none; aspect-ratio: 512 / 1024;
-  background: center bottom / contain no-repeat;
+  /* 배치는 개별 속성으로만 쓴다 — `background` 단축은 자세마다 선언된 이미지를 none 으로 되돌린다 (#137). */
+  background-position: center bottom; background-size: contain; background-repeat: no-repeat;
 }
 .fig.sil_master_stance { background-image: url('assets/art/silhouettes/sil_master_stance.png'); }
 .fig.sil_challenger_stance { background-image: url('assets/art/silhouettes/sil_challenger_stance.png'); }
@@ -669,7 +670,11 @@ button.ghost { background: transparent; }
   right: var(--tm-glow-pupil-x); width: var(--tm-glow-pupil-w); height: var(--tm-glow-pupil-h);
 }
 /* 몸통과 팔은 같은 캔버스를 겹쳐 쓴다 — 그래야 회전이 어깨에서 일어난 것으로 읽힌다 (REQ-861). */
-.fig > .part { position: absolute; inset: 0; background: center bottom / contain no-repeat; }
+.fig > .part {
+  position: absolute; inset: 0;
+  /* 배치는 개별 속성으로만 쓴다 — `background` 단축은 파츠마다 선언된 이미지를 none 으로 되돌린다 (#137). */
+  background-position: center bottom; background-size: contain; background-repeat: no-repeat;
+}
 .fig > .part.arm { transform-origin: var(--tm-arm-origin); transition: transform var(--tm-follow-dur) ease-out; }
 .fig.following > .part.arm { transform: rotate(var(--tm-follow-angle)); }
 
