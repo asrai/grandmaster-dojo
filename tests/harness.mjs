@@ -1589,6 +1589,73 @@ suite('파견 중도 이탈 = abort — 한 판 한 결과 · 승률 분모 밖 
     '승률의 분모는 win+loss 다 — 이탈은 빠진다');
 });
 
+suite('파견 판의 투입 성은 판마다 다시 뜬다 (REQ-744)', () => {
+  const stub = { arm() {}, tick: () => null };
+  const styleIds = artStyles(ART).map((st) => st.id).sort();
+  const per = discipleTrainMsPerRank();
+  // 전수까지 마친 세션 — 제자가 있어야 투입 성이 값을 가진다.
+  const transmitted = () => {
+    const session = createSession();
+    session.progress = masteredProgress;
+    runTransmit(session);
+    return session;
+  };
+  const dispatchesOf = (session) => session.log.entries.filter((e) => e.event === 'dispatch');
+
+  // ① 이탈 → 도장 복귀에서 성 상승 → 재진입 완주 — 두 항목의 투입 성이 갈린다.
+  const session = transmitted();
+  const mission = currentMission(session, { random: createSeededRandom(20260903) });
+  dispatchWiring(session, { disciple: stub });
+  ok(logDispatchAbort(session, { mission }), '관전 중 이탈이 결과 항목을 낸다');
+
+  eq(designateDiscipleTraining(session, 'yuun-bo'), true, '도장 복귀 전에 제자 수련이 걸려 있다');
+  const grown = advanceDiscipleTraining(session, per);
+  ok(grown.to > grown.from, '복귀 정산이 실제로 성을 올렸다 — 아래 대조가 공허하지 않다');
+
+  dispatchWiring(session, { disciple: stub });
+  ok(logDispatchResult(session, { mission, win: true }), '재진입한 판이 자기 결과를 낸다');
+
+  // 양성 대조 ⓐ — 두 항목이 실재한다. 항목이 없으면 아래 「갈린다」가 공허하게 통과한다.
+  eq(dispatchesOf(session).length, 2, '이탈 1건 + 재진입 완주 1건이 남는다');
+  const [aborted, won] = dispatchesOf(session).slice(-2);
+  deepEq([aborted.result, won.result], ['abort', 'win'], '두 항목이 이탈·완주 순으로 실린다');
+
+  // 양성 대조 ⓑ — 두 항목 모두 초식 전건을 모집단으로 든다. 부분 소실·필드 오타가 여기서 걸린다.
+  deepEq(Object.keys(aborted.disciple_ranks ?? {}).sort(), styleIds,
+    '이탈 항목의 투입 성이 초식 전건을 싣는다');
+  deepEq(Object.keys(won.disciple_ranks ?? {}).sort(), styleIds,
+    '완주 항목의 투입 성이 초식 전건을 싣는다');
+
+  // 차이 단정 — 그 모집단 위에서 두 값이 실제 성 상승을 반영해 갈린다.
+  eq(aborted.disciple_ranks['yuun-bo'], grown.from, '이탈 항목은 이탈 시점의 성을 지킨다');
+  eq(won.disciple_ranks['yuun-bo'], grown.to, '완주 항목은 재진입 시점의 여문 성을 진다');
+  ok(aborted.disciple_ranks['yuun-bo'] !== won.disciple_ranks['yuun-bo'],
+    '두 항목의 투입 성이 갈린다 — 재진입 판이 이탈 시점의 스냅샷을 물려받지 않는다');
+
+  // ② 반대 방향 — 성이 오르지 않은 재진입은 같은 값이다. 재스냅샷이 값을 흔들지 않는다.
+  const still = transmitted();
+  const stillMission = currentMission(still, { random: createSeededRandom(20260903) });
+  dispatchWiring(still, { disciple: stub });
+  ok(logDispatchAbort(still, { mission: stillMission }), '성 무변화 세션에서도 이탈 항목이 남는다');
+  dispatchWiring(still, { disciple: stub });
+  ok(logDispatchResult(still, { mission: stillMission, win: false }), '재진입 판이 자기 결과를 낸다');
+  const [left, lost] = dispatchesOf(still).slice(-2);
+  deepEq(lost.disciple_ranks, left.disciple_ranks, '성이 오르지 않은 재진입의 투입 성은 그대로다');
+
+  // ③ 반대 방향 — 한 판 안에서는 불변. 파견 도중 정산된 성은 그 판의 귀속에 섞이지 않는다.
+  const during = transmitted();
+  const duringMission = currentMission(during, { random: createSeededRandom(20260903) });
+  dispatchWiring(during, { disciple: stub });
+  const opened = { ...duringMission.ranks };
+  eq(designateDiscipleTraining(during, 'jeok-un'), true, '판 도중에도 수련은 걸려 있다');
+  const midBout = advanceDiscipleTraining(during, per);
+  ok(midBout.to > midBout.from, '판 도중에 성이 실제로 올랐다 — 아래 불변 단정이 공허하지 않다');
+  deepEq(duringMission.ranks, opened, '판 도중의 성 상승은 그 판의 투입 성을 바꾸지 않는다');
+  ok(logDispatchResult(during, { mission: duringMission, win: true }), '그 판의 결과가 남는다');
+  deepEq(dispatchesOf(during).at(-1).disciple_ranks, opened,
+    '판 도중에 오른 성은 그 판의 항목에 실리지 않는다');
+});
+
 suite('kill (b) 판독 유효 조건 — 표본 하한 · 치트 제외 (REQ-782·793)', () => {
   const at = (event, fields) => ({ event, [TIME_FIELD]: 0, ...fields });
   const duelCycle = (fires) => ({
