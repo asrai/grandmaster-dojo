@@ -348,6 +348,19 @@ body {
 .band-actions { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; }
 .band-cell { display: flex; flex-direction: column; gap: 4px; }
 .band-actions button { width: 100%; min-height: var(--hit); padding: 8px 4px; font-weight: 700; }
+/* 흐림 하나는 「아직 안 눌렀다」로도 읽혀 잠김을 말하지 못한다 — 자물쇠가 그 기호를 진다 (REQ-836).
+   흐림을 `opacity` 가 아니라 색으로 거는 것은 그 그룹 투명도가 `::after` 까지 함께 지우기 때문이다. */
+.band-actions button.locked {
+  position: relative; opacity: 1;
+  color: color-mix(in srgb, var(--fg) 35%, var(--panel));
+  border-color: color-mix(in srgb, var(--line) 35%, transparent);
+  background: color-mix(in srgb, var(--raised) 35%, var(--panel));
+}
+/* 우상단 모서리 — 라벨이 2글자라 가운데를 내주면 글자 위에 겹친다. 마스크 색은 막힘의 주사다 (REQ-811). */
+.band-actions button.locked::after {
+  content: ''; position: absolute; top: 4px; right: 4px; width: 15px; height: 15px;
+  background: var(--c5);
+}
 /* 부제는 잠금 여부와 무관하게 한 줄을 차지한다 — 밴드가 높이를 바꾸면 위 스크롤 영역이 함께 흔들린다. */
 .band-sub {
   height: 16px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
@@ -488,6 +501,11 @@ button.ghost { background: transparent; }
 .icon-reset {
   mask: url('assets/icons/reset.svg') center / contain no-repeat;
   -webkit-mask: url('assets/icons/reset.svg') center / contain no-repeat;
+}
+/* 자물쇠는 오버레이(`::after`)로 서지만 경로는 이 표 하나에 둔다 — 그래서 선택자를 여기에 함께 묶는다. */
+.icon-lock, .band-actions button.locked::after {
+  mask: url('assets/icons/lock.svg') center / contain no-repeat;
+  -webkit-mask: url('assets/icons/lock.svg') center / contain no-repeat;
 }
 
 /* 도형은 접근성 트리 밖이고 그 옆의 `.sr-only` 이름이 낭독을 진다 (#48 · REQ-911) — 시각은

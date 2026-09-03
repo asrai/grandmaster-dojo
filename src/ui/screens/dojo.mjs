@@ -149,6 +149,8 @@ function bandActions(ctx) {
   // 하드 잠금의 이유는 「어느 초식이 몇 성인가」다 — 권장 성만으로는 무엇을 올려야 할지 모른다 (REQ-836).
   const behind = missionShortfallOf(session)
     .slice().sort((a, b) => a.rank - b.rank)[0] ?? null;
+  // 부제 문면과 자물쇠 술어가 같은 사실을 두 번 읽으면 갈릴 수 있다 — 전수 완료는 여기 한 번이다.
+  const done = session.transmitted;
   return [
     {
       id: 'duel', text: '대련',
@@ -159,8 +161,9 @@ function bandActions(ctx) {
     {
       id: 'transmit', text: '전수',
       sub: `제자에게 ${ART_NAME}을`,
-      lockedSub: session.transmitted ? '전수 완료' : `전 초식 ${artById(ART_ID).transmitRank}성 필요`,
+      lockedSub: done ? '전수 완료' : `전 초식 ${artById(ART_ID).transmitRank}성 필요`,
       disabled: !canTransmitNow(session),
+      done,
       onclick: () => ctx.go('transmit'),
     },
     {
@@ -174,7 +177,9 @@ function bandActions(ctx) {
       disabled: !session.transmitted,
       onclick: () => ctx.go('preview'),
     },
-  ];
+  ]
+    // 잠김과 완료는 같은 비활성이지만 다른 사실이다 — 자물쇠는 아직 열 수 있는 것에만 붙는다 (#167).
+    .map((a) => ({ ...a, locked: Boolean(a.disabled && !a.done) }));
 }
 
 /**
@@ -187,7 +192,7 @@ const actionDomId = (id) => `dojo-act-${String(id).replace(':', '-')}`;
 function actionButton(ctx, action, target) {
   const button = el('button', {
     id: actionDomId(action.id),
-    class: action.class ?? '',
+    class: `${action.class ?? ''}${action.locked ? ' locked' : ''}`.trim(),
     // 잠금은 상태이지 장식이 아니다 — 네이티브 `disabled` 가 포커스를 막고 `aria-disabled` 가
     // 그 사실을 낭독으로 말한다. 왜 잠겼는지는 밴드의 부제·행 안내가 따로 진다 (REQ-911·836).
     disabled: action.disabled,
