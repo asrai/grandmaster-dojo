@@ -107,7 +107,7 @@ function go(nextPhase, params = {}) {
   phase = nextPhase;
   enterPhase(session, phase);
   teardown = route(ctx) ?? null;
-  // 전수 무대는 4초짜리 반복 합성을 지므로 강등 스위치가 아레나와 같은 자리에서 닿아야 한다 (#223).
+  // 전수 무대는 초식 수만큼 도는 반복 합성을 지므로 강등 스위치가 아레나와 같은 자리에서 닿아야 한다 (#223).
   sceneNode = ctx.root.querySelector('.scene, .hall.transmit');
   overlayNode = ctx.root.querySelector('.verdict-overlay');
   announceScreen(nextPhase);

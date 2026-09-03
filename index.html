@@ -216,7 +216,7 @@
   --brand-mark: 26px;
   --act-h: 54px;
 
-  /* 전수 (REQ-860~864) — 두 사람이 마주 보고 제자가 사부의 손짓을 거울로 따라 한다. 왕복 손짓
+  /* 전수 (REQ-860~867) — 두 사람이 마주 보고 제자가 사부의 손짓을 거울로 따라 한다. 왕복 손짓
      한 번의 길이와 제자가 늦는 만큼이 이 무대의 시간 단위이고, 총 길이는 초식 수가 곱한다. */
   --tm-fig-y: 34px;
   --tm-master-x: 36px;
@@ -232,12 +232,11 @@
   --tm-glow-pupil-h: 162px;
   /* 원점이 사부·제자로 갈리는 것은 두 자산의 어깨가 서로 다른 자리에 있기 때문이고, 각도가 갈리는
      것은 진폭을 각자 재야 하기 때문이다 — 미러는 좌우만 뒤집으므로 「내림」의 부호는 같다.
-     `.fig` 가 캔버스 비율(512/1024)을 고정한 덕에 백분율 원점이 어깨를 계속 문다 (#174·#223). */
+     `.fig` 가 캔버스 비율(512/1024)을 고정한 덕에 백분율 원점이 어깨를 계속 문다 (#223). */
   --tm-master-arm-origin: 56% 24%;
   --tm-pupil-arm-origin: 48% 28%;
   --tm-master-swing: -26deg;
   --tm-pupil-swing: -26deg;
-  /* 왕복 손짓 한 번의 길이와 제자가 늦는 만큼 — 총 길이는 초식 수가 곱하므로 원장에 없다 (#223). */
   --tm-cycle-ms: 1000ms;
   --tm-echo-delay: 500ms;
   --tm-row-in: 120ms;
@@ -691,13 +690,12 @@ button.ghost { background: transparent; }
 .exch-n { font-size: 16px; font-weight: 800; color: color-mix(in srgb, var(--c3) 80%, transparent); }
 .exch-u { font-size: 13px; font-weight: 800; color: var(--dim); }
 
-/* ══ S5 전수 (REQ-860~866) ══ 대치가 아니라 시범과 따라 하기라 무대가 아레나가 아닌 도장이고,
+/* ══ S5 전수 (REQ-860~867) ══ 대치가 아니라 시범과 따라 하기라 무대가 아레나가 아닌 도장이고,
    두 사람이 마주 본다 — 제자가 사부의 손짓을 보고 거울로 따라 한다 (REQ-860). 두 몸통 자산이
    계약상 좌향이라, 좌측의 사부만 미러하면 그 자리에서 서로를 향한다. */
 .hall.transmit .fig, .hall.transmit .backlight { left: auto; transform: none; }
 .hall.transmit .fig { bottom: var(--tm-fig-y); }
-.hall.transmit .fig.master { transform: scaleX(-1); }
-.hall.transmit .fig.master { left: var(--tm-master-x); width: var(--tm-master-w); }
+.hall.transmit .fig.master { transform: scaleX(-1); left: var(--tm-master-x); width: var(--tm-master-w); }
 .hall.transmit .fig.pupil { right: var(--tm-pupil-x); width: var(--tm-pupil-w); }
 .hall.transmit .backlight { bottom: var(--tm-glow-y); }
 .hall.transmit .backlight.master {
@@ -726,8 +724,8 @@ button.ghost { background: transparent; }
 .hall.transmit.waving .fig.pupil > .part.arm {
   animation: tm-wave-pupil var(--tm-cycle-ms) ease-in-out var(--tm-echo-delay) var(--tm-waves);
 }
-/* 4초 내내 도는 합성이라 저프레임·모션 감소에서는 반복 없이 대기 자세로 둔다. 두 예외가 위 짝을
-   그대로 되풀이하는 것은 특이도가 모자라면 규칙이 조용히 지기 때문이다 (#223). */
+/* 초식 수만큼 도는 반복 합성이라 저프레임·모션 감소에서는 반복 없이 대기 자세로 둔다. 두 예외가 위
+   짝을 그대로 되풀이하는 것은 특이도가 모자라면 규칙이 조용히 지기 때문이다 (#223). */
 .hall.transmit.flat.waving .fig.master > .part.arm,
 .hall.transmit.flat.waving .fig.pupil > .part.arm { animation: none; }
 @media (prefers-reduced-motion: reduce) {
@@ -1000,7 +998,7 @@ button.ghost { background: transparent; }
 .verse.lit { opacity: 1; }
 /* 흐르는 글을 못 읽는 손에는 줄 배정만 남기고 이동을 즉시 끝낸다. 미디어 쿼리는 위 전이 선언과
    특이도가 같아 순서로만 이기므로 블록을 앞으로 옮기면 조용히 진다. `.flat` 은 저프레임 강등
-   스위치가 `.scene` 에만 붙어 수련 무대(`.hall`)에는 아직 닿지 않는, 그 스위치가 넓어질 때의 선언이다. */
+   스위치가 아직 수련 무대(`.hall`)에는 닿지 않는, 그 스위치가 더 넓어질 때의 선언이다. */
 .flat .scroll .verse-list { transition: none; }
 @media (prefers-reduced-motion: reduce) {
   .scroll .verse-list { transition: none; }
