@@ -36,7 +36,7 @@ import {
 } from '../src/ui/theme.mjs';
 import { TABLET, tabletStates } from '../src/ui/tablet-state.mjs';
 import { stageScale } from '../src/ui/stage-scale.mjs';
-import { blockPinchZoom } from '../src/ui/gesture-block.mjs';
+import { blockPinchZoom, blockDoubleTapZoom, DOUBLE_TAP_MS, TAP_SLOP_PX, TAP_PAIR_PX } from '../src/ui/gesture-block.mjs';
 import { BOT_UNREACHABLE, BROWSER_ONLY, KILL, killVerdicts, readout } from './kill-readout.mjs';
 import {
   REVEAL_TIER, SELECT_REASON,
@@ -3710,6 +3710,70 @@ suite('확대 차단의 선언과 리스너가 제자리에 있다 (#204)', () =
   // 부팅 경로에 한 번 서지 않으면 위 배선이 아무 데도 닿지 않는다 — 대상이 문서인 것까지가 계약이다.
   const app = readFileSync(new URL('../src/ui/app.mjs', import.meta.url), 'utf8');
   ok(/blockPinchZoom\(document\)/.test(app), '부팅이 그 배선을 문서에 1회 설치한다');
+
+  // WebKit 은 `pan-x pan-y` 에서 더블 탭 억제를 걸지 않는 것이 실기로 판정됐다 (#215) — JS 층이 대신 진다.
+  let clock = 0;
+  const taps = [];
+  blockDoubleTapZoom({ addEventListener: (type, fn, opts) => taps.push([type, fn, opts]) }, () => clock);
+  deepEq(taps.map(([type, , opts]) => `${type}:${opts?.passive}`), ['touchstart:true', 'touchend:false'],
+    '시작은 자리만 적고 끝에서만 막는다 — 시작을 비-passive 로 잡으면 스크롤이 함께 죽는다');
+  const onStart = taps[0][1];
+  const onEnd = taps[1][1];
+
+  // 두 번째 탭의 기본 동작을 막으면 iOS 가 그 탭의 click 까지 죽이므로, 차단층이 직접 흘려야 한다.
+  const tap = (at, { from = { x: 100, y: 700 }, to = from, fingers = 1 } = {}) => {
+    clock = at;
+    let prevented = 0;
+    let clicked = 0;
+    onStart({ touches: { length: fingers }, changedTouches: [{ clientX: from.x, clientY: from.y }] });
+    onEnd({
+      touches: { length: 0 },
+      changedTouches: [{ clientX: to.x, clientY: to.y }],
+      target: { click: () => { clicked += 1; } },
+      preventDefault: () => { prevented += 1; },
+    });
+    return { prevented, clicked };
+  };
+  deepEq(tap(1000), { prevented: 0, clicked: 0 },
+    '첫 탭은 확대가 아니므로 브라우저 기본 경로 그대로 지난다');
+  deepEq(tap(1000 + DOUBLE_TAP_MS - 1), { prevented: 1, clicked: 1 },
+    '창 안의 둘째 탭은 확대가 막히고 press 는 도달한다 — 수용 기준 2 가 이 한 줄이다');
+  deepEq(tap(1000 + DOUBLE_TAP_MS - 1 + 40), { prevented: 1, clicked: 1 },
+    '연타가 이어지는 동안 매 탭이 같은 처분을 받는다 — 3연타의 셋째도 소실되지 않는다');
+  deepEq(tap(9000), { prevented: 0, clicked: 0 },
+    '창을 넘긴 간격은 더블 탭이 아니다 — 느린 두 탭까지 가로채면 클릭이 두 번 난다');
+
+  // 십자는 좌우 키가 떨어져 있어, 시간만 보면 정상 교대 연타가 통째로 합성 click 경로로 넘어간다.
+  deepEq(tap(9100, { from: { x: 100 + TAP_PAIR_PX + 1, y: 700 } }), { prevented: 0, clicked: 0 },
+    '창 안이어도 멀리 떨어진 둘째 탭은 확대 판정 대상이 아니다');
+
+  // touchend 의 타깃은 터치가 시작된 요소로 고정되므로, 이동량을 안 보면 취소 제스처가 press 로 둔갑한다.
+  deepEq(tap(30000, { from: { x: 300, y: 700 }, to: { x: 300, y: 700 + TAP_SLOP_PX + 1 } }), { prevented: 0, clicked: 0 },
+    '타깃 밖으로 뺀 끝은 press 를 만들지 않는다 — 브라우저도 그 자리를 누르지 않는다');
+  deepEq(tap(30100, { from: { x: 300, y: 700 + TAP_SLOP_PX + 1 } }), { prevented: 0, clicked: 0 },
+    '그 취소는 탭으로 적히지도 않는다 — 적히면 뒤따르는 제자리 탭이 짝으로 묶인다');
+
+  // 확대만 막고 press 를 못 흘리면 그 탭이 통째로 사라진다 — 차단급 기준이 무는 자리다.
+  clock = 40000;
+  onStart({ touches: { length: 1 }, changedTouches: [{ clientX: 100, clientY: 700 }] });
+  onEnd({ touches: { length: 0 }, changedTouches: [{ clientX: 100, clientY: 700 }], target: {}, preventDefault: () => {} });
+  clock = 40100;
+  let blockedWithoutClick = 0;
+  onStart({ touches: { length: 1 }, changedTouches: [{ clientX: 100, clientY: 700 }] });
+  onEnd({
+    touches: { length: 0 },
+    changedTouches: [{ clientX: 100, clientY: 700 }],
+    target: {},
+    preventDefault: () => { blockedWithoutClick += 1; },
+  });
+  eq(blockedWithoutClick, 0, 'click 을 못 받는 타깃에서는 확대를 내주고 입력을 지킨다');
+
+  // 핀치의 꼬리는 탭이 아니다 — 여기서 세면 손을 뗄 때마다 확대 차단이 엉뚱한 곳에서 발화한다.
+  deepEq(tap(9250, { fingers: 2 }), { prevented: 0, clicked: 0 },
+    '두 손가락으로 시작한 터치의 끝은 탭으로 세지 않는다');
+
+  ok(/blockDoubleTapZoom\(document, /.test(app),
+    '부팅이 더블 탭 차단도 문서에 1회 설치한다 — 타깃이 문서여야 표면 전역을 덮는다');
 });
 
 
