@@ -60,6 +60,8 @@ const budget = createFrameBudget();
 let sceneNode = null;
 let overlayNode = null;
 let lastFrameAt = 0;
+/** 직전 프레임에서 무대가 합성 비용을 내고 있었나 — 구간 경계의 한 장을 가리는 데만 쓴다. */
+let stageWasBusy = false;
 // 상단 띠의 주인이 화면이라 갱신 주체도 그 화면이다 — 띠가 없는 화면에서는 갱신할 것도 없다 (REQ-801).
 let paintTop = () => {};
 
@@ -107,20 +109,30 @@ function go(nextPhase, params = {}) {
   phase = nextPhase;
   enterPhase(session, phase);
   teardown = route(ctx) ?? null;
-  sceneNode = ctx.root.querySelector('.scene');
+  // 전수 무대는 초식 수만큼 도는 반복 합성을 지므로 강등 스위치가 아레나와 같은 자리에서 닿아야 한다 (#223).
+  sceneNode = ctx.root.querySelector('.scene, .hall.transmit');
   overlayNode = ctx.root.querySelector('.verdict-overlay');
   announceScreen(nextPhase);
   releaseVerdictLive();
 }
 
 /**
- * 이 프레임이 무엇을 그리고 있었나 (REQ-915) — 측정 대상은 「흔들림 + 96px 글로우 + 스크림이
- * 겹치는 프레임」이라, 판정이 재생 중인 프레임을 다른 것과 섞지 않는 것이 이 구분의 전부다.
+ * 이 프레임이 무엇을 그리고 있었나 (REQ-915) — 측정 대상은 무대가 실제로 합성 비용을 내는
+ * 프레임이라, 판정이 재생 중인 프레임을 다른 것과 섞지 않는 것이 이 구분의 전부다.
  */
 function sceneOfFrame() {
   if (overlayNode?.classList.contains('on')) return 'verdict';
-  if (sceneNode && !sceneNode.classList.contains('flat')) return 'parallax';
+  if (stageBusy() && !sceneNode.classList.contains('flat')) return 'parallax';
   return 'idle';
+}
+
+/**
+ * 지금 이 무대가 합성 비용을 내고 있나 — 아레나는 상시지만 전수 무대는 손짓이 도는 동안만이다.
+ * 정지 구간을 표본에 넣으면 시작도 하지 않은 연출이 그 프레임으로 강등된다 (#223).
+ */
+function stageBusy() {
+  if (!sceneNode) return false;
+  return sceneNode.classList.contains('scene') || sceneNode.classList.contains('waving');
 }
 
 /** 떠나는 화면의 프레임 예산을 장면별로 낸다 — 표본이 모자란 장면은 말하지 않는다. */
@@ -145,7 +157,12 @@ function watchFrames(at) {
   window.requestAnimationFrame(watchFrames);
   const delta = at - lastFrameAt;
   lastFrameAt = at;
-  budget.sample(sceneOfFrame(), delta);
+  // 간격은 직전 프레임이 그린 것의 비용이라, 구간이 열린 첫 한 장은 앞 구간의 값을 들고 온다 —
+  // 그것을 손짓 비용으로 세면 시작 지연 하나가 연출 전체를 강등한다 (#223).
+  const busy = stageBusy();
+  const boundary = busy !== stageWasBusy;
+  stageWasBusy = busy;
+  if (!boundary) budget.sample(sceneOfFrame(), delta);
   if (!sceneNode) return;
   const fps = budget.fps('parallax');
   // 표본이 모자라면 켜 둔 채로 둔다 — 시작하자마자 끄면 무엇을 잰 것인지가 없다.

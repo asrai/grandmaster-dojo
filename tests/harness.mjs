@@ -3100,6 +3100,51 @@ suite('잠긴 밴드 버튼의 자물쇠는 흐림에 함께 지워지지 않는
 });
 
 
+// ------------------ 12-a-10-b. 전수 손짓의 JS ↔ CSS 결합 (#223 · REQ-861·867)
+
+suite('전수 손짓은 클래스와 회차 주입으로만 성립한다 (#223)', () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'))
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => [m[1].trim(), m[2]]);
+  const screen = readFileSync(new URL('../src/ui/screens/transmit.mjs', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../src/ui/app.mjs', import.meta.url), 'utf8');
+
+  // 화면이 붙이는 클래스와 규칙이 무는 클래스는 문자열 하나로 이어져 있다 — 한쪽만 고치면
+  // 손짓이 에러 없이 사라지고, 그 무음이 이 스위트가 없애려는 것이다.
+  ok(/classList\.add\('waving'\)/.test(screen), '화면이 손짓 구간에 `waving` 을 붙인다');
+  ok(/classList\.remove\('waving'\)/.test(screen), '꼬리 끝에서 그 표지를 뗀다');
+  for (const who of ['master', 'pupil']) {
+    const sel = `.hall.transmit.waving .fig.${who} > .part.arm`;
+    const rule = rules.find(([s]) => s.split(',').map((x) => x.trim()).includes(sel));
+    ok(rule && new RegExp(`animation:\\s*tm-wave-${who}\\b`).test(rule[1]),
+      `${who} 팔의 손짓 규칙이 그 표지를 문다`);
+    ok(rule && rule[1].includes('var(--tm-waves)'), `${who} 회차 수가 주입 토큰에서 온다`);
+    ok(new RegExp(`@keyframes tm-wave-${who}\\b`).test(css), `tm-wave-${who} 키프레임이 실재한다`);
+  }
+  // 회차 수는 초식 수라 원장이 알 수 없다 — 주입이 끊기면 반복이 조용히 1회로 접힌다.
+  ok(/--tm-waves:\$\{mastered\.length\}/.test(screen), '회차 수를 초식 수에서 주입한다');
+  ok(/setTimeout\(land, cycle \* mastered\.length\)/.test(screen), '연출 길이도 같은 값에서 파생한다');
+
+  // 강등·모션 감소 예외는 위 규칙과 특이도가 같거나 높아야 이긴다 — 모자라면 조용히 진다.
+  const beats = (sel) => rules.findIndex(([s]) => s.split(',').map((x) => x.trim()).includes(sel));
+  for (const who of ['master', 'pupil']) {
+    ok(beats(`.hall.transmit.flat.waving .fig.${who} > .part.arm`) > beats(`.hall.transmit.waving .fig.${who} > .part.arm`),
+      `${who} 의 저프레임 예외가 손짓 규칙 뒤에 온다`);
+  }
+  const reduced = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)', css.indexOf('tm-wave-pupil')));
+  ok(/\.hall\.transmit\.waving \.fig\.master > \.part\.arm/.test(reduced.slice(0, 400)),
+    '모션 감소 예외가 손짓 규칙과 같은 짝을 되풀이한다');
+
+  // 강등 스위치가 전수 무대에 닿고, 그 표본은 손짓이 도는 동안만 모인다 (#223).
+  ok(/querySelector\('\.scene, \.hall\.transmit'\)/.test(app), '강등 대상에 전수 무대가 들어 있다');
+  ok(/classList\.contains\('scene'\) \|\| .*classList\.contains\('waving'\)/.test(app),
+    '정지 구간의 프레임은 패럴랙스 표본이 아니다');
+  // 경계 한 장을 세면 시작 지연 하나가 강등을 래치하고, 래치는 그 화면에서 풀리지 않는다.
+  ok(/const boundary = busy !== stageWasBusy;[\s\S]{0,120}if \(!boundary\) budget\.sample\(/.test(app),
+    '구간이 열린 첫 프레임은 표본에서 빠진다');
+});
+
 // ------------------------- 12-a-11. 무대 배율은 음수·0 이 될 수 없다 (#187 · REQ-802)
 
 suite('무대 배율은 상자에 축소로만 맞고 0 을 넘는다 (#187)', () => {
