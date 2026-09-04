@@ -156,9 +156,12 @@ function applyMute() {
   const ac = state.ctx;
   if (!ac || !state.master) return;
   const gain = state.master.gain;
-  const until = ac.currentTime + GAIN_RAMP_MS / 1000;
-  gain.cancelScheduledValues(ac.currentTime);
-  gain.setValueAtTime(gain.value, ac.currentTime);
+  const t0 = ac.currentTime;
+  // 정지 중인 컨텍스트에는 아무것도 흐르지 않아 계단이 팝이 될 수 없다 — 거기에 램프를 두면
+  // 재개 직후의 그 30ms 가 도리어 들려, 끄려고 누른 손이 소리를 켜는 자리로 돌아간다.
+  const until = t0 + (ac.state === 'running' ? GAIN_RAMP_MS / 1000 : 0);
+  gain.cancelScheduledValues(t0);
+  gain.setValueAtTime(gain.value, t0);
   gain.linearRampToValueAtTime(state.muted ? 0 : 1, until);
   // 램프가 끝나기 전에 소스를 끊으면 잘린 파형이 다시 팝이 된다 — 정지는 램프 뒤다.
   if (state.muted) stopBgm(until);
