@@ -2594,6 +2594,9 @@ suite('계측 배선 공유 (#11)', () => {
   const styleIdByLen = new Map(STYLES.map((s) => [s.seq.length, s.id]));
   const trainWindow = (len, blind) =>
     trainWiring(session, { styleId: styleIdByLen.get(len), input, blind }).onArm();
+  // 상대가 초식을 내지 않는 초의 기준 길이 — 한 자리에서만 정해야 대조 쌍이 갈리지 않는다.
+  const OPEN_LEN = 5;
+  const EXCHANGES = 4;
   const liveWindows = (blind) => {
     const timer = createVirtualTimer();
     const seen = [];
@@ -2601,39 +2604,50 @@ suite('계측 배선 공유 (#11)', () => {
       challenger: challengerById('A-4'),
       selfHpMax: BALANCE.hp.user,
       rankOf: () => 5,
-      // 상대가 초식을 내지 않는 초의 기준 길이 — 그 초도 대조 쌍을 하나 낸다.
-      openLen: () => 5,
+      openLen: () => OPEN_LEN,
       accessibility: () => false,
       timer,
       random: createSeededRandom(247),
       ...(blind === undefined ? {} : { blind }),
-      hooks: { onWindow: (v) => seen.push([v.foeStyle ? v.foeStyle.len : 5, v.windowMs]) },
+      // 이 대조는 손을 놓고 보므로 판이 늘 피격으로 흐르고 상대 빈틈이 서지 않는다 — 폴백은
+      // 등급표가 바뀌어 그 초가 생기는 날을 위한 자리이지 지금 도는 갈래가 아니다.
+      hooks: {
+        onWindow: (v) => seen.push([v.foeStyle ? v.foeStyle.len : OPEN_LEN, v.windowMs, v.selfOpen]),
+      },
     });
     match.start();
-    while (match.view().exchange < 4) timer.tick();
+    // 판이 먼저 끝나면 이 루프는 red 가 아니라 정지가 된다 — 상한이 그 자리를 loud 로 바꾼다.
+    for (let ticks = 0; match.view().exchange < EXCHANGES; ticks += 1) {
+      if (ticks > 20000) throw new Error(`대조용 대련이 ${EXCHANGES} 초를 못 채우고 멈췄다`);
+      timer.tick();
+    }
     match.stop();
+    return seen;
+  };
+  // 내 빈틈 배율은 실전에만 있는 축이라, 그것이 서는 순간 두 창의 등식은 #247 과 무관하게 깨진다.
+  const pairsOf = (blind) => {
+    const seen = liveWindows(blind);
+    ok(seen.length >= EXCHANGES, `실전 창을 ${seen.length} 초에서 읽었다 (blind=${blind ?? '원장'})`);
+    ok(seen.every(([, , selfOpen]) => !selfOpen), '대조 구간에 내 빈틈 초가 섞이지 않았다');
     return seen;
   };
 
   // 수용 기준 1 — 감춘 갈래에서는 길이가 창에 들어갈 자리가 없고, 그 값이 실전과 같다.
   deepEq([3, 4, 5].map((len) => trainWindow(len)),
     [3, 4, 5].map(() => BALANCE.windowBaseMs), '수련 창은 초식 길이와 무관한 고정값이다');
-  const liveBlind = liveWindows();
-  ok(liveBlind.length >= 4, `실전 창을 ${liveBlind.length} 초에서 읽었다`);
-  for (const [len, ms] of liveBlind) eq(trainWindow(len), ms, `길이 ${len} 의 수련 창이 실전 창과 같다`);
+  for (const [len, ms] of pairsOf()) eq(trainWindow(len), ms, `길이 ${len} 의 수련 창이 실전 창과 같다`);
 
   // 수용 기준 2·4 — 토글을 되돌리면 수련도 함께 길이 비례로 돌아간다. 한쪽만 바꾸면 여기가 red 다.
   deepEq([3, 4, 5].map((len) => trainWindow(len, false)), [2600, 3100, 3600],
     '예고 갈래에서 수련 창이 가변 창으로 동반 복원된다');
-  for (const [len, ms] of liveWindows(false)) {
+  for (const [len, ms] of pairsOf(false)) {
     eq(trainWindow(len, false), ms, `예고 갈래에서도 길이 ${len} 의 두 창이 같다`);
   }
 
   // 수용 기준 3 — 완화는 길이 축이 아니라 난이도 축(접근성 배율)에 걸린다.
   session.accessibility = true;
-  deepEq([trainWindow(5), trainWindow(5, false)],
-    [Math.round(BALANCE.windowBaseMs * BALANCE.accessibilityWindowMult), 4680],
-    '접근성 배율이 두 갈래 모두에 곱해진다');
+  deepEq([trainWindow(5), trainWindow(5, false)], [3900, 4680],
+    '접근성 배율이 두 갈래 모두에 곱해진다 — 3000·3600 각각의 ×1.3');
   session.accessibility = false;
 
   // 화면·헤드리스가 같은 이름으로 자기 hook 을 얹어도 계측이 덮이지 않는다 — 배선 1벌의 강제 지점.
