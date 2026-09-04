@@ -652,9 +652,12 @@ button.ghost { background: transparent; }
   animation: tele-in var(--tele-reveal) ease-out both;
 }
 @keyframes tele-in { from { opacity: 0; transform: translateY(-10px) } to { opacity: 1; transform: none } }
-.tele.open, .tele.opened { border-color: var(--gold); color: var(--gold); align-items: center; justify-content: center; font-weight: 700; }
+.tele.open, .tele.opened, .tele.missed { align-items: center; justify-content: center; font-weight: 700; }
+.tele.open, .tele.opened { border-color: var(--gold); color: var(--gold); }
 /* 빈틈 판정 자리에는 속성색이 없다 — 기본 규칙의 띠가 var(--attr) 를 타므로 그 자리를 비우면 배경·테두리가 통째로 무효가 된다 (#252). */
 .tele.opened { --attr: var(--gold); }
+/* 흘린 빈틈에 승리 배색을 세우면 중앙 판정이 「피격」인 프레임에서 화면이 스스로를 부정한다 — 조판은 판정 자리 그대로 두고 색만 감춤의 중립 먹을 쓴다 (#263). */
+.tele.missed { --attr: var(--c9); color: var(--dim); }
 /* 감춘 초 (#243) — 자형도 색도 없어야 상대가 새지 않으므로 속성색 자리에 중립 먹을 세운다. */
 .tele.veiled {
   --attr: var(--c9);
