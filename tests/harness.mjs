@@ -1229,6 +1229,37 @@ suite('확정 ↔ 발동 분리 — 감춘 창의 구조 (#243)', () => {
   const drawn = [243, 244, 245, 246, 247, 248].map((seed) => run({ seed, maxExchanges: 3 }).foes.join('-'));
   ok(new Set(drawn).size > 1, `같은 도전자·같은 초 번호가 재현되지 않는다 — ${JSON.stringify(drawn)}`);
 
+  // 마감이 입력보다 먼저다 — 프레임이 밀려 만료 뒤에 도착하면 그때의 확정은 미완주를 뒤집지
+  // 못한다 (백그라운드 탭 복귀·긴 프레임의 경합, L5d 지적).
+  {
+    const timer = createVirtualTimer();
+    const seen = { timeout: 0, grades: [] };
+    let match = null;
+    match = createMatch({
+      challenger,
+      selfHpMax: BALANCE.hp.user,
+      rankOf: () => 5,
+      openLen: () => 5,
+      accessibility: () => false,
+      timer,
+      random: createSeededRandom(243),
+      hooks: {
+        onTimeout: () => { seen.timeout += 1; },
+        onVerdict: (v) => { seen.grades.push(v.verdict.grade); },
+      },
+    });
+    match.start();
+    // 창을 통째로 건너뛰는 한 프레임 — 실브라우저의 정지·백그라운드 복귀가 내는 모양이다.
+    for (let i = 0; i * 16 <= BALANCE.windowBaseMs; i += 1) timer.tick();
+    eq(match.open, false, '만료된 창은 더 이상 손을 받지 않는다');
+    eq(match.fire({ style: styleById('yuun-bo'), oneTap: false, r: 0 }), false,
+      '마감 뒤 확정은 거부된다');
+    timer.tick();
+    eq(seen.timeout, 1, '마감 뒤 입력이 있어도 미완주가 그대로 기록된다');
+    deepEq(seen.grades, ['struck'], '뒤늦은 확정이 정상 발동으로 승격되지 않는다');
+    match.stop();
+  }
+
   // 수용 기준 8 — 토글 한 값으로 예고 표시 · 고정 순환 · 가변 창이 함께 되돌아온다. 값이 아니라
   // 갈래를 주입으로 열어 둔 것이 이 단정의 존재 조건이다 (원장은 deep-freeze 라 못 뒤집는다).
   deepEq([3, 4, 5].map((len) => responseWindowMs(len, { blind: false })), [2600, 3100, 3600],

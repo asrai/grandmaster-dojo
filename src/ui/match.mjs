@@ -91,6 +91,8 @@ export function createMatch({
 
   const clock = () => timer.now();
   const elapsed = () => clock() - s.phaseStart;
+  /** 아직 손을 받는 창인가 — 프레임이 밀려 도착해도 마감이 입력보다 먼저라야 판정이 흔들리지 않는다. */
+  const isOpen = () => s.phase === PHASE.WINDOW && elapsed() < s.windowMs;
 
   const view = () => ({
     phase: s.phase,
@@ -176,13 +178,17 @@ export function createMatch({
       return;
     }
     if (s.phase === PHASE.WINDOW) {
-      hooks.onTick?.(view());
-      if (pending && !blind) {
+      // 만료 뒤에 도착한 프레임에서 `onTick` 을 돌리면 제자의 손이 그 자리에서 뒤늦게 확정하고,
+      // 그 확정이 미완주를 정상 발동으로 뒤집는다 — 마감이 어떤 입력보다 먼저다 (#243).
+      if (!isOpen()) {
         const fire = pending;
         pending = null;
+        if (!fire) hooks.onTimeout?.(view());
         settle(fire);
-      } else if (elapsed() >= s.windowMs) {
-        if (!pending) hooks.onTimeout?.(view());
+        return;
+      }
+      hooks.onTick?.(view());
+      if (pending && !blind) {
         const fire = pending;
         pending = null;
         settle(fire);
@@ -212,11 +218,13 @@ export function createMatch({
     },
     /** 낼 초식을 거는 유일한 경로 — 예고 모드는 다음 프레임에, 감추는 모드는 창 만료에 판정된다. */
     fire(fired) {
-      if (s.phase !== PHASE.WINDOW || pending) return false;
+      if (!isOpen() || pending) return false;
       pending = fired;
       return true;
     },
     get phase() { return s.phase; },
+    /** 손을 받는 구간인가 — 페이즈만 보면 밀린 프레임에서 마감 뒤 입력이 통과한다 (#243). */
+    get open() { return isOpen(); },
     /** 확정이 걸린 뒤로는 손을 받지 않는다 — 가위바위보는 낸 것을 무르지 못한다 (#243 결정 1). */
     get locked() { return pending !== null; },
     get windowRatio() { return view().ratio; },
