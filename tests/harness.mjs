@@ -1345,6 +1345,21 @@ suite('상대 스트립이 말하는 초 — 판정 자리 · 창 자리 (#252)'
   const shown = foeStripState(telegraph.windows[1], { open: OPEN_TEXT, resolved: RESOLVED_TEXT });
   eq(shown.state, FOE_STRIP.OPEN, '예고 모드의 창 자리에는 빈틈이 선다');
   eq(shown.text, OPEN_TEXT, '창 자리 문면은 그 초에 무엇을 하면 되는지를 가르친다');
+
+  // 위 단정의 `open` 은 하네스가 만든 값이라, 누설을 실제로 막는 호출부의 조건을 함께 물지
+  // 않으면 화면에서 그 조건을 지워도 전부 green 이다 — 화면 모듈은 DOM 을 만져 원문 대조가 유일한 수단이다.
+  for (const [name, resolvedText] of [
+    ['duel.mjs', '빈틈 — 상대의 허를 찔렀다'],
+    ['dispatch.mjs', '빈틈 — 제자가 상대의 허를 찔렀다'],
+  ]) {
+    const src = readFileSync(new URL(`../src/ui/screens/${name}`, import.meta.url), 'utf8');
+    const openLines = src.split('\n').filter((line) => /^\s*open:.*빈틈/.test(line));
+    eq(openLines.length, 1, `${name} 이 창 자리에 넘기는 빈틈 문면은 한 자리에서만 정해진다`);
+    ok(/BALANCE\.blindExchange/.test(openLines[0]) && /null/.test(openLines[0]),
+      `${name} 은 창 빈틈 문면을 예고 모드에만 넘긴다 — ${openLines[0].trim()}`);
+    ok(src.includes(`resolved: '${resolvedText}'`),
+      `${name} 의 판정 자리 문면은 그 화면에 서는 사람을 주어로 쓴다 — ${resolvedText}`);
+  }
 });
 
 
