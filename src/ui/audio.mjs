@@ -240,7 +240,9 @@ export function resumeAudio() {
     applyMute();
     logState();
   };
-  if (ac.state === 'suspended') ac.resume().then(settle, settle);
+  // 정지의 이름은 하나가 아니다 — WebKit 은 오디오 세션 인터럽트를 `interrupted` 로 남기고
+  // 그 값은 표준 열거 밖이라, 「suspended 일 때만」으로 좁히면 그 세션이 영영 복구되지 않는다.
+  if (ac.state !== 'running') ac.resume().then(settle, settle);
   else settle();
 }
 
