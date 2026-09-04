@@ -319,8 +319,11 @@ blockDoubleTapZoom(document, () => performance.now());
 initAudio({ log: (event, fields) => logEvent(session, event, fields), now: () => performance.now() });
 // 자동재생 정책을 푸는 것은 제스처 하나뿐이라, 어느 입력이 첫 입력이든 같은 자리를 지난다 (REQ-921).
 // 한 번만 거는 것이 아닌 이유는 첫 제스처가 거절될 수 있어서다 — 재개된 뒤로는 즉시 반환한다.
+// 소리를 끄려는 조작은 그 「첫 입력」이 아니다: 여기서 재개하면 BGM 이 먼저 서고 토글이 뒤에
+// 와, 끄려고 누른 손이 소리를 켠다. 그 누름의 재개는 `toggleMute` 가 직접 진다 (#163).
+const isAudioControl = (target) => target instanceof Element && !!target.closest('[data-audio-control]');
 for (const type of ['pointerdown', 'keydown']) {
-  window.addEventListener(type, resumeAudio, { capture: true });
+  window.addEventListener(type, (e) => { if (!isAudioControl(e.target)) resumeAudio(); }, { capture: true });
 }
 
 /**

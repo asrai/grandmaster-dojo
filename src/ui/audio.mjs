@@ -48,6 +48,9 @@ const srcOf = (id) => `assets/audio/${id}.ogg`;
 /** 방향 키 타격음의 피치 폭 (REQ-922) — 같은 소리가 연속되면 손맛이 죽는다. */
 const KEY_PITCH = [0.88, 1.14];
 
+/** 마스터 게인 전환 길이 — 계단 대입은 파형이 끊겨 그 자리가 팝으로 들린다 (#163). */
+const GAIN_RAMP_MS = 30;
+
 const state = {
   ctx: null,
   master: null,
@@ -138,9 +141,28 @@ function startBgm() {
   state.bgm = playBuffer(ac, BALANCE.audio.bgm, { loop: true });
 }
 
-function stopBgm() {
-  state.bgm?.stop();
+/** @param {number} at 정지 시각 (오디오 시계) — 기본값 0 은 「지금 즉시」다 */
+function stopBgm(at = 0) {
+  state.bgm?.stop(at);
   state.bgm = null;
+}
+
+/**
+ * 지금의 음소거 상태를 소리에 반영하는 유일한 자리 (#163) — 재개·토글 어느 경로로 들어와도
+ * 여기를 지나므로, 늦게 끝난 재개가 그때의 `muted` 를 다시 보고 BGM 을 건다. 순서가 흩어져
+ * 있으면 「끄려고 누른 손이 소리를 켠다」가 경로 조합마다 되살아난다.
+ */
+function applyMute() {
+  const ac = state.ctx;
+  if (!ac || !state.master) return;
+  const gain = state.master.gain;
+  const until = ac.currentTime + GAIN_RAMP_MS / 1000;
+  gain.cancelScheduledValues(ac.currentTime);
+  gain.setValueAtTime(gain.value, ac.currentTime);
+  gain.linearRampToValueAtTime(state.muted ? 0 : 1, until);
+  // 램프가 끝나기 전에 소스를 끊으면 잘린 파형이 다시 팝이 된다 — 정지는 램프 뒤다.
+  if (state.muted) stopBgm(until);
+  else startBgm();
 }
 
 /** 음소거 상태 — 화면의 토글이 이 값을 그린다. */
@@ -148,14 +170,16 @@ export const isMuted = () => state.muted;
 
 /**
  * 음소거 토글 (REQ-926) — 마스터 게인 하나로 끊는다. 끈 동안 BGM 도 멈춘다: 게인만 0 으로
- * 두면 들리지 않는 루프가 계속 디코드된 채로 돌아 저사양에서 프레임 예산을 먹는다.
+ * 두면 들리지 않는 루프가 계속 디코드된 채로 돌아 저사양에서 프레임 예산을 먹는다. 게인을
+ * 계단으로 대입하지 않는 이유와 정지가 램프 뒤인 이유는 `applyMute` 에 있다.
  * @returns {boolean} 토글 뒤의 음소거 여부
  */
 export function toggleMute() {
   state.muted = !state.muted;
-  if (state.master) state.master.gain.value = state.muted ? 0 : 1;
-  if (state.muted) stopBgm();
-  else startBgm();
+  // 이 누름은 REQ-921 의 「최초 입력」에서 빠져 있어(`app.mjs`) 재개를 여기서 진다 — 재개가
+  // 끝나는 자리도 `applyMute` 라, 음소거로 가는 누름이 소리를 켜는 순서가 성립하지 않는다.
+  resumeAudio();
+  applyMute();
   logState();
   return state.muted;
 }
@@ -183,7 +207,7 @@ export function resumeAudio() {
     state.resumed = ac.state === 'running';
     if (!state.resumed) return;
     state.resumedAtMs = state.now() - state.startedAtMs;
-    startBgm();
+    applyMute();
     logState();
   };
   if (ac.state === 'suspended') ac.resume().then(settle, settle);
