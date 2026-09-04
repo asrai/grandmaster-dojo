@@ -77,7 +77,8 @@ term_then_kill() {
   for pid in $rest; do "$verify" "$pid" && kill -9 "$pid" 2>/dev/null || true; done
 }
 
-state_get() { sed -n "s/^$2=//p" "$1" 2>/dev/null | tail -1; }
+# pipefail 하에서 파일 부재 시 sed rc 를 삼키며, 부재 판정은 호출부가 맡는다 (#236).
+state_get() { sed -n "s/^$2=//p" "$1" 2>/dev/null | tail -1 || true; }
 
 # 상태 파일은 크래시 뒤에도 남으므로 pid 만으로는 신원이 아니다 — 재사용된 남의 pid 를
 # 막으려면 기록해 둔 cwd·포트까지 실제 프로세스와 대조해야 한다.
@@ -117,7 +118,7 @@ stop_tag() {
   local tag=$1
   local state="$PROFILE_ROOT/$tag.env"
   local profile="$PROFILE_ROOT/$tag-chrome"
-  local skip pid targets='' server root port
+  local skip pid targets='' server root port server_unknown=''
   VERIFY_PROFILE=$profile
   skip=$(ancestor_pids)
   for pid in $(pids_by_profile "$profile"); do
@@ -128,6 +129,14 @@ stop_tag() {
   root=$(state_get "$state" L4_ROOT)
   port=$(state_get "$state" L4_PORT)
   if [ -z "$server" ]; then server=${SERVER_PID:-}; root=${SERVER_ROOT:-}; port=${SERVER_PORT:-}; fi
+  if [ -z "$server" ]; then
+    server_unknown=1
+    if [ -f "$state" ]; then
+      printf 'l4-serve: [%s] 상태 파일에 서버 좌표 없음: %s · 서버는 미확인 — scripts/l4-sweep.sh --kill 로 확인\n' "$tag" "$state" >&2
+    else
+      printf 'l4-serve: [%s] 상태 파일 없음: %s · 서버는 미확인 — scripts/l4-sweep.sh --kill 로 확인\n' "$tag" "$state" >&2
+    fi
+  fi
   VERIFY_SERVER=$server VERIFY_ROOT=$root VERIFY_PORT=$port
   if is_our_server "$server" "$root" "$port"; then
     case " $skip " in *" $server "*) : ;; *) targets="$targets $server" ;; esac
@@ -144,7 +153,7 @@ stop_tag() {
   rm -f "$state" "$PROFILE_ROOT/$tag-server.log"
   local left=''
   for pid in $targets; do alive "$pid" && left="$left $pid"; done
-  printf 'l4-serve: [%s] 정리 완료 · 잔여%s\n' "$tag" "${left:- 0건}" >&2
+  printf 'l4-serve: [%s] 정리 완료 · 잔여%s%s\n' "$tag" "${left:- 0건}" "${server_unknown:+ (서버 미확인)}" >&2
 }
 
 start_tag() {
