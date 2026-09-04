@@ -2599,6 +2599,8 @@ suite('계측 배선 공유 (#11)', () => {
   // 상대가 초식을 내지 않는 초의 기준 길이 — 한 자리에서만 정해야 대조 쌍이 갈리지 않는다.
   const OPEN_LEN = 5;
   const EXCHANGES = 4;
+  // 4 초를 못 채울 리 없는 프레임 상한 — 판이 먼저 끝났다는 사실만 잡으면 되는 자리다.
+  const TICK_CAP = 20000;
   const liveWindows = (blind) => {
     const timer = createVirtualTimer();
     const seen = [];
@@ -2612,16 +2614,19 @@ suite('계측 배선 공유 (#11)', () => {
       timer,
       random: createSeededRandom(247),
       ...(blind === undefined ? {} : { blind }),
-      // 이 대조는 손을 놓고 보므로 판이 늘 피격으로 흐르고 상대 빈틈이 서지 않는다 — 폴백은
-      // 등급표가 바뀌어 그 초가 생기는 날을 위한 자리이지 지금 도는 갈래가 아니다.
+      // 폴백은 등급표가 바뀌어 상대 빈틈 초가 생기는 날의 자리다 — 그날이 오면 아래 단정이 먼저 red 다.
       hooks: {
-        onWindow: (v) => seen.push([v.foeStyle ? v.foeStyle.len : OPEN_LEN, v.windowMs, v.selfOpen]),
+        onWindow: (v) => seen.push(
+          [v.foeStyle ? v.foeStyle.len : OPEN_LEN, v.windowMs, v.selfOpen, Boolean(v.foeStyle)],
+        ),
       },
     });
     match.start();
     // 판이 먼저 끝나면 이 루프는 red 가 아니라 정지가 된다 — 상한이 그 자리를 loud 로 바꾼다.
     for (let ticks = 0; match.view().exchange < EXCHANGES; ticks += 1) {
-      if (ticks > 20000) throw new Error(`대조용 대련이 ${EXCHANGES} 초를 못 채우고 멈췄다`);
+      if (ticks > TICK_CAP) {
+        throw new Error(`대조용 대련(blind=${blind ?? '원장'})이 ${EXCHANGES} 초를 못 채우고 멈췄다`);
+      }
       timer.tick();
     }
     match.stop();
@@ -2632,6 +2637,7 @@ suite('계측 배선 공유 (#11)', () => {
     const seen = liveWindows(blind);
     ok(seen.length >= EXCHANGES, `실전 창을 ${seen.length} 초에서 읽었다 (blind=${blind ?? '원장'})`);
     ok(seen.every(([, , selfOpen]) => !selfOpen), '대조 구간에 내 빈틈 초가 섞이지 않았다');
+    ok(seen.every(([, , , foeStyled]) => foeStyled), '대조 구간에 상대 빈틈 초가 섞이지 않았다');
     return seen;
   };
 
