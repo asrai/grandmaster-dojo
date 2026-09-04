@@ -49,8 +49,8 @@ export function createPace(random = Math.random, seed = BALANCE.bot) {
  * 이 창에 낼 초식 — 화면이 상시 병기하는 「이기는 색」을 그대로 따르는 선택이다 (REQ-206).
  * 사람의 손을 흉내내는 자리라 선택 이유는 버린다 — 그것을 읽는 것은 관전 화면뿐이다 (REQ-852).
  */
-const chooseStyle = (input, foeStyle, rankOf) =>
-  selectDiscipleStyle({ styles: input.candidates, foeStyle, rankOf })?.style ?? null;
+const chooseStyle = (input, foeStyle, foeOpen, rankOf) =>
+  selectDiscipleStyle({ styles: input.candidates, foeStyle, foeOpen, rankOf })?.style ?? null;
 
 /**
  * 키우는 손의 우선순위 — 「이기는 색」이 같은 후보가 둘이면 **덜 여문** 초식을 낸다. 적립은 실제로
@@ -72,10 +72,10 @@ const atLadderStep = (rank) =>
  * 초식 하나가 매 창을 독점해 나머지 초식의 적립이 굶는다.
  */
 export function preferLadderPush(session) {
-  return (input, foeStyle) => {
+  return (input, foeStyle, foeOpen) => {
     const pushable = input.candidates
       .map((style) => ({ style, rank: rankOfStyle(session, style.id) }))
-      .filter(({ style, rank }) => atLadderStep(rank) && (!foeStyle || style.counters === foeStyle.id))
+      .filter(({ style, rank }) => atLadderStep(rank) && (foeOpen || style.counters === foeStyle?.id))
       .sort((a, b) => a.rank - b.rank);
     return pushable[0]?.style ?? null;
   };
@@ -95,7 +95,7 @@ function strayDir(input, random) {
  * @param {() => number} p.now
  * @param {(dir: string) => void} p.press 사람 입력과 같은 경로
  * @param {() => void} p.reset
- * @param {(input: object, foeStyle: ?object) => ?object} [p.prefer] 그 창에서 강제할 초식
+ * @param {(input: object, foeStyle: ?object, foeOpen: boolean) => ?object} [p.prefer] 그 창에서 강제할 초식
  *   (없으면 「이기는 색」 선택) — 제자 손처럼 계단을 밀 이유가 없는 호출부는 주지 않는다
  * @param {(style: object) => number} [p.rankOf] 동률 후보 사이의 우선순위 (큰 값이 먼저)
  *
@@ -112,8 +112,8 @@ export function createHand({
 
   return {
     /** 창이 열릴 때 한 번 — 낼 초식과 이번에 놓칠 키를 그 자리에서 정한다. */
-    arm(input, foeStyle) {
-      const style = prefer(input, foeStyle) ?? chooseStyle(input, foeStyle, rankOf);
+    arm(input, foeStyle, foeOpen = false) {
+      const style = prefer(input, foeStyle, foeOpen) ?? chooseStyle(input, foeStyle, foeOpen, rankOf);
       keys = [];
       at = 0;
       strayed = false;
@@ -177,6 +177,7 @@ export function createDiscipleHand({
       const judged = instructed ? null : selectDiscipleStyle({
         styles,
         foeStyle: view.foeStyle,
+        foeOpen: view.foeOpen,
         rankOf: (s) => discipleStyleRank(session.disciple, ART_ID, s.id),
         accuracy: accuracy(),
         random,
@@ -353,7 +354,7 @@ export function createBot({
     if (window) {
       if (!inWindow) {
         inWindow = true;
-        hand.arm(window.input, window.foeStyle);
+        hand.arm(window.input, window.foeStyle, window.foeOpen);
       }
       hand.tick(window.input);
       return;
@@ -480,7 +481,7 @@ function headlessDuel({ session, stage, pace, timer, random }) {
     timer,
     random,
     hooks: composeHooks(duelWiring(session, { input }), {
-      onWindow(view) { hand.arm(input, view.telegraphed); },
+      onWindow(view) { hand.arm(input, view.telegraphed, view.foeOpen); },
       onTick() { hand.tick(input); },
       onEnd(view) { ended = view; },
     }),

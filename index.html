@@ -568,6 +568,7 @@ button.ghost { background: transparent; }
 .fig.sil_disciple_dojo { background-image: url('assets/art/silhouettes/sil_disciple_dojo.png'); }
 .fig.sil_master_prone { background-image: url('assets/art/silhouettes/sil_master_prone.png'); }
 .fig.sil_challenger_prone { background-image: url('assets/art/silhouettes/sil_challenger_prone.png'); }
+.fig.sil_disciple_prone { background-image: url('assets/art/silhouettes/sil_disciple_prone.png'); }
 /* 전수의 두 사람만 몸통·팔이 나뉘어 납품된다 — 각도 하나로 시범/따라 하기가 갈리기 때문이다 (REQ-861). */
 .part.sil_master_demo_body { background-image: url('assets/art/silhouettes/sil_master_demo_body.png'); }
 .part.sil_master_demo_arm { background-image: url('assets/art/silhouettes/sil_master_demo_arm.png'); }
@@ -575,7 +576,7 @@ button.ghost { background: transparent; }
 .part.sil_disciple_follow_arm { background-image: url('assets/art/silhouettes/sil_disciple_follow_arm.png'); }
 /* 엎드린 쪽에는 역광이 없다 — 형태를 지는 것이 뒤에서 오는 빛이 아니라 윤곽선이다 (REQ-875). */
 .backlight.off { display: none; }
-.fig.sil_master_prone, .fig.sil_challenger_prone {
+.fig.sil_master_prone, .fig.sil_challenger_prone, .fig.sil_disciple_prone {
   filter: drop-shadow(0 0 1px var(--paper-rim)) drop-shadow(0 0 1px var(--paper-rim))
     drop-shadow(0 0 2px var(--paper-rim));
 }
@@ -617,7 +618,7 @@ button.ghost { background: transparent; }
 .scene .fig.far { left: var(--fig-far-x); top: var(--fig-far-y); width: var(--fig-far-w); }
 .scene .fig.near { right: var(--fig-near-x); bottom: var(--fig-near-y); width: var(--fig-near-w); }
 /* 쓰러진 쪽만 바닥 기준이다 — 서 있는 쪽처럼 바닥에 묶여야 무대를 접어도 몸이 표찰 위에 남는다 (#161). */
-.scene .fig.far.sil_master_prone, .scene .fig.far.sil_challenger_prone {
+.scene .fig.far.sil_master_prone, .scene .fig.far.sil_challenger_prone, .scene .fig.far.sil_disciple_prone {
   top: auto; bottom: var(--fig-prone-y);
 }
 /* 지켜보는 사부는 무대 밖 앞 구석에 서고 그 잘림이 카메라가 곧 사부의 시선임을 말한다
@@ -637,7 +638,7 @@ button.ghost { background: transparent; }
 .scene .vital.near { right: 14px; bottom: 18px; width: 216px; flex-direction: row-reverse; }
 .scene .vital.near .fill { right: 0; background: linear-gradient(270deg, color-mix(in srgb, var(--c4) 55%, var(--c1)), var(--c4)); }
 
-/* 상대 예고 (REQ-822) — 아레나 최상단 가로 스트립. 중앙은 판정 오버레이의 자리라 비워 둔다. */
+/* 상대 초식 스트립 (REQ-822) — 아레나 최상단 가로 스트립. 중앙은 판정 오버레이의 자리라 비워 둔다. */
 .scene .tele-slot { position: absolute; left: 12px; right: 12px; top: 10px; z-index: 6; }
 .tele {
   display: flex; align-items: stretch; height: 62px; overflow: hidden;
@@ -649,6 +650,12 @@ button.ghost { background: transparent; }
 }
 @keyframes tele-in { from { opacity: 0; transform: translateY(-10px) } to { opacity: 1; transform: none } }
 .tele.open { border-color: var(--gold); color: var(--gold); align-items: center; justify-content: center; font-weight: 700; }
+/* 감춘 초 (#243) — 자형도 색도 없어야 상대가 새지 않으므로 속성색 자리에 중립 먹을 세운다. */
+.tele.veiled {
+  --attr: var(--c9);
+  color: var(--dim); align-items: center; justify-content: center;
+  font-size: 14px; letter-spacing: 3px;
+}
 .tele-attr {
   flex: 0 0 var(--hit-min); display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 3px; border-right: 1px solid color-mix(in srgb, var(--attr) 32%, transparent);

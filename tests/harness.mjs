@@ -359,11 +359,14 @@ suite('통합 로그 스키마 (REQ-601)', () => {
 // ------------------------------------------ 3. 응수 창 · 파생 수식 (REQ-201·203·204·210)
 
 suite('응수 창 · 파생 수식 (REQ-201·203·204·210)', () => {
-  eq(responseWindowMs(3), 2600, '3길이 창');
-  eq(responseWindowMs(4), 3100, '4길이 창');
-  eq(responseWindowMs(5), 3600, '5길이 창');
-  eq(responseWindowMs(3, { selfOpen: true }), 1560, '나 빈틈 창 −40%');
-  eq(responseWindowMs(3, { accessibility: true }), 3380, '접근성 창 ×1.3');
+  // 창 길이가 상대 초식에 의존하면 게이지 하나로 감춘 초식이 새므로, 길이 무관은 숨김의 전제다 (#243).
+  eq(responseWindowMs(3), 3000, '3길이 창');
+  eq(responseWindowMs(4), 3000, '4길이 창');
+  eq(responseWindowMs(5), 3000, '5길이 창');
+  deepEq([...new Set(FOE_STYLES.map((f) => responseWindowMs(f.len)))], [BALANCE.windowBaseMs],
+    '도전자 초식 전량이 같은 창을 연다 — 길이가 창으로 새지 않는다');
+  eq(responseWindowMs(3, { selfOpen: true }), 1800, '나 빈틈 창 −40%');
+  eq(responseWindowMs(3, { accessibility: true }), 3900, '접근성 창 ×1.3');
   eq(BALANCE.accessibilityWindow, false, '접근성 옵션 기본 off');
 
   eq(powerOf(1), 1.05, '1성 내공');
@@ -1098,8 +1101,10 @@ suite('제자 자동 선택 (REQ-403·853)', () => {
   eq(selectDiscipleStyle({ styles: [styleById('yuun-bo')], foeStyle: foeStyleById('beta') }).style.id,
     'yuun-bo', '우세·상쇄가 모두 없으면 잔여');
 
-  // 상대 빈틈에는 예고가 없어 위력만 남고, 역파 위험도 없다.
-  eq(pick({ foeStyle: null }).style.id, 'haeng-un', '상대 빈틈에는 최대 위력 초식');
+  // 상대 빈틈에는 낼 상대가 없어 위력만 남고, 역파 위험도 없다.
+  eq(pick({ foeStyle: null, foeOpen: true }).style.id, 'haeng-un', '상대 빈틈에는 최대 위력 초식');
+  // 빈틈과 「아직 모른다」가 같은 null 로 접히면 감춘 초가 완파 취급이 된다 (#243).
+  eq(pick({ foeStyle: null }).reason, SELECT_REASON.GUESS, '빈틈이 아닌데 상대를 모르면 감으로 낸 것이다');
 
   // 동률은 성으로, 성도 동률이면 슬롯 순으로 결정된다.
   const twoFast = [styleById('yuun-bo'), { ...styleById('pa-un'), attr: 'fast' }];
@@ -1115,7 +1120,7 @@ suite('제자 자동 선택 (REQ-403·853)', () => {
 
   // 이유 3계열 — 화면 문구가 이 값에 매핑되므로 각 계열이 실제로 발화하는 입력이 있어야 한다 (REQ-853).
   eq(pick({ foeStyle: foeStyleById('alpha') }).reason, SELECT_REASON.ADVANTAGE, '우세 후보를 냈으면 우세 계열');
-  eq(pick({ foeStyle: null }).reason, SELECT_REASON.ADVANTAGE, '빈틈은 어떤 완주든 완파라 우세 계열');
+  eq(pick({ foeStyle: null, foeOpen: true }).reason, SELECT_REASON.ADVANTAGE, '빈틈은 어떤 완주든 완파라 우세 계열');
   eq(selectDiscipleStyle({ styles: [styleById('haeng-un')], foeStyle: foeStyleById('beta') }).reason,
     SELECT_REASON.CLASH, '우세가 없어 같은 속성으로 맞섰으면 상쇄 계열');
   eq(pick({ foeStyle: fakeFinisher }).reason, SELECT_REASON.AVOID_REVERSAL,
@@ -1135,7 +1140,7 @@ suite('제자 자동 선택 (REQ-403·853)', () => {
   eq(behind.style.id, 'hard-front', '배제분이 뒤 슬롯이면 앞 슬롯이 그대로 뽑힌다');
   eq(behind.reason, SELECT_REASON.ADVANTAGE, '선택이 바뀌지 않았으므로 회피가 아니다');
 
-  deepEq([...new Set(Object.values(SELECT_REASON))].length, 3, '이유 계열은 3종이고 값이 겹치지 않는다');
+  deepEq([...new Set(Object.values(SELECT_REASON))].length, 4, '이유 계열은 4종이고 값이 겹치지 않는다');
   // 화면 문구가 계열마다 있어야 한다 — 없으면 그 초의 판단이 빈칸으로 뜬다 (theme.mjs 부팅 단정의 짝).
   for (const reason of Object.values(SELECT_REASON)) {
     ok(typeof REASON_VIEW[reason] === 'string' && REASON_VIEW[reason].length > 0,
@@ -1164,7 +1169,7 @@ suite('제자 자동 선택 (REQ-403·853)', () => {
 // ----------------------- 9. 케이스 8 — B 밸런스 게이트 시뮬 (REQ-402·403·506)
 
 // 사본이 아니라 실루프다 — `createMatch` 를 가상 시계로 돌려 파견 화면과 같은 코드를 검증한다.
-function simulateDispatch({ challengerId, disciple, setId }) {
+function simulateDispatch({ challengerId, disciple, setId, seed = 243 }) {
   const challenger = challengerById(challengerId);
   const session = createSession();
   session.disciple = disciple;
@@ -1174,7 +1179,9 @@ function simulateDispatch({ challengerId, disciple, setId }) {
   let ended = null;
   let match = null;
 
-  const hand = createDiscipleHand({ session, styles, fire: (fired) => match.fire(fired) });
+  // 상대 추첨과 제자의 읽기 성패가 난수라, 시드를 고정하지 않으면 이 게이트가 판마다 다른 답을 낸다 (#243).
+  const random = createSeededRandom(seed);
+  const hand = createDiscipleHand({ session, styles, random, fire: (fired) => match.fire(fired) });
   match = createMatch({
     challenger,
     selfHpMax: BALANCE.hp.disciple,
@@ -1182,8 +1189,9 @@ function simulateDispatch({ challengerId, disciple, setId }) {
     openLen: () => Math.max(...styles.map((s) => s.seq.length)),
     accessibility: () => false,
     timer,
+    random,
     hooks: {
-      onTelegraph() { hand.arm(); },
+      onExchange() { hand.arm(); },
       onTick(view) { hand.tick(view); },
       onVerdict(view) {
         trace.push({
@@ -1790,14 +1798,15 @@ const unlockSlots = (() => {
  * 사본이 아니라 실루프다 — 제자의 손을 유저 자리에 세워 「창을 놓치지 않는 손」을 모델한다.
  * 그래서 이 게이트는 상계이고, 실수하는 손의 회귀는 사이클 시뮬의 `wins` 단정이 진다.
  */
-function simulateDuelA({ challengerId, styles, rank, foeRank = undefined }) {
+function simulateDuelA({ challengerId, styles, rank, foeRank = undefined, seed = 243 }) {
   const session = createSession();
   const timer = createVirtualTimer();
   const trace = [];
   let ended = null;
   let match = null;
 
-  const hand = createDiscipleHand({ session, styles, fire: (fired) => match.fire(fired) });
+  // 이 게이트는 상계라 읽기는 실패시키지 않는다 — 흔들리는 축은 상대 추첨 하나뿐이고 그것을 시드가 문다.
+  const hand = createDiscipleHand({ session, styles, accuracy: () => 1, fire: (fired) => match.fire(fired) });
   match = createMatch({
     challenger: challengerById(challengerId),
     foeRank: foeRank ?? foeRankOf(challengerId),
@@ -1806,8 +1815,9 @@ function simulateDuelA({ challengerId, styles, rank, foeRank = undefined }) {
     openLen: () => Math.max(...styles.map((st) => st.seq.length)),
     accessibility: () => false,
     timer,
+    random: createSeededRandom(seed),
     hooks: {
-      onTelegraph() { hand.arm(); },
+      onExchange() { hand.arm(); },
       onTick(view) { hand.tick(view); },
       onVerdict(view) { trace.push(view.verdict.grade); },
       onEnd(view) { ended = view; },
@@ -2420,9 +2430,9 @@ suite('계측 배선 공유 (#11)', () => {
   deepEq(Object.keys(trainWiring(session, { styleId: style.id, input })).sort(),
     ['onArm', 'onFire'], '수련 배선이 내는 hook 이름 집합');
   deepEq(Object.keys(duelWiring(session, { input })).sort(),
-    ['onTelegraph', 'onTimeout', 'onVerdict', 'onWindow'], '대련 배선이 내는 hook 이름 집합');
+    ['onExchange', 'onTimeout', 'onVerdict', 'onWindow'], '대련 배선이 내는 hook 이름 집합');
   deepEq(Object.keys(dispatchWiring(session, { disciple })).sort(),
-    ['onTelegraph', 'onTick', 'onVerdict'], '파견 배선이 내는 hook 이름 집합');
+    ['onExchange', 'onTick', 'onVerdict'], '파견 배선이 내는 hook 이름 집합');
 
   // 이름만 맞고 속이 빈 배선은 위 집합 단정을 통과하므로, hook 이 실제로 계측하는지 함께 본다.
   const before = session.log.entries.length;
@@ -2664,11 +2674,11 @@ suite('실루엣 규칙은 background 단축을 쓰지 않는다 (#137)', () => 
   // 실패하면 자세·파츠가 늘거나 줄었다는 뜻이니, 아래 목록을 실제 납품분으로 맞춰라.
   deepEq(rules.filter(([, body]) => /background-image:/.test(body)).map(([sel]) => sel).sort(), [
     '.fig.sil_challenger_prone', '.fig.sil_challenger_stance', '.fig.sil_disciple_dojo',
-    '.fig.sil_disciple_stance', '.fig.sil_master_dojo', '.fig.sil_master_prone',
-    '.fig.sil_master_stance', '.fig.sil_master_watch',
+    '.fig.sil_disciple_prone', '.fig.sil_disciple_stance', '.fig.sil_master_dojo',
+    '.fig.sil_master_prone', '.fig.sil_master_stance', '.fig.sil_master_watch',
     '.part.sil_disciple_follow_arm', '.part.sil_disciple_follow_body',
     '.part.sil_master_demo_arm', '.part.sil_master_demo_body',
-  ], '납품된 자세 8 · 파츠 4 의 background-image 선언이 실재한다');
+  ], '납품된 자세 9 · 파츠 4 의 background-image 선언이 실재한다');
 
   // 부재 단정 — 단축은 명시 안 한 하위 속성을 initial 로 되돌리므로, 이미지 선언 규칙을 특이도나
   // 순서로 이기는 순간 그 이미지가 none 이 된다. 경계 인식이 없으면 `background-image:` 를 물어 공허해진다.
@@ -3460,7 +3470,7 @@ suite('전수도 진입 1회 (#70 과 같은 축 · REQ-761)', () => {
 suite('BALANCE 파라미터 census (REQ-606)', () => {
   // spec § 데이터 구조 파라미터 표의 시드값 — 값이 바뀌면 밸런스 로그 회차가 필요하다.
   const SEEDS = {
-    telegraphMs: 1000, windowBaseMs: 2600, windowStepMs: 500, windowBaseLen: 3,
+    blindExchange: true, windowBaseMs: 3000,
     openingWindowPenalty: 0.4, accessibilityWindowMult: 1.3, accessibilityWindow: false,
     resolveMs: 500, maxExchanges: 12, powerBase: 1, powerPerRank: 0.05,
     initiativeBase: 1, initiativePerRatio: 0.3, clashK: 0.5, effectiveSuccessMaxOrder: 2,
@@ -3470,6 +3480,10 @@ suite('BALANCE 파라미터 census (REQ-606)', () => {
     buttonHitPx: 56,
   };
   for (const [key, value] of Object.entries(SEEDS)) eq(BALANCE[key], value, `BALANCE.${key}`);
+  // 예고 모드의 창 원장은 토글 OFF 갈래가 읽는 값이라 시드가 함께 고정된다 (#243 결정 9).
+  deepEq(BALANCE.telegraphMode, { telegraphMs: 1000, windowBaseMs: 2600, windowStepMs: 500, windowBaseLen: 3 },
+    'BALANCE.telegraphMode');
+  deepEq(BALANCE.discipleAccuracy, { atStartRank: 0, atMaxRank: 1 }, 'BALANCE.discipleAccuracy');
   deepEq(BALANCE.damageByLen, { 3: 10, 4: 14, 5: 20 }, 'BALANCE.damageByLen');
   deepEq(BALANCE.hintDelayMs, { duel: 500, train: 0 }, 'BALANCE.hintDelayMs');
   deepEq(BALANCE.rankGate, { equip: 2, unlock: 5, oneTap: 7 }, 'BALANCE.rankGate (REQ-711·713 계단)');
@@ -3557,7 +3571,13 @@ suite('밸런스 데이터 스키마 (#45)', () => {
   };
 
   throwsWith((r) => { delete r.rankMax; }, 'rankMax: 필드 누락', '필드 누락');
-  throwsWith((r) => { r.telegraphMs = '1000'; }, 'telegraphMs: "1000" 는 0 이상의 정수가 아니다', '타입 불일치');
+  throwsWith((r) => { r.windowBaseMs = '3000'; }, 'windowBaseMs: "3000" 는 1 이상의 정수가 아니다', '타입 불일치');
+  throwsWith((r) => { r.telegraphMode.telegraphMs = '1000'; },
+    'telegraphMode.telegraphMs: "1000" 는 0 이상의 정수가 아니다', '예고 모드 원장 타입 불일치');
+  throwsWith((r) => { r.telegraphMode.windowStepM = 500; },
+    'telegraphMode.windowStepM: 예고 모드 스키마에 없는 필드', '예고 모드 원장 안의 오타 키');
+  throwsWith((r) => { r.discipleAccuracy.atStartRank = 1; r.discipleAccuracy.atMaxRank = 0; },
+    'discipleAccuracy.atMaxRank: 0 가 시작 성 정답률 1 보다 낮다', '정답률이 성에 단조 증가하지 않음');
   throwsWith((r) => { r.grades.clash.formula = 'pctt'; }, 'grades.clash.formula: "pctt" 는 ["pct","clash"] 밖', 'formula enum 밖');
   throwsWith((r) => { r.grades.struck.order = 4; }, 'grades.*.order', 'order 중복 (0..5 순열 아님)');
   throwsWith((r) => { r.grades.crush.opning = null; }, 'grades.crush.opning: 등급 스키마에 없는 필드', '등급 객체 안의 오타 키 (#54)');
@@ -3665,7 +3685,7 @@ suite('밸런스 데이터 스키마 (#45)', () => {
 
   // rev ↔ 값 결합 (#54) — 값만 고치고 rev 를 그대로 두면 로그 지문이 옛 판본을 달고 나간다.
   const stale = clone();
-  stale.telegraphMs = 900;
+  stale.windowBaseMs = 2900;
   let staleMessage = null;
   try { validateBalance(stale); } catch (err) { staleMessage = err.message; }
   const { rev: _staleRev, ...staleValues } = stale;

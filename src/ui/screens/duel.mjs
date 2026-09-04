@@ -146,6 +146,8 @@ export function startDuel(ctx) {
     accepting: () => match.phase === PHASE.WINDOW && !match.locked,
     // 봇이 화면과 같은 근거로 고르도록 **공개된** 상대만 건넨다 — 감춰진 초는 봇도 모른다 (REQ-605).
     foeStyle: () => match.view().telegraphed,
+    // 빈틈은 감춰진 초와 달리 어떤 완주든 완파라, 봇이 둘을 같은 null 로 접으면 완파를 버린다 (#243).
+    foeOpen: () => match.view().foeOpen,
     onFire: (fired) => { play(CUE.FIRE); match.fire(fired); },
   });
   match.start();

@@ -617,14 +617,16 @@ export function discipleAccuracy(rank) {
  * 이유를 함께 내는 것은 관전의 콘텐츠가 결과가 아니라 판단이기 때문이다 (REQ-852).
  * @param {object} p
  * @param {object[]} p.styles    제자 보유 초식 (배열 순서 = 슬롯 순)
- * @param {?object} [p.foeStyle] 그 초의 상대 초식 (상대 빈틈이면 null)
+ * @param {?object} [p.foeStyle] 그 초의 상대 초식 — 상대 빈틈이거나 아직 모르는 초면 null
+ * @param {boolean} [p.foeOpen] 상대 빈틈인가 — `foeStyle` 이 null 인 것만으로는 갈리지 않는다:
+ *   감춘 초도 null 이지만 그쪽은 어떤 완주든 완파라는 보장이 없다 (#243)
  * @param {(style: object) => number} [p.rankOf]
  * @param {number} [p.accuracy]  상대의 수를 읽어낼 확률 — 1 이면 종전과 같은 결정적 선택이다
  * @param {() => number} [p.random] 난수 주입 — 하네스가 시드로 고정해야 판정 단정이 결정적이다
  * @returns {?{style: object, reason: string}} 보유 초식이 없으면 null
  */
 export function selectDiscipleStyle({
-  styles, foeStyle = null, rankOf: rankFn = () => 0, accuracy = 1, random = Math.random,
+  styles, foeStyle = null, foeOpen = false, rankOf: rankFn = () => 0, accuracy = 1, random = Math.random,
 }) {
   if (!styles.length) return null;
   // 읽기에 실패한 초는 상대를 모르고 낸 것이라 우세·상쇄로 부를 근거가 없다 (#243 결정 8).
@@ -644,7 +646,9 @@ export function selectDiscipleStyle({
     const byRank = (a, b) => rankFn(b) - rankFn(a) || bySlot(a, b);
     // 상대 빈틈에는 속성 비교의 상대가 없고 아무 완주나 완파 취급이라 위력만 남는다 — 어떤
     // 완주든 완파라 최대 위력을 고르는 것이 곧 우세를 고르는 것이다.
-    if (!foeStyle) return { style: from.slice().sort((a, b) => b.d - a.d || byRank(a, b))[0], reason: SELECT_REASON.ADVANTAGE };
+    if (foeOpen) return { style: from.slice().sort((a, b) => b.d - a.d || byRank(a, b))[0], reason: SELECT_REASON.ADVANTAGE };
+    // 빈틈이 아닌데 상대를 모르면 어떤 초식도 서로 낫지 않다 — 우선순위만 남는다 (#243).
+    if (!foeStyle) return { style: from.slice().sort(byRank)[0], reason: SELECT_REASON.GUESS };
     const beats = from.filter((s) => ATTRS[s.attr].beats === foeStyle.attr);
     if (beats.length) return { style: beats.sort(byRank)[0], reason: SELECT_REASON.ADVANTAGE };
     const same = from.filter((s) => s.attr === foeStyle.attr);
