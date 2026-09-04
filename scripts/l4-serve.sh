@@ -77,7 +77,7 @@ term_then_kill() {
   for pid in $rest; do "$verify" "$pid" && kill -9 "$pid" 2>/dev/null || true; done
 }
 
-state_get() { sed -n "s/^$2=//p" "$1" 2>/dev/null | tail -1; }
+state_get() { sed -n "s/^$2=//p" "$1" 2>/dev/null | tail -1 || true; }
 
 # 상태 파일은 크래시 뒤에도 남으므로 pid 만으로는 신원이 아니다 — 재사용된 남의 pid 를
 # 막으려면 기록해 둔 cwd·포트까지 실제 프로세스와 대조해야 한다.
@@ -124,6 +124,7 @@ stop_tag() {
     case " $skip " in *" $pid "*) continue ;; esac
     targets="$targets $pid"
   done
+  [ -f "$state" ] || printf 'l4-serve: [%s] 상태 파일이 없다: %s\n' "$tag" "$state" >&2
   server=$(state_get "$state" L4_SERVER_PID)
   root=$(state_get "$state" L4_ROOT)
   port=$(state_get "$state" L4_PORT)
