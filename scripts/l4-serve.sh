@@ -77,7 +77,9 @@ term_then_kill() {
   for pid in $rest; do "$verify" "$pid" && kill -9 "$pid" 2>/dev/null || true; done
 }
 
-state_get() { sed -n "s/^$2=//p" "$1" 2>/dev/null | tail -1; }
+# 상태 파일 부재는 값 없음이지 오류가 아니다 — pipefail 이 sed 의 비-0 을 파이프라인 rc 로
+# 올리면 호출부 대입이 set -e 로 끊겨 정리가 통째로 건너뛰어진다 (#236).
+state_get() { sed -n "s/^$2=//p" "$1" 2>/dev/null | tail -1 || true; }
 
 # 상태 파일은 크래시 뒤에도 남으므로 pid 만으로는 신원이 아니다 — 재사용된 남의 pid 를
 # 막으려면 기록해 둔 cwd·포트까지 실제 프로세스와 대조해야 한다.
@@ -128,6 +130,9 @@ stop_tag() {
   root=$(state_get "$state" L4_ROOT)
   port=$(state_get "$state" L4_PORT)
   if [ -z "$server" ]; then server=${SERVER_PID:-}; root=${SERVER_ROOT:-}; port=${SERVER_PORT:-}; fi
+  # 서버를 못 걷은 정리를 rc 만으로는 「치웠다」와 구분할 수 없으므로 문면으로 남긴다 (#236).
+  { [ -n "$server" ] && [ -n "$root" ] && [ -n "$port" ]; } \
+    || printf 'l4-serve: [%s] 기록된 서버 좌표 없음 (%s) — 프로필 보유자만 걷는다\n' "$tag" "$state" >&2
   VERIFY_SERVER=$server VERIFY_ROOT=$root VERIFY_PORT=$port
   if is_our_server "$server" "$root" "$port"; then
     case " $skip " in *" $server "*) : ;; *) targets="$targets $server" ;; esac
