@@ -83,6 +83,13 @@ export function startDuel(ctx) {
     arena.setVital(SPOT.NEAR, view.selfHp, view.selfHpMax);
   };
 
+  // 창 자리의 빈틈 문면은 예고 모드에만 넘긴다 — 감춤 모드의 창이 빈틈을 말하면 창 동안
+  // 상대를 감추는 계약을 화면이 스스로 어긴다 (#243 결정 2).
+  const foeTexts = {
+    open: BALANCE.blindExchange ? null : '빈틈! — 아무 초식이나 완주하면 완파',
+    resolved: '빈틈 — 상대의 허를 찔렀다',
+  };
+
   const match = createMatch({
     challenger,
     foeRank,
@@ -92,7 +99,7 @@ export function startDuel(ctx) {
     accessibility: () => session.accessibility,
     hooks: composeHooks(duelWiring(session, { input }), {
       onExchange(view) {
-        arena.showFoe(view, '빈틈! — 아무 초식이나 완주하면 완파');
+        arena.showFoe(view, foeTexts);
         verdict.hide();
         // 성장 고지는 그 초 한정이다 — 남기면 다음 초의 판정 위에 계속 떠 있는다.
         banner.className = 'toast';
@@ -113,7 +120,7 @@ export function startDuel(ctx) {
         const { verdict: resolved } = view;
         renderHp(view);
         // 감췄던 상대가 판정과 같은 프레임에 드러난다 — 「보」에 해당하는 자리다 (#243 결정 2).
-        arena.showFoe(view, '빈틈! — 아무 초식이나 완주하면 완파');
+        arena.showFoe(view, foeTexts);
         // 소리는 흔들림·글자와 한 덩어리로 읽혀야 해서 판정이 실제로 뜨는 순간에 맡긴다 —
         // 확정 연출을 기다리는 초에는 그만큼 함께 늦는다 (REQ-826).
         // 죽간이 다시 그려지기 전에 예약한다 — 대기 시간은 지금 화면에 뜬 금테를 기준으로 잰다.

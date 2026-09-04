@@ -14,6 +14,7 @@ import {
   runHeadlessMissions,
 } from '../src/bot.mjs';
 import { PHASE, createMatch, createVirtualTimer, pumpToEnd } from '../src/ui/match.mjs';
+import { FOE_STRIP, foeStripState } from '../src/ui/arena.mjs';
 import { createSequenceInput } from '../src/ui/sequence-input.mjs';
 import { CUE } from '../src/ui/audio.mjs';
 import { createFrameBudget } from '../src/ui/frame-budget.mjs';
@@ -1277,6 +1278,105 @@ suite('확정 ↔ 발동 분리 — 감춘 창의 구조 (#243)', () => {
   ok(settledOff.settledAt - settledOff.firedAtMs <= 32,
     `OFF 갈래는 확정이 곧 발동이다 — 확정 ${settledOff.firedAtMs}ms · 판정 ${settledOff.settledAt}ms`);
 });
+// ----------- 8-c. 상대 스트립이 말하는 초 — 판정 자리 · 창 자리 (#252)
+
+suite('상대 스트립이 말하는 초 — 판정 자리 · 창 자리 (#252)', () => {
+  const OPEN_TEXT = '빈틈! — 아무 초식이나 완주하면 완파';
+  const RESOLVED_TEXT = '빈틈 — 상대의 허를 찔렀다';
+  const TEXTS_BLIND = { open: null, resolved: RESOLVED_TEXT };
+  const challenger = challengerById('A-4');
+
+  // 완파 1회로 빈틈을 연 뒤 그 다음 초까지 돌린다 — 어긋남은 두 초에 걸쳐야만 드러난다.
+  const runTwoExchanges = (blind, { fireSecond = false } = {}) => {
+    const timer = createVirtualTimer();
+    const seen = { windows: [], verdicts: [] };
+    let firedFirst = false;
+    let firedSecond = false;
+    let match = null;
+    match = createMatch({
+      challenger,
+      selfHpMax: BALANCE.hp.user,
+      // 완파 한 번이 도전자를 눕히면 두 번째 초가 서지 않는다 — 성을 낮춰 피해를 묶는다.
+      rankOf: () => 1,
+      openLen: () => 5,
+      accessibility: () => false,
+      timer,
+      random: createSeededRandom(252),
+      blind,
+      hooks: {
+        onWindow: (v) => seen.windows.push(v),
+        onTick: (v) => {
+          // 파해 초식을 그 초의 실제 상대에서 뽑는다 — 시드가 무엇을 뽑든 첫 초의 완파가 결정적이다.
+          if (v.exchange === 0) {
+            if (firedFirst || !v.foeStyle) return;
+            firedFirst = match.fire({ style: STYLES.find((s) => s.counters === v.foeStyle.id), oneTap: false, r: v.ratio });
+            return;
+          }
+          // 빈틈 초에는 아무 초식이나 완주하면 완파라, 그 초를 잡는 갈래와 흘리는 갈래가 손 하나로 갈린다.
+          if (!fireSecond || firedSecond) return;
+          firedSecond = match.fire({ style: STYLES[0], oneTap: false, r: v.ratio });
+        },
+        onVerdict: (v) => seen.verdicts.push(v),
+      },
+    });
+    match.start();
+    for (let i = 0; i < 100000 && seen.verdicts.length < 2; i += 1) timer.tick();
+    match.stop();
+    return seen;
+  };
+
+  eq(BALANCE.blindExchange, true, '감춤 모드가 기본값이다');
+  const blind = runTwoExchanges(true);
+  eq(blind.verdicts.length, 2, '완파 초와 그 다음 초가 모두 판정까지 갔다');
+  eq(blind.verdicts[0].verdict.grade, 'crush', '첫 초는 상대를 파해 완파다 — 완파만이 상대 빈틈을 연다');
+
+  // (a) 증상 A — 완파를 낸 초의 판정 view 는 그 초의 상대를 싣고, 다음 초 예약값을 싣지 않는다.
+  ok(blind.verdicts[0].telegraphed !== null, '완파 초의 판정 view 에 그 초의 상대 초식이 실린다');
+  eq(blind.verdicts[0].foeOpen, false, '완파를 낸 초 자체는 빈틈이 아니었다 — 빈틈은 다음 초의 것이다');
+  eq(foeStripState(blind.verdicts[0], TEXTS_BLIND).state, FOE_STRIP.REVEALED,
+    '완파 초의 판정 자리는 공개 조판이다');
+
+  // (b) 증상 B — 진짜 빈틈 초의 판정 view 는 그 초가 빈틈이었다고 말한다.
+  eq(blind.verdicts[1].foeOpen, true, '빈틈 초의 판정 view 는 그 초가 빈틈이었음을 싣는다');
+  const opened = foeStripState(blind.verdicts[1], TEXTS_BLIND);
+  eq(opened.state, FOE_STRIP.OPENED, '빈틈 초의 판정 자리는 「빈틈이었다」 상태다');
+  eq(opened.text, RESOLVED_TEXT, '판정 자리에는 판정 문면이 선다 — 감춤 문면이 아니다');
+
+  // 스트립은 상대의 상태를 말하는 자리라, 그 초를 잡았는지로 갈리는 판정 등급과 독립이다.
+  eq(blind.verdicts[1].verdict.grade, 'struck', '빈틈 초를 흘린 갈래의 등급은 피격이다');
+  const taken = runTwoExchanges(true, { fireSecond: true });
+  eq(taken.verdicts[1].verdict.grade, 'crush', '빈틈 초에 아무 초식이나 완주하면 완파다');
+  const takenStrip = foeStripState(taken.verdicts[1], TEXTS_BLIND);
+  eq(takenStrip.state, FOE_STRIP.OPENED, '잡은 빈틈 초의 판정 자리도 「빈틈이었다」 상태다');
+  eq(takenStrip.text, RESOLVED_TEXT, '두 갈래가 같은 판정 문면을 쓴다');
+
+  // (c) 누설 핀 — 감춤 모드의 창 자리는 직전 초 완파 뒤에도 빈틈을 말하지 않는다 (#243 결정 2).
+  const atWindow = foeStripState(blind.windows[1], TEXTS_BLIND);
+  eq(atWindow.state, FOE_STRIP.VEILED, '빈틈 초의 창 자리도 감춤 상태 하나뿐이다');
+  ok(!atWindow.text.includes('빈틈'), `창 자리 문면에 빈틈이 새지 않는다 — ${atWindow.text}`);
+
+  // 예고 모드 갈래 — 토글을 되돌린 화면에서는 창 자리에 빈틈 문면이 선다 (#243 결정 9).
+  const telegraph = runTwoExchanges(false);
+  const shown = foeStripState(telegraph.windows[1], { open: OPEN_TEXT, resolved: RESOLVED_TEXT });
+  eq(shown.state, FOE_STRIP.OPEN, '예고 모드의 창 자리에는 빈틈이 선다');
+  eq(shown.text, OPEN_TEXT, '창 자리 문면은 그 초에 무엇을 하면 되는지를 가르친다');
+
+  // 위 단정의 `open` 은 하네스가 만든 값이라, 누설을 실제로 막는 호출부의 조건을 함께 물지
+  // 않으면 화면에서 그 조건을 지워도 전부 green 이다 — 화면 모듈은 DOM 을 만져 원문 대조가 유일한 수단이다.
+  for (const [name, resolvedText] of [
+    ['duel.mjs', '빈틈 — 상대의 허를 찔렀다'],
+    ['dispatch.mjs', '빈틈 — 제자가 상대의 허를 찔렀다'],
+  ]) {
+    const src = readFileSync(new URL(`../src/ui/screens/${name}`, import.meta.url), 'utf8');
+    const openLines = src.split('\n').filter((line) => /^\s*open:.*빈틈/.test(line));
+    eq(openLines.length, 1, `${name} 이 창 자리에 넘기는 빈틈 문면은 한 자리에서만 정해진다`);
+    ok(/BALANCE\.blindExchange/.test(openLines[0]) && /null/.test(openLines[0]),
+      `${name} 은 창 빈틈 문면을 예고 모드에만 넘긴다 — ${openLines[0].trim()}`);
+    ok(src.includes(`resolved: '${resolvedText}'`),
+      `${name} 의 판정 자리 문면은 그 화면에 서는 사람을 주어로 쓴다 — ${resolvedText}`);
+  }
+});
+
 
 // ----------- 8-b. 제자 정답률은 성에 비례한다 (#243 결정 8)
 
