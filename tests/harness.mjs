@@ -1232,8 +1232,10 @@ suite('확정 ↔ 발동 분리 — 감춘 창의 구조 (#243)', () => {
   // 마감이 입력보다 먼저다 — 프레임이 밀려 만료 뒤에 도착하면 그때의 확정은 미완주를 뒤집지
   // 못한다 (백그라운드 탭 복귀·긴 프레임의 경합, L5d 지적).
   {
-    const timer = createVirtualTimer();
-    const seen = { timeout: 0, grades: [] };
+    // 한 틱이 창을 통째로 건너뛴다 — 실브라우저의 백그라운드 복귀·긴 프레임이 내는 모양이라,
+    // 16ms 씩 도는 시계로는 이 경합이 재현되지 않는다.
+    const timer = createVirtualTimer({ stepMs: BALANCE.windowBaseMs + 500 });
+    const seen = { timeout: 0, grades: [], accepted: [] };
     let match = null;
     match = createMatch({
       challenger,
@@ -1244,19 +1246,19 @@ suite('확정 ↔ 발동 분리 — 감춘 창의 구조 (#243)', () => {
       timer,
       random: createSeededRandom(243),
       hooks: {
+        // 제자의 손과 같은 자리 — 밀린 프레임의 `onTick` 에서 뒤늦게 확정하는 형태다.
+        onTick: () => { seen.accepted.push(match.fire({ style: styleById('yuun-bo'), oneTap: false, r: 0 })); },
         onTimeout: () => { seen.timeout += 1; },
         onVerdict: (v) => { seen.grades.push(v.verdict.grade); },
       },
     });
     match.start();
-    // 창을 통째로 건너뛰는 한 프레임 — 실브라우저의 정지·백그라운드 복귀가 내는 모양이다.
-    for (let i = 0; i * 16 <= BALANCE.windowBaseMs; i += 1) timer.tick();
-    eq(match.open, false, '만료된 창은 더 이상 손을 받지 않는다');
-    eq(match.fire({ style: styleById('yuun-bo'), oneTap: false, r: 0 }), false,
-      '마감 뒤 확정은 거부된다');
     timer.tick();
+    eq(match.open, false, '만료된 창은 더 이상 손을 받지 않는다');
+    deepEq(seen.accepted, [], '마감 뒤 프레임에서는 확정 자체가 시도되지 않는다');
     eq(seen.timeout, 1, '마감 뒤 입력이 있어도 미완주가 그대로 기록된다');
     deepEq(seen.grades, ['struck'], '뒤늦은 확정이 정상 발동으로 승격되지 않는다');
+    eq(match.fire({ style: styleById('yuun-bo'), oneTap: false, r: 0 }), false, '마감 뒤 확정은 거부된다');
     match.stop();
   }
 
