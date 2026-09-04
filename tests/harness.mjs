@@ -1367,10 +1367,19 @@ suite('상대 스트립이 말하는 초 — 판정 자리 · 창 자리 (#252)'
   const missedRule = teleLedger.match(/^\.tele\.missed \{([^}]*)\}/m)?.[1];
   ok(/--attr:\s*var\(--c9\)/.test(missedRule ?? ''), '흘린 갈래는 속성색 자리를 감춤의 중립 먹으로 명시로 세운다');
   // 승리 배색은 잡은 갈래의 것이다 — 선택자에 흘린 갈래가 얹히면 이 이슈의 자기부정이 그대로 돌아온다 (#263).
+  // 선택자 전건을 무는 것이 계약이다 — 흘린 갈래의 부재만 보면 뒤에 온 맨 `.tele` 규칙이 두 갈래를 함께 덮어도 통과한다.
   const goldRules = teleLedger.match(/^\.tele[^\n{]*\{[^}]*var\(--gold\)[^}]*\}/gm) ?? [];
   ok(goldRules.length > 0, `금색을 세우는 .tele 규칙이 실재한다 — ${goldRules.length}건`);
-  ok(!goldRules.some((rule) => rule.split('{')[0].includes(`.tele.${FOE_STRIP.MISSED}`)),
-    '금색을 세우는 규칙의 선택자에 흘린 갈래가 없다');
+  const goldSelectors = goldRules.flatMap((rule) => rule.split('{')[0].split(',').map((one) => one.trim()));
+  for (const selector of goldSelectors) {
+    ok(selector === `.tele.${FOE_STRIP.OPEN}` || selector === `.tele.${FOE_STRIP.OPENED}`,
+      `금색은 창·잡은 갈래만 세운다 — ${selector}`);
+  }
+
+  // 상태가 class 로 실제로 옮겨지는 자리 — 보간이 사라지면 원장 핀은 전부 green 인 채 두 갈래가 한 배색으로 접힌다 (#263).
+  const arenaSource = readFileSync(new URL('../src/ui/arena.mjs', import.meta.url), 'utf8');
+  ok(/class: `tele \$\{strip\.state\}`/.test(arenaSource),
+    '스트립의 class 는 상태 이름을 그대로 싣는다 — 배색이 상태를 따라가는 유일한 경로다');
 
   // (c) 누설 핀 — 감춤 모드의 창 자리는 직전 초 완파 뒤에도 빈틈을 말하지 않는다 (#243 결정 2).
   const atWindow = foeStripState(blind.windows[1], TEXTS_BLIND);
