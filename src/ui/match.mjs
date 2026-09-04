@@ -62,16 +62,18 @@ export function pumpToEnd(match, timer, { maxTicks = 20000 } = {}) {
  * @param {object} [p.timer] 프레임 구동원 (now/schedule/cancel) — 헤드리스는 가상 시계를 준다
  * @param {() => number} [p.random] 상대 초식 추첨의 난수 — 하네스가 시드로 고정해 판정 단정을
  *   결정적으로 유지하고, 브라우저만 실제 난수를 준다 (#243 결정 5)
+ * @param {boolean} [p.blind] 상대를 감추는가 — 기본값은 원장이되 `timer`·`random` 과 같은 규약으로
+ *   주입을 열어 둔 것은, 예고 모드 갈래가 하네스에 닿지 못하면 토글 복원을 지키는 것이 사람의
+ *   1회성 실행뿐이 되기 때문이다 (#243 결정 9)
  */
 export function createMatch({
   challenger, selfHpMax, rankOf, openLen, accessibility, hooks = {}, timer = FRAME_TIMER,
-  foeRank = foeRankOf(challenger.id), random = Math.random,
+  foeRank = foeRankOf(challenger.id), random = Math.random, blind = BALANCE.blindExchange,
 }) {
-  const blind = BALANCE.blindExchange;
   const foePower = powerOf(foeRank);
   const foeHpMax = BALANCE.hp[challenger.id];
   const s = {
-    phase: PHASE.TELEGRAPH,
+    phase: blind ? PHASE.WINDOW : PHASE.TELEGRAPH,
     phaseStart: 0,
     exchange: 0,
     selfHp: selfHpMax,
@@ -123,22 +125,19 @@ export function createMatch({
     s.foeStyle = s.foeOpen ? null : drawFoeStyle();
     s.revealed = !blind;
     s.phaseStart = clock();
+    // 직전 초의 창 길이를 그대로 흘리면 이 훅의 `ratio` 가 남의 초를 말한다.
+    s.windowMs = 0;
     pending = null;
-    if (blind) {
-      // 예고 페이즈가 없어 초의 시작이 곧 창이다 — 직전 초의 `RESOLVE` 를 그대로 흘리면 훅이 끝난 판정을 본다.
-      s.phase = PHASE.WINDOW;
-      hooks.onExchange?.(view());
-      enterWindow();
-      return;
-    }
-    s.phase = PHASE.TELEGRAPH;
+    // 감추는 초에는 예고 페이즈가 없어 초의 시작이 곧 창이다 — 직전 `RESOLVE` 를 흘리면 훅이 끝난 판정을 본다.
+    s.phase = blind ? PHASE.WINDOW : PHASE.TELEGRAPH;
     hooks.onExchange?.(view());
+    if (blind) enterWindow();
   }
 
   function enterWindow() {
     // 상대 초식을 모르는 초는 어떤 길이가 올지 모르므로 가장 긴 시퀀스 기준으로 연다.
     const len = s.foeStyle ? s.foeStyle.len : openLen();
-    s.windowMs = responseWindowMs(len, { selfOpen: s.selfOpen, accessibility: accessibility() });
+    s.windowMs = responseWindowMs(len, { selfOpen: s.selfOpen, accessibility: accessibility(), blind });
     s.phase = PHASE.WINDOW;
     s.phaseStart = clock();
     hooks.onWindow?.(view());

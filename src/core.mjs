@@ -98,10 +98,14 @@ export function assertAttrCoverage(styles) {
  * 응수 창 (REQ-201). 확정과 발동이 갈린 초에서는 창 길이가 상대 초식에 의존할 수 없다 — 길이가
  * 다르면 게이지 하나로 감춘 초식이 새기 때문이라, `len` 은 예고 모드에서만 읽힌다 (#243).
  * @param {number} len 그 초에 노출된 초식 길이 — 실전은 상대 예고, 수련은 자기 초식
+ * @param {boolean} [p.blind] 감춘 초인가 — 기본값은 원장이되 주입을 열어 둔 것은 예고 모드
+ *   갈래가 하네스에서 도달 가능해야 토글 복원이 사람 손이 아니라 기계로 지켜지기 때문이다
  */
-export function responseWindowMs(len, { selfOpen = false, accessibility = BALANCE.accessibilityWindow } = {}) {
+export function responseWindowMs(len, {
+  selfOpen = false, accessibility = BALANCE.accessibilityWindow, blind = BALANCE.blindExchange,
+} = {}) {
   const tele = BALANCE.telegraphMode;
-  let ms = BALANCE.blindExchange
+  let ms = blind
     ? BALANCE.windowBaseMs
     : tele.windowBaseMs + tele.windowStepMs * (len - tele.windowBaseLen);
   if (selfOpen) ms *= 1 - BALANCE.openingWindowPenalty;

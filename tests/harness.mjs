@@ -1170,7 +1170,7 @@ suite('제자 자동 선택 (REQ-403·853)', () => {
 
 suite('확정 ↔ 발동 분리 — 감춘 창의 구조 (#243)', () => {
   const challenger = challengerById('A-4');
-  const run = ({ fireAt = null, seed = 243, maxExchanges = 1 } = {}) => {
+  const run = ({ fireAt = null, seed = 243, maxExchanges = 1, blind = undefined } = {}) => {
     const timer = createVirtualTimer();
     const seen = { telegraphedInWindow: [], phases: [], foes: [], settledAt: null };
     let fired = false;
@@ -1182,6 +1182,7 @@ suite('확정 ↔ 발동 분리 — 감춘 창의 구조 (#243)', () => {
       accessibility: () => false,
       timer,
       random: createSeededRandom(seed),
+      ...(blind === undefined ? {} : { blind }),
       hooks: {
         onExchange: (v) => { seen.phases.push(v.phase); seen.foes.push(v.foeStyle?.id ?? null); },
         onTick: (v) => {
@@ -1220,6 +1221,21 @@ suite('확정 ↔ 발동 분리 — 감춘 창의 구조 (#243)', () => {
   // 수용 기준 4 — 상대 초식은 매 초 추첨이라 같은 초 번호가 시드마다 갈린다.
   const drawn = [243, 244, 245, 246, 247, 248].map((seed) => run({ seed, maxExchanges: 3 }).foes.join('-'));
   ok(new Set(drawn).size > 1, `같은 도전자·같은 초 번호가 재현되지 않는다 — ${JSON.stringify(drawn)}`);
+
+  // 수용 기준 8 — 토글 한 값으로 예고 표시 · 고정 순환 · 가변 창이 함께 되돌아온다. 값이 아니라
+  // 갈래를 주입으로 열어 둔 것이 이 단정의 존재 조건이다 (원장은 deep-freeze 라 못 뒤집는다).
+  deepEq([3, 4, 5].map((len) => responseWindowMs(len, { blind: false })), [2600, 3100, 3600],
+    'OFF 갈래는 가변 창으로 돌아간다');
+  eq(responseWindowMs(3, { blind: false, selfOpen: true }), 1560, 'OFF 갈래의 내 빈틈 배율도 그대로다');
+  const off = run({ blind: false, maxExchanges: 3 });
+  deepEq([...new Set(off.phases)], [PHASE.TELEGRAPH], 'OFF 갈래는 예고 페이즈로 초를 연다');
+  ok(off.telegraphedInWindow.some((v) => v !== null), 'OFF 갈래는 창 동안 상대를 보여 준다');
+  const pool = challenger.styles;
+  deepEq(off.foes, off.foes.map((id, i) => (id === null ? null : pool[i % pool.length])),
+    'OFF 갈래는 고정 순환으로 상대를 고른다 — 빈틈 초는 상대가 그 초를 잃는다');
+  const settledOff = run({ blind: false, fireAt: 0.9 });
+  ok(settledOff.settledAt - settledOff.firedAtMs <= 32,
+    `OFF 갈래는 확정이 곧 발동이다 — 확정 ${settledOff.firedAtMs}ms · 판정 ${settledOff.settledAt}ms`);
 });
 
 // ----------- 8-b. 제자 정답률은 성에 비례한다 (#243 결정 8)
