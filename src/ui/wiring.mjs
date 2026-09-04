@@ -32,16 +32,18 @@ export function composeHooks(wiring, overlay = {}) {
  * 수련 배선 (REQ-703·715) — 창을 여는 지점과 완주 지점 둘뿐이라 `createMatch` hook 이 아니다.
  * 방문 계수는 배선을 만드는 그 자리에서 초기화한다 — 화면과 헤드리스가 같은 리듬을 쓴다.
  * @param {object} p.input 후보 필터 입력기
+ * @param {boolean} [p.blind] 감춘 초인가 — 기본값은 실전과 같은 원장이고, `createMatch` 와 같은
+ *   규약으로 주입을 열어 둔 것은 예고 모드 갈래의 동반 복원이 하네스에 닿아야 하기 때문이다 (#247)
  */
-export function trainWiring(session, { styleId, input }) {
+export function trainWiring(session, { styleId, input, blind }) {
   const style = styleById(styleId);
   beginTrainVisit(session, styleId);
   return {
     /** 창 길이는 열 때마다 다시 잰다 — 무대 밖에서 바꾼 접근성 설정이 다음 시도부터 반영된다. */
     onArm() {
       input.arm();
-      // 수련에는 감출 상대가 없어 길이 무관의 근거가 없다 — 실전 토글을 상속하지 않는다 (#243).
-      return responseWindowMs(style.seq.length, { accessibility: session.accessibility, blind: false });
+      // 연습이 실전을 준비시키려면 같은 좌표의 게이지가 같은 속도로 비어야 한다 (REQ-308·840).
+      return responseWindowMs(style.seq.length, { accessibility: session.accessibility, blind });
     },
     onFire: () => recordEffectiveSuccess(session, style.id, 'train'),
   };
