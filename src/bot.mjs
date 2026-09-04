@@ -6,8 +6,8 @@
 
 import { BALANCE, STYLES } from './balance.mjs';
 import {
-  canEquipRank, canLearn, discipleStyleRank, discipleStyles, discipleTrainMsPerRank,
-  selectDiscipleStyle, styleById,
+  canEquipRank, canLearn, discipleAccuracy, discipleMinRank, discipleStyleRank, discipleStyles,
+  discipleTrainMsPerRank, selectDiscipleStyle, styleById,
 } from './core.mjs';
 import { createMatch, createVirtualTimer, pumpToEnd } from './ui/match.mjs';
 import { createSequenceInput } from './ui/sequence-input.mjs';
@@ -155,8 +155,13 @@ export function createHand({
 /**
  * 제자의 손 (REQ-402~404) — 파견 화면과 헤드리스 사이클이 같은 자동 선택·같은 실행 시점을 쓴다.
  * @param {(fired: object) => void} p.fire
+ * @param {() => number} [p.random] 읽기 성패의 난수 주입 — 하네스는 시드로 고정한다 (#243 결정 8)
+ * @param {() => number} [p.accuracy] 그 초에 상대를 읽어낼 확률 — 기본값은 제자 성이 정한다
  */
-export function createDiscipleHand({ session, styles, fire }) {
+export function createDiscipleHand({
+  session, styles, fire, random = Math.random,
+  accuracy = () => discipleAccuracy(discipleMinRank(session.disciple, ART_ID)),
+}) {
   let done = false;
   return {
     arm() { done = false; },
@@ -168,10 +173,13 @@ export function createDiscipleHand({ session, styles, fire }) {
     tick(view, instructed = null) {
       if (done || view.ratio > 1 - BALANCE.discipleFireRatio) return null;
       done = true;
+      // 화면이 아니라 상대를 읽는 자리라 공개 여부와 무관한 값을 본다 — 읽기 성패는 성이 가른다 (#243).
       const judged = instructed ? null : selectDiscipleStyle({
         styles,
-        foeStyle: view.telegraphed,
+        foeStyle: view.foeStyle,
         rankOf: (s) => discipleStyleRank(session.disciple, ART_ID, s.id),
+        accuracy: accuracy(),
+        random,
       });
       const style = instructed ?? judged?.style ?? null;
       if (!style) throw new Error('제자가 낼 초식이 없다 — 전수된 무공이 비었다');
@@ -470,6 +478,7 @@ function headlessDuel({ session, stage, pace, timer, random }) {
     openLen: () => Math.max(...equippedStyles(session).map((s) => s.seq.length)),
     accessibility: () => session.accessibility,
     timer,
+    random,
     hooks: composeHooks(duelWiring(session, { input }), {
       onWindow(view) { hand.arm(input, view.telegraphed); },
       onTick() { hand.tick(input); },
@@ -487,7 +496,7 @@ function headlessDispatch({ session, timer, random = Math.random }) {
   let ended = null;
   let match = null;
 
-  const disciple = createDiscipleHand({ session, styles, fire: (fired) => match.fire(fired) });
+  const disciple = createDiscipleHand({ session, styles, random, fire: (fired) => match.fire(fired) });
   match = createMatch({
     challenger: mission.challenger,
     foeRank: mission.foeRank,
@@ -496,6 +505,7 @@ function headlessDispatch({ session, timer, random = Math.random }) {
     openLen: () => Math.max(...styles.map((s) => s.seq.length)),
     accessibility: () => session.accessibility,
     timer,
+    random,
     // 파견 무지시 — 배선에 지시 콜백을 주지 않는 것이 REQ-605 의 관전 조건이다.
     hooks: composeHooks(dispatchWiring(session, { disciple }), {
       onEnd(view) {

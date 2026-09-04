@@ -27,9 +27,10 @@ export const EXPORT_SCHEMA = 'grandmaster-dojo/log-export@3';
  */
 export const balanceDigest = () => ({
   rev: BALANCE_REV,
+  // 창 길이의 산출 갈래가 토글로 갈리므로 그 갈래도 지문에 실린다 — 없으면 같은 base 가 두 수로 읽힌다 (#243).
+  blindExchange: BALANCE.blindExchange,
   windowBaseMs: BALANCE.windowBaseMs,
-  windowStepMs: BALANCE.windowStepMs,
-  windowBaseLen: BALANCE.windowBaseLen,
+  telegraphMode: { ...BALANCE.telegraphMode },
   accessibilityWindowMult: BALANCE.accessibilityWindowMult,
   effectiveSuccessMaxOrder: BALANCE.effectiveSuccessMaxOrder,
 });

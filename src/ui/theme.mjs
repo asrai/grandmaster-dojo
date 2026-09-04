@@ -53,6 +53,7 @@ export const REASON_VIEW = {
   [SELECT_REASON.ADVANTAGE]: '우세를 골랐다',
   [SELECT_REASON.CLASH]: '상쇄를 골랐다',
   [SELECT_REASON.AVOID_REVERSAL]: '역파를 피했다',
+  [SELECT_REASON.GUESS]: '감으로 냈다',
 };
 
 // 계열이 늘었는데 문구가 없으면 그 초의 판단이 조용히 빈칸으로 뜬다 — 부팅 때 문다 (REQ-853).

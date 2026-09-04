@@ -35,8 +35,8 @@ const BRAND = {
   lose: { cls: 'lose', mark: '敗', label: '패배' },
 };
 
-/** 엎드림 자세가 납품된 실루엣 (spec § 아트 계약) — 제자의 4자세에는 엎드림이 없다. */
-const PRONE_ASSETS = new Set(['sil_master', 'sil_challenger']);
+/** 엎드림 자세가 납품된 실루엣 (spec § 아트 계약) — 없는 사람은 아래 폴백이 자리를 비운다. */
+const PRONE_ASSETS = new Set(['sil_master', 'sil_challenger', 'sil_disciple']);
 
 /**
  * 결과 무대에 서는 두 사람 (REQ-875) — 승자가 근경에 서고 패자가 원경에 쓰러진다. 패배는 두

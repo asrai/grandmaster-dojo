@@ -94,9 +94,16 @@ export function assertAttrCoverage(styles) {
 
 // ------------------------------------------------------------------ 한 초의 산술
 
-/** 응수 창 (REQ-201). `len` = 그 초에 노출된 초식 길이 — 실전은 상대 예고, 수련은 자기 초식. */
+/**
+ * 응수 창 (REQ-201). 확정과 발동이 갈린 초에서는 창 길이가 상대 초식에 의존할 수 없다 — 길이가
+ * 다르면 게이지 하나로 감춘 초식이 새기 때문이라, `len` 은 예고 모드에서만 읽힌다 (#243).
+ * @param {number} len 그 초에 노출된 초식 길이 — 실전은 상대 예고, 수련은 자기 초식
+ */
 export function responseWindowMs(len, { selfOpen = false, accessibility = BALANCE.accessibilityWindow } = {}) {
-  let ms = BALANCE.windowBaseMs + BALANCE.windowStepMs * (len - BALANCE.windowBaseLen);
+  const tele = BALANCE.telegraphMode;
+  let ms = BALANCE.blindExchange
+    ? BALANCE.windowBaseMs
+    : tele.windowBaseMs + tele.windowStepMs * (len - tele.windowBaseLen);
   if (selfOpen) ms *= 1 - BALANCE.openingWindowPenalty;
   if (accessibility) ms *= BALANCE.accessibilityWindowMult;
   return Math.round(ms);
@@ -589,19 +596,41 @@ export const SELECT_REASON = {
   ADVANTAGE: 'advantage',
   CLASH: 'clash',
   AVOID_REVERSAL: 'avoid-reversal',
+  GUESS: 'guess',
 };
+
+/**
+ * 제자가 상대의 수를 읽어낼 확률 (#243 결정 8) — 성 1 은 사실상 감, 성 10 은 거의 정답이다.
+ * 성이 없는 손은 제자가 아니라 상계 모델(사부의 손)이므로 읽기 실패를 모델하지 않는다.
+ */
+export function discipleAccuracy(rank) {
+  if (rank === null) return 1;
+  const { atStartRank, atMaxRank } = BALANCE.discipleAccuracy;
+  const lo = BALANCE.discipleStartRank;
+  const hi = BALANCE.discipleRankMax;
+  const t = hi === lo ? 1 : (Math.min(hi, Math.max(lo, rank)) - lo) / (hi - lo);
+  return atStartRank + (atMaxRank - atStartRank) * t;
+}
 
 /**
  * 제자 초식 자동 선택 (REQ-403·853) — 우세 → 상쇄 → 잔여, 예고된 절초의 파해 대상은 제외.
  * 이유를 함께 내는 것은 관전의 콘텐츠가 결과가 아니라 판단이기 때문이다 (REQ-852).
  * @param {object} p
  * @param {object[]} p.styles    제자 보유 초식 (배열 순서 = 슬롯 순)
- * @param {?object} [p.foeStyle] 예고된 상대 초식 (상대 빈틈이면 null)
+ * @param {?object} [p.foeStyle] 그 초의 상대 초식 (상대 빈틈이면 null)
  * @param {(style: object) => number} [p.rankOf]
+ * @param {number} [p.accuracy]  상대의 수를 읽어낼 확률 — 1 이면 종전과 같은 결정적 선택이다
+ * @param {() => number} [p.random] 난수 주입 — 하네스가 시드로 고정해야 판정 단정이 결정적이다
  * @returns {?{style: object, reason: string}} 보유 초식이 없으면 null
  */
-export function selectDiscipleStyle({ styles, foeStyle = null, rankOf: rankFn = () => 0 }) {
+export function selectDiscipleStyle({
+  styles, foeStyle = null, rankOf: rankFn = () => 0, accuracy = 1, random = Math.random,
+}) {
   if (!styles.length) return null;
+  // 읽기에 실패한 초는 상대를 모르고 낸 것이라 우세·상쇄로 부를 근거가 없다 (#243 결정 8).
+  if (accuracy < 1 && random() >= accuracy) {
+    return { style: styles[Math.floor(random() * styles.length)], reason: SELECT_REASON.GUESS };
+  }
   // 역파는 절초가 실제로 예고된 초에만 성립하므로, 다른 초의 배제는 이득 없이 완파만 버린다.
   const avoidId = foeStyle && foeStyle.finisher ? foeStyle.counters : null;
   const kept = styles.filter((s) => s.id !== avoidId);

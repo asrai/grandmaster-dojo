@@ -204,7 +204,9 @@ export function readout(payload) {
       one_tap_rate: rate(fires.filter((e) => e.oneTap).length, fires.length),
       tail_ratio_mean: meanRatio,
       tail_ms_band: meanRatio === null ? null
-        : [responseWindowMs(BALANCE.windowBaseLen), responseWindowMs(5)].map((w) => Math.round(meanRatio * w)),
+        // 창이 상대 초식과 무관해지면 두 끝이 같은 수로 접힌다 — 폭 0 이 그 사실의 표현이다 (#243).
+        : [responseWindowMs(BALANCE.telegraphMode.windowBaseLen), responseWindowMs(5)]
+          .map((w) => Math.round(meanRatio * w)),
       top_attr_switches: attrSwitches,
       verdict_grades: Object.fromEntries(Object.keys(BALANCE.grades).map((grade) => [
         grade, tagged.filter((e) => e.event === 'verdict' && e.grade === grade).length,

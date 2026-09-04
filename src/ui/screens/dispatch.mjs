@@ -203,7 +203,7 @@ export function startDispatch(ctx) {
   }
 
   function renderTablets(view) {
-    // 그 초 예고의 파해를 제자가 보유하면 그 죽간만 금색으로 맥동해 지시를 유도한다 (강제 아님).
+    // 공개된 상대의 파해를 제자가 보유하면 그 죽간만 금색으로 맥동해 지시를 유도한다 (강제 아님).
     const hintId = view.telegraphed
       ? styles.find((s) => s.counters === view.telegraphed.id)?.id ?? null
       : null;
@@ -241,7 +241,7 @@ export function startDispatch(ctx) {
     openLen: () => Math.max(...styles.map((s) => s.seq.length)),
     accessibility: () => session.accessibility,
     hooks: composeHooks(dispatchWiring(session, { disciple, instructed: () => instructed }), {
-      onTelegraph(view) {
+      onExchange(view) {
         instructed = null;
         fired = false;
         shown = view;
@@ -249,7 +249,7 @@ export function startDispatch(ctx) {
         arena.setWindow(1);
         paintColor(null);
         judgeNow.textContent = '고르는 중';
-        arena.showTelegraph(view, '빈틈! — 제자가 연환을 잇는다');
+        arena.showFoe(view, '빈틈! — 제자가 연환을 잇는다');
         renderHp(view);
         renderTablets(view);
         exchanges = view.exchange;
@@ -265,6 +265,8 @@ export function startDispatch(ctx) {
       },
       onVerdict(view, ranked) {
         renderHp(view);
+        // 감췄던 상대가 판정과 같은 프레임에 드러난다 — 대련과 같은 계약이다 (#243 결정 2).
+        arena.showFoe(view, '빈틈! — 제자가 연환을 잇는다');
         // 소리를 `onShow` 에 싣는 것이 대련과 같은 계약이다 — 지금은 이 화면에 확정 연출 대기가
         // 없어 즉시 호출과 동치이지만, 대기가 생기는 순간 관전만 소리가 판정보다 앞선다.
         verdict.showGrade(view.verdict.grade, { onShow: () => playVerdict(view.verdict.grade) });
