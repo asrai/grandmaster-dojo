@@ -98,7 +98,8 @@ export function composeScreen(ctx, {
 /**
  * 표준 상단 띠 (REQ-801) — 띠를 쓰는 화면이 각자 만들고, 갱신 주체도 그 화면이다.
  * @param {object} session
- * @param {string} artName 무공 이름 — 성이 초식 단위로 내려가 무공에는 표시할 성이 없다 (REQ-701·707)
+ * @param {string|null} artName 무공 이름 — 시안 원장이 이 자리를 둔 화면만 넘기고 나머지는
+ *   `null` 로 자리를 비운다 (#220). 성이 초식 단위로 내려가 무공에는 표시할 성이 없다 (REQ-701·707)
  * @param {object} p
  * @param {() => string} p.label 띠 둘째 자리 문구 — 그 자리에 오는 요소가 화면마다 달라(도장 =
  *   단계 표기 E1-1, 도전자 선택 = 화면 제목 E1-2) 값을 호출부가 준다 (#211). `stageBand` 의
@@ -109,7 +110,7 @@ export function composeScreen(ctx, {
  * @returns {{node: HTMLElement, paint: () => void}} `paint` 를 `ctx.ownTop` 에 넘기면
  *   `ctx.refreshTop()` 이 그 화면의 띠만 다시 그린다
  */
-export function topBand(session, artName, { label, onLeave = null }) {
+export function topBand(session, artName = null, { label, onLeave = null }) {
   const labelEl = el('b', { class: 'top-label' });
   const coinsEl = el('span', { class: 'top-coins' });
 
@@ -130,7 +131,7 @@ export function topBand(session, artName, { label, onLeave = null }) {
     el('div', { class: 'top-row' }, [
       onLeave ? el('button', { class: 'leave', text: '←', 'aria-label': '물러나기', onclick: onLeave }) : null,
       labelEl,
-      el('span', { class: 'dim', text: artName }),
+      artName ? el('span', { class: 'dim', text: artName }) : null,
       coinsEl,
       mute,
     ]),

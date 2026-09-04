@@ -9,7 +9,7 @@ import { particle } from '../theme.mjs';
 import { hanja } from '../components/hanja.mjs';
 import { counterPairOf, foeChips, foeStyleCards, revealedStyles, revealNotice } from '../components/foe-view.mjs';
 import { styleStrip } from '../components/style-strip.mjs';
-import { ART_NAME, challengerRoster, rankOfStyle } from '../session.mjs';
+import { challengerRoster, rankOfStyle } from '../session.mjs';
 
 /** 대면 상태 (REQ-887) — 이미 이긴 상대는 회색 보통 굵기이고 주사색은 쓰지 않는다 (REQ-811). */
 function rowState(entry) {
@@ -152,7 +152,7 @@ export function renderSelect(ctx) {
   paintBrief();
   composeScreen(ctx, {
     // 띠 제목은 시안 E1-2 원장이라 `SCREEN.select.label`(로그·낭독 원장)의 「도전자 선택」과 일부러 다르다 (#211).
-    top: topBand(session, ART_NAME, { label: () => '대련', onLeave: () => ctx.go('dojo') }),
+    top: topBand(session, null, { label: () => '대련', onLeave: () => ctx.go('dojo') }),
     body: listEl,
     // 브리핑은 스크롤 흐름 밖이라 목록이 길어져도 「대련 시작」이 늘 바닥에 있다 (REQ-881).
     bottom: briefEl,
