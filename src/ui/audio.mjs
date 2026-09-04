@@ -148,21 +148,26 @@ function stopBgm(at = 0) {
 }
 
 /**
- * 지금의 음소거 상태를 소리에 반영하는 유일한 자리 (#163) — 재개·토글 어느 경로로 들어와도
- * 여기를 지나므로, 늦게 끝난 재개가 그때의 `muted` 를 다시 보고 BGM 을 건다. 순서가 흩어져
- * 있으면 「끄려고 누른 손이 소리를 켠다」가 경로 조합마다 되살아난다.
+ * 지금의 음소거 상태를 소리에 반영하는 유일한 자리 (#163) — 재개·토글·늦은 디코드 어느
+ * 경로로 들어와도 여기를 지나므로, 늦게 끝난 재개가 그때의 `muted` 를 다시 보고 BGM 을 건다.
+ * 순서가 흩어져 있으면 「끄려고 누른 손이 소리를 켠다」가 경로 조합마다 되살아난다.
  */
 function applyMute() {
   const ac = state.ctx;
   if (!ac || !state.master) return;
+  // 소리가 흐르지 않는 동안의 계단은 팝이 될 수 없다 — 거기에 램프를 두면 재개 직후의 그 30ms
+  // 가 도리어 들려, 끄려고 누른 손이 소리를 켜는 자리로 돌아간다. 「흐르는가」의 판정에 이 모듈이
+  // 든 `resumed` 를 함께 두는 것은, 엔진의 상태 하나에 그 정합을 맡기지 않기 위함이다.
+  const flowing = state.resumed && ac.state === 'running';
   const gain = state.master.gain;
   const t0 = ac.currentTime;
-  // 정지 중인 컨텍스트에는 아무것도 흐르지 않아 계단이 팝이 될 수 없다 — 거기에 램프를 두면
-  // 재개 직후의 그 30ms 가 도리어 들려, 끄려고 누른 손이 소리를 켜는 자리로 돌아간다.
-  const until = t0 + (ac.state === 'running' ? GAIN_RAMP_MS / 1000 : 0);
+  const target = state.muted ? 0 : 1;
+  const until = flowing ? t0 + GAIN_RAMP_MS / 1000 : t0;
+  // 취소는 `t0` 이후의 예약을 지우므로 지금 값의 판독이 그보다 앞이어야 이어붙일 자리가 남는다.
+  const held = gain.value;
   gain.cancelScheduledValues(t0);
-  gain.setValueAtTime(gain.value, t0);
-  gain.linearRampToValueAtTime(state.muted ? 0 : 1, until);
+  gain.setValueAtTime(flowing ? held : target, t0);
+  if (flowing) gain.linearRampToValueAtTime(target, until);
   // 램프가 끝나기 전에 소스를 끊으면 잘린 파형이 다시 팝이 된다 — 정지는 램프 뒤다.
   if (state.muted) stopBgm(until);
   else startBgm();
@@ -200,7 +205,8 @@ function logState() {
  * 나지 않으므로, 이 호출이 실제로 뚫렸는지가 `audio_state` 로만 판독된다. 그래서 `resumed` 는
  * 시도한 사실이 아니라 **컨텍스트가 실제로 running 이 된 사실**이다 — 정책이 제스처를 거절한
  * 세션이 「뚫렸다」로 기록되면 그 판독이 조용히 거짓 통과한다.
- * 못 뚫렸으면 아무것도 남기지 않고, 다음 입력이 같은 자리로 다시 온다.
+ * 못 뚫렸으면 이 경로는 아무것도 남기지 않고 (`toggleMute` 는 그 사이에도 자기 줄을 남긴다),
+ * 다음 입력이 같은 자리로 다시 온다.
  */
 export function resumeAudio() {
   if (state.resumed) return;
@@ -209,7 +215,9 @@ export function resumeAudio() {
   const settle = () => {
     state.resumed = ac.state === 'running';
     if (!state.resumed) return;
-    state.resumedAtMs = state.now() - state.startedAtMs;
+    // 재개가 뚫리기 전에 들어온 입력마다 시도가 겹치므로, 늦은 성사가 첫 성사를 덮으면
+    // `ms_to_resume` 가 실제 경과보다 커진다.
+    if (state.resumedAtMs === null) state.resumedAtMs = state.now() - state.startedAtMs;
     applyMute();
     logState();
   };
@@ -244,7 +252,8 @@ export function initAudio({ log, now }) {
       .then((buffer) => {
         state.buffers.set(id, buffer);
         // 첫 제스처가 디코드보다 빨랐으면 그 세션 내내 루프가 없다 — 도착한 그 자리에서 되살린다.
-        if (id === BALANCE.audio.bgm) startBgm();
+        // `startBgm` 을 직접 부르면 그 도착이 순서 계약을 우회하는 두 번째 기동 경로가 된다.
+        if (id === BALANCE.audio.bgm) applyMute();
       })
       .catch((err) => console.warn(`[오디오] ${id} 를 재생 준비하지 못했다 — ${err.message}`));
   }
