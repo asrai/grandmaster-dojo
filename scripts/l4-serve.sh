@@ -124,9 +124,10 @@ stop_tag() {
     case " $skip " in *" $pid "*) continue ;; esac
     targets="$targets $pid"
   done
-  server=$(state_get "$state" L4_SERVER_PID)
-  root=$(state_get "$state" L4_ROOT)
-  port=$(state_get "$state" L4_PORT)
+  [ -f "$state" ] || printf 'l4-serve: [%s] 상태 파일이 없다: %s\n' "$tag" "$state" >&2
+  server=$(state_get "$state" L4_SERVER_PID || true)
+  root=$(state_get "$state" L4_ROOT || true)
+  port=$(state_get "$state" L4_PORT || true)
   if [ -z "$server" ]; then server=${SERVER_PID:-}; root=${SERVER_ROOT:-}; port=${SERVER_PORT:-}; fi
   VERIFY_SERVER=$server VERIFY_ROOT=$root VERIFY_PORT=$port
   if is_our_server "$server" "$root" "$port"; then
