@@ -1283,7 +1283,8 @@ suite('확정 ↔ 발동 분리 — 감춘 창의 구조 (#243)', () => {
 suite('상대 스트립이 말하는 초 — 판정 자리 · 창 자리 (#252)', () => {
   const OPEN_TEXT = '빈틈! — 아무 초식이나 완주하면 완파';
   const RESOLVED_TEXT = '빈틈 — 상대의 허를 찔렀다';
-  const TEXTS_BLIND = { open: null, resolved: RESOLVED_TEXT };
+  const MISSED_TEXT = '빈틈이었는데 아까운 기회를 놓쳤다';
+  const TEXTS_BLIND = { open: null, resolved: RESOLVED_TEXT, missed: MISSED_TEXT };
   const challenger = challengerById('A-4');
 
   // 완파 1회로 빈틈을 연 뒤 그 다음 초까지 돌린다 — 어긋남은 두 초에 걸쳐야만 드러난다.
@@ -1340,15 +1341,20 @@ suite('상대 스트립이 말하는 초 — 판정 자리 · 창 자리 (#252)'
   eq(blind.verdicts[1].foeOpen, true, '빈틈 초의 판정 view 는 그 초가 빈틈이었음을 싣는다');
   const opened = foeStripState(blind.verdicts[1], TEXTS_BLIND);
   eq(opened.state, FOE_STRIP.OPENED, '빈틈 초의 판정 자리는 「빈틈이었다」 상태다');
-  eq(opened.text, RESOLVED_TEXT, '판정 자리에는 판정 문면이 선다 — 감춤 문면이 아니다');
+  eq(opened.text, MISSED_TEXT, '흘린 갈래의 판정 자리는 기회를 놓쳤다고 말한다 — 「허를 찔렀다」가 아니다');
 
-  // 스트립은 상대의 상태를 말하는 자리라, 그 초를 잡았는지로 갈리는 판정 등급과 독립이다.
+  // 스트립은 중앙 판정과 같은 프레임에 서므로, 그 초를 잡았는지로 문면이 갈린다 (#255).
   eq(blind.verdicts[1].verdict.grade, 'struck', '빈틈 초를 흘린 갈래의 등급은 피격이다');
   const taken = runTwoExchanges(true, { fireSecond: true });
   eq(taken.verdicts[1].verdict.grade, 'crush', '빈틈 초에 아무 초식이나 완주하면 완파다');
   const takenStrip = foeStripState(taken.verdicts[1], TEXTS_BLIND);
   eq(takenStrip.state, FOE_STRIP.OPENED, '잡은 빈틈 초의 판정 자리도 「빈틈이었다」 상태다');
-  eq(takenStrip.text, RESOLVED_TEXT, '두 갈래가 같은 판정 문면을 쓴다');
+  eq(takenStrip.text, RESOLVED_TEXT, '잡은 갈래의 판정 문면은 종전 그대로다');
+  ok(opened.text !== takenStrip.text, `두 갈래가 서로 다른 판정 문면을 쓴다 — ${opened.text} / ${takenStrip.text}`);
+
+  // 흘림이 성립하지 않는 화면은 `missed` 를 넘기지 않는다 — 그 갈래를 빈 자리가 아니라 종전 문면으로 접는다.
+  eq(foeStripState(blind.verdicts[1], { open: null, resolved: RESOLVED_TEXT }).text, RESOLVED_TEXT,
+    'missed 를 넘기지 않은 화면의 흘린 갈래는 종전 판정 문면을 쓴다');
 
   // (c) 누설 핀 — 감춤 모드의 창 자리는 직전 초 완파 뒤에도 빈틈을 말하지 않는다 (#243 결정 2).
   const atWindow = foeStripState(blind.windows[1], TEXTS_BLIND);
@@ -1363,9 +1369,9 @@ suite('상대 스트립이 말하는 초 — 판정 자리 · 창 자리 (#252)'
 
   // 위 단정의 `open` 은 하네스가 만든 값이라, 누설을 실제로 막는 호출부의 조건을 함께 물지
   // 않으면 화면에서 그 조건을 지워도 전부 green 이다 — 화면 모듈은 DOM 을 만져 원문 대조가 유일한 수단이다.
-  for (const [name, resolvedText] of [
-    ['duel.mjs', '빈틈 — 상대의 허를 찔렀다'],
-    ['dispatch.mjs', '빈틈 — 제자가 상대의 허를 찔렀다'],
+  for (const [name, resolvedText, missedText] of [
+    ['duel.mjs', '빈틈 — 상대의 허를 찔렀다', MISSED_TEXT],
+    ['dispatch.mjs', '빈틈 — 제자가 상대의 허를 찔렀다', null],
   ]) {
     const src = readFileSync(new URL(`../src/ui/screens/${name}`, import.meta.url), 'utf8');
     const openLines = src.split('\n').filter((line) => /^\s*open:.*빈틈/.test(line));
@@ -1374,6 +1380,11 @@ suite('상대 스트립이 말하는 초 — 판정 자리 · 창 자리 (#252)'
       `${name} 은 창 빈틈 문면을 예고 모드에만 넘긴다 — ${openLines[0].trim()}`);
     ok(src.includes(`resolved: '${resolvedText}'`),
       `${name} 의 판정 자리 문면은 그 화면에 서는 사람을 주어로 쓴다 — ${resolvedText}`);
+    // 파견 제자는 매 초 반드시 완주해 흘림이 성립하지 않으므로, 그 화면에 `missed` 를 심으면 도달 불가 문면이 된다.
+    // 보유 여부와 값을 따로 무는 것이 계약이다 — 한 단정으로 접으면 다른 문면을 심어도 「미보유」로 읽힌다.
+    eq(/^\s*missed:/m.test(src), missedText !== null,
+      `${name} 의 흘림 문면 보유 여부는 그 화면에 미완주 갈래가 있는지를 따른다`);
+    if (missedText !== null) ok(src.includes(`missed: '${missedText}'`), `${name} 의 흘림 문면 — ${missedText}`);
   }
 });
 
