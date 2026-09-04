@@ -13,7 +13,7 @@ import {
   createDiscipleHand, createSeededRandom, nextDojoAction, nextDuelStage, runHeadlessCycle,
   runHeadlessMissions,
 } from '../src/bot.mjs';
-import { createMatch, createVirtualTimer, pumpToEnd } from '../src/ui/match.mjs';
+import { PHASE, createMatch, createVirtualTimer, pumpToEnd } from '../src/ui/match.mjs';
 import { createSequenceInput } from '../src/ui/sequence-input.mjs';
 import { CUE } from '../src/ui/audio.mjs';
 import { createFrameBudget } from '../src/ui/frame-budget.mjs';
@@ -45,7 +45,7 @@ import {
   artById, artStyles, assertAttrCoverage, assertChallengerStyles, assertCounterIntegrity,
   assertGugyeol, assertPrefixFree,
   canEquipRank, canLearn, canTransmit,
-  challengerById, createDisciple, createProgress, createRankState, discipleMinRank,
+  challengerById, createDisciple, createProgress, createRankState, discipleAccuracy, discipleMinRank,
   discipleStyleRank, discipleStyles, discipleTrainMsPerRank, discipleTrainSteps, finisherOf,
   finisherRevealTier, foePowerOf, foeRankOf, foeStyleById, initiativeOf, isEffectiveSuccess,
   isFirstEncounter,
@@ -1164,6 +1164,99 @@ suite('제자 자동 선택 (REQ-403·853)', () => {
   eq(told.byUser, true, '지시받은 초는 byUser 다');
   eq(told.reason, null, '판단하지 않은 초에는 이유가 없다 — 화면이 그것으로 문구를 가른다');
   eq(shots.length, 2, '두 초 모두 실제로 발동했다');
+});
+
+// ----------- 8-a. 확정 ↔ 발동 분리 (#243) — 창을 감춘 채 여는 구조의 수용 기준
+
+suite('확정 ↔ 발동 분리 — 감춘 창의 구조 (#243)', () => {
+  const challenger = challengerById('A-4');
+  const run = ({ fireAt = null, seed = 243, maxExchanges = 1 } = {}) => {
+    const timer = createVirtualTimer();
+    const seen = { telegraphedInWindow: [], phases: [], foes: [], settledAt: null };
+    let fired = false;
+    const match = createMatch({
+      challenger,
+      selfHpMax: BALANCE.hp.user,
+      rankOf: () => 5,
+      openLen: () => 5,
+      accessibility: () => false,
+      timer,
+      random: createSeededRandom(seed),
+      hooks: {
+        onExchange: (v) => { seen.phases.push(v.phase); seen.foes.push(v.foeStyle?.id ?? null); },
+        onTick: (v) => {
+          seen.telegraphedInWindow.push(v.telegraphed);
+          if (fireAt !== null && !fired && v.ratio <= fireAt) {
+            fired = true;
+            match.fire({ style: styleById('yuun-bo'), oneTap: false, r: v.ratio });
+            seen.firedAtMs = timer.now();
+          }
+        },
+        onVerdict: (v) => { seen.settledAt ??= timer.now(); seen.revealedAtVerdict = v.telegraphed; },
+      },
+    });
+    match.start();
+    while (match.view().exchange < maxExchanges) timer.tick();
+    match.stop();
+    return seen;
+  };
+
+  // 수용 기준 5 — 예고 페이즈가 사라져 초와 초 사이에 빈 정적 구간이 없다.
+  eq(BALANCE.blindExchange, true, '감춘 창이 기본값이다');
+  deepEq([...new Set(run().phases)], [PHASE.WINDOW], '초의 시작이 곧 창이다 — 예고 페이즈가 서지 않는다');
+
+  // 수용 기준 2 — 창이 열려 있는 동안 상대 초식이 화면 채널에 드러나지 않는다.
+  const hidden = run();
+  ok(hidden.telegraphedInWindow.length > 0, '창이 실제로 열려 프레임이 돌았다');
+  deepEq([...new Set(hidden.telegraphedInWindow)], [null], '창 동안 화면 채널의 상대 초식은 null 이다');
+  ok(hidden.revealedAtVerdict !== null, '판정과 같은 프레임에 상대가 드러난다');
+
+  // 수용 기준 1 — 확정은 판정을 일으키지 않고 창 만료까지 기다린다.
+  const held = run({ fireAt: 0.9 });
+  ok(held.firedAtMs !== undefined, '창 안에서 확정이 걸렸다');
+  ok(held.settledAt - held.firedAtMs >= BALANCE.windowBaseMs * 0.8,
+    `확정 뒤에도 창이 남는다 — 확정 ${held.firedAtMs}ms · 판정 ${held.settledAt}ms`);
+
+  // 수용 기준 4 — 상대 초식은 매 초 추첨이라 같은 초 번호가 시드마다 갈린다.
+  const drawn = [243, 244, 245, 246, 247, 248].map((seed) => run({ seed, maxExchanges: 3 }).foes.join('-'));
+  ok(new Set(drawn).size > 1, `같은 도전자·같은 초 번호가 재현되지 않는다 — ${JSON.stringify(drawn)}`);
+});
+
+// ----------- 8-b. 제자 정답률은 성에 비례한다 (#243 결정 8)
+
+suite('제자 정답률은 성에 비례한다 (#243 결정 8)', () => {
+  eq(discipleAccuracy(BALANCE.discipleStartRank), BALANCE.discipleAccuracy.atStartRank, '시작 성은 곡선의 아래 끝');
+  eq(discipleAccuracy(BALANCE.discipleRankMax), BALANCE.discipleAccuracy.atMaxRank, '상한 성은 곡선의 위 끝');
+  // 성이 없는 손은 제자가 아니라 상계 모델이라 읽기 실패를 모델하지 않는다.
+  eq(discipleAccuracy(null), 1, '성이 없는 손은 읽기에 실패하지 않는다');
+  const curve = [1, 4, 7, 10].map(discipleAccuracy);
+  ok(curve.every((v, i) => i === 0 || v > curve[i - 1]), `곡선이 성에 단조 증가한다 — ${JSON.stringify(curve)}`);
+
+  // 표본 핀 — 곡선이 아니라 **실제로 낸 초식의 판정**이 성을 따라 오르는지 본다. 시드를 고정하지
+  // 않으면 이 단정이 판마다 다른 답을 내므로 난수가 주입이다.
+  const styles = artStyles(ART_ID);
+  const foes = challengerById('A-4').styles.map(foeStyleById);
+  const lossRate = (rank) => {
+    const random = createSeededRandom(153);
+    const rounds = 2000;
+    let losses = 0;
+    for (let i = 0; i < rounds; i += 1) {
+      const foeStyle = foes[Math.floor(random() * foes.length)];
+      const { style } = selectDiscipleStyle({
+        styles, foeStyle, accuracy: discipleAccuracy(rank), random, rankOf: () => rank,
+      });
+      const { grade } = judge({ selfStyle: style, foeStyle, selfRank: rank, foeRank: foeRankOf('A-4') });
+      if (!isEffectiveSuccess(grade)) losses += 1;
+    }
+    return losses / rounds;
+  };
+  const rates = [1, 4, 7, 10].map(lossRate);
+  ok(rates.every((v, i) => i === 0 || v < rates[i - 1]),
+    `지는 초의 비율이 성을 따라 준다 — ${JSON.stringify(rates.map((v) => Number(v.toFixed(3))))}`);
+  // 읽어낸 초에는 무공이 세 속성을 덮으므로 우세나 상쇄가 반드시 있다 — 상한 성의 하한은 0 이다.
+  ok(rates.at(-1) < 0.05, `성 10 은 대부분 이긴다 — ${rates.at(-1).toFixed(3)}`);
+  // 인위적 승리 보정을 넣지 않는다는 것이 이 하한의 뜻이다 — 성 1 은 감으로 낸 것과 같아야 한다.
+  ok(rates[0] > 0.15, `성 1 은 자주 진다 — ${rates[0].toFixed(3)}`);
 });
 
 // ----------------------- 9. 케이스 8 — B 밸런스 게이트 시뮬 (REQ-402·403·506)

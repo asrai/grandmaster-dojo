@@ -621,7 +621,7 @@ export function discipleAccuracy(rank) {
  * @param {boolean} [p.foeOpen] 상대 빈틈인가 — `foeStyle` 이 null 인 것만으로는 갈리지 않는다:
  *   감춘 초도 null 이지만 그쪽은 어떤 완주든 완파라는 보장이 없다 (#243)
  * @param {(style: object) => number} [p.rankOf]
- * @param {number} [p.accuracy]  상대의 수를 읽어낼 확률 — 1 이면 종전과 같은 결정적 선택이다
+ * @param {number} [p.accuracy]  상대의 수를 읽어낼 확률 — 1 이면 반드시 읽어 선택이 결정적이다
  * @param {() => number} [p.random] 난수 주입 — 하네스가 시드로 고정해야 판정 단정이 결정적이다
  * @returns {?{style: object, reason: string}} 보유 초식이 없으면 null
  */

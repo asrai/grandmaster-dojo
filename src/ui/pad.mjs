@@ -181,9 +181,7 @@ export function createPad() {
      */
     bot: {
       own(on) { botOwned = on; render(); },
-      peek: () => (accepting()
-        ? { input: active.input, foeStyle: active.foeStyle?.() ?? null, foeOpen: active.foeOpen?.() ?? false }
-        : null),
+      peek: () => (accepting() ? { input: active.input, foe: active.foe?.() ?? null } : null),
       press(dir, device) { fromBot = true; try { press(dir, device); } finally { fromBot = false; } },
       reset() { fromBot = true; try { reset(); } finally { fromBot = false; } },
     },

@@ -144,10 +144,13 @@ export function startDuel(ctx) {
     rankOf: (style) => rankOfStyle(session, style.id),
     // 확정한 뒤에도 창이 남아 있으므로 페이즈만으로는 손을 닫지 못한다 (#243 결정 1).
     accepting: () => match.phase === PHASE.WINDOW && !match.locked,
-    // 봇이 화면과 같은 근거로 고르도록 **공개된** 상대만 건넨다 — 감춰진 초는 봇도 모른다 (REQ-605).
-    foeStyle: () => match.view().telegraphed,
-    // 빈틈은 감춰진 초와 달리 어떤 완주든 완파라, 봇이 둘을 같은 null 로 접으면 완파를 버린다 (#243).
-    foeOpen: () => match.view().foeOpen,
+    // 봇이 화면과 같은 근거로 고르도록 **공개된** 상대만 건넨다 — 감춘 초는 봇도 모르고, 그
+    // 대신 도전자의 초식 목록이 판단의 재료다 (REQ-605 · REQ-894).
+    foe: () => ({
+      style: match.view().telegraphed,
+      open: match.view().foeOpen,
+      pool: challenger.styles,
+    }),
     onFire: (fired) => { play(CUE.FIRE); match.fire(fired); },
   });
   match.start();
