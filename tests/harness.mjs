@@ -1152,12 +1152,19 @@ suite('제자 자동 선택 (REQ-403·853)', () => {
   handSession.disciple = transmit(masteredProgress, createDisciple(), ART_ID);
   const handStyles = discipleStyles(handSession.disciple, ART_ID);
   const shots = [];
-  const hand = createDiscipleHand({ session: handSession, styles: handStyles, fire: (f) => shots.push(f) });
-  const atFire = { ratio: 1 - BALANCE.discipleFireRatio - 0.01, telegraphed: foeStyleById('alpha') };
+  const hand = createDiscipleHand({
+    session: handSession, styles: handStyles, fire: (f) => shots.push(f),
+    // 읽기 성패는 성이 가르는 확률이라, 이 단정이 보려는 판단 갈래를 밟으려면 읽기를 고정해야 한다.
+    accuracy: () => 1, random: createSeededRandom(243),
+  });
+  // 손이 읽는 것은 화면 채널이 아니라 실제 상대다 — `telegraphed` 를 물리면 감춘 초로 접혀
+  // 이 단정이 읽기 갈래를 영영 못 밟고, 주입 없는 `Math.random` 이 하네스 안으로 들어온다 (#243).
+  const atFire = { ratio: 1 - BALANCE.discipleFireRatio - 0.01, foeStyle: foeStyleById('alpha'), foeOpen: false };
   hand.arm();
   const auto = hand.tick(atFire);
   eq(auto.byUser, false, '지시가 없으면 제자가 판단한다');
-  ok(Object.values(SELECT_REASON).includes(auto.reason), '자동 선택에는 이유 계열이 실린다');
+  eq(auto.reason, SELECT_REASON.ADVANTAGE, '상대를 읽어낸 초에는 판단 계열이 실린다');
+  eq(auto.style.id, 'yuun-bo', 'α(강) 을 읽어냈으므로 쾌로 우세를 골랐다');
   hand.arm();
   const told = hand.tick(atFire, styleById('haeng-un'));
   eq(told.style.id, 'haeng-un', '지시는 그 초의 선택을 대체한다');
@@ -2549,9 +2556,11 @@ suite('계측 배선 공유 (#11)', () => {
   eq(session.log.entries.length, before + 1, '대련 배선의 onTimeout 이 항목을 하나 남긴다');
   eq(session.log.entries.at(-1).event, 'timeout', '그 항목이 창 초과 기록이다');
 
+  // 기대값을 같은 호출로 계산하면 동어반복이라, 수련이 실전 토글을 상속해도 red 가 되지 않는다.
+  const tele = BALANCE.telegraphMode;
   const armed = trainWiring(session, { styleId: style.id, input }).onArm();
-  eq(armed, responseWindowMs(style.seq.length, { accessibility: session.accessibility }),
-    '수련 배선의 onArm 이 그 시도의 창 길이를 돌려준다');
+  eq(armed, tele.windowBaseMs + tele.windowStepMs * (style.seq.length - tele.windowBaseLen),
+    '수련 배선의 onArm 이 자기 초식 길이에 비례한 창을 돌려준다 — 감출 상대가 없어 길이가 그대로 창이다');
 
   // 화면·헤드리스가 같은 이름으로 자기 hook 을 얹어도 계측이 덮이지 않는다 — 배선 1벌의 강제 지점.
   const calls = [];

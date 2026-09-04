@@ -242,6 +242,13 @@ if (preroll >= BALANCE.resolveMs) {
   throw new Error(`판정 앞 대기 ${preroll}ms 가 판정 재생 ${BALANCE.resolveMs}ms 를 남기지 않는다`);
 }
 
+// 감춘 상대가 드러나는 자리가 판정 프레임이라, 공개 카드의 진입이 그 구간을 넘으면 보상 순간이
+// 도착 중인 상태로만 보인다 — 두 원장이 만나는 두 번째 결합이라 같은 자리에서 문다 (#243).
+const reveal = ledgerMs('--tele-reveal');
+if (reveal > BALANCE.resolveMs) {
+  throw new Error(`상대 공개 진입 ${reveal}ms 가 판정 재생 ${BALANCE.resolveMs}ms 를 넘는다`);
+}
+
 /** 로그 내보내기 (REQ-602) — 위반 목록을 함께 실어, 결손 로그가 조용히 판독에 쓰이지 않게 한다. */
 function exportLog() {
   // 체류·프레임 예산은 둘 다 이탈에서 찍히므로, 그대로 내보내면 지금 보고 있는 화면이 통째로 빠진다.

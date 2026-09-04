@@ -50,6 +50,8 @@ export function createPad() {
 
   /** 응수 창 밖에서는 패드가 자리를 지키되 입력을 받지 않는다 — 사라지면 엄지가 초마다 자리를 잃는다. */
   const accepting = () => Boolean(active) && (active.accepting ? active.accepting() : true);
+  /** 확정을 걸어 손을 닫은 것 — 창 밖과 같은 흐림을 쓰면 내가 무엇을 냈는지가 함께 죽는다 (#243). */
+  const committed = () => Boolean(active) && Boolean(active.committed?.());
   /** 봇이 도는 동안 사람 손이 섞이면 그 표본이 누구의 것인지 로그로 가를 수 없다 (REQ-603). */
   const locked = () => botOwned && !fromBot;
 
@@ -131,7 +133,8 @@ export function createPad() {
     if (!active) return;
     const { input } = active;
     const top = input.top();
-    root.classList.toggle('idle', !accepting());
+    root.classList.toggle('idle', !accepting() && !committed());
+    root.classList.toggle('locked', committed());
     root.classList.toggle('bot', botOwned);
     // 구조가 그대로면 노드를 건드리지 않는다 — 재생성은 클릭 타깃과 스크롤 위치까지 매 프레임 날린다.
     // 성은 대련 도중에도 오르므로(REQ-721) 후보 목록과 함께 지문에 든다 — 빠지면 배지가 굳는다.
@@ -207,7 +210,7 @@ export function createPad() {
       aside = null;
       structureSig = null;
       arrowsFor = null;
-      root.classList.remove('idle');
+      root.classList.remove('idle', 'locked');
       tablets.clear();
       clear(seqEl);
       colorEl.className = 'pad-color none';

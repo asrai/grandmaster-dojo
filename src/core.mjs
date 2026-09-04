@@ -635,7 +635,8 @@ export function selectDiscipleStyle({
   if (!styles.length) return null;
   // 읽기에 실패한 초는 상대를 모르고 낸 것이라 우세·상쇄로 부를 근거가 없다 (#243 결정 8).
   if (accuracy < 1 && random() >= accuracy) {
-    return { style: styles[Math.floor(random() * styles.length)], reason: SELECT_REASON.GUESS };
+    // 주입 난수의 상계를 접는 것은 같은 파일 `pickMissionFoe` 와 같은 계약이다.
+    return { style: styles[Math.min(styles.length - 1, Math.floor(random() * styles.length))], reason: SELECT_REASON.GUESS };
   }
   // 역파는 절초가 실제로 예고된 초에만 성립하므로, 다른 초의 배제는 이득 없이 완파만 버린다.
   const avoidId = foeStyle && foeStyle.finisher ? foeStyle.counters : null;

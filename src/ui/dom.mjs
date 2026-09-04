@@ -32,7 +32,7 @@ export function clear(node) {
  * 전에 터뜨리므로, 새 토큰을 읽는 코드는 여기에 이름을 더해야 한다 (#132).
  */
 export const LEDGER_MS = Object.freeze(
-  ['--juice-hitstop', '--only-hold', '--slip-exit', '--tm-cycle-ms', '--tm-echo-delay'],
+  ['--juice-hitstop', '--only-hold', '--slip-exit', '--tele-reveal', '--tm-cycle-ms', '--tm-echo-delay'],
 );
 
 /** 원장의 연출 시간 하나 — 못 읽은 값이 0 으로 접히면 연출이 에러 없이 사라지므로 형식부터 문다. */

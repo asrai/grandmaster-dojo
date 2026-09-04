@@ -144,6 +144,8 @@ export function startDuel(ctx) {
     rankOf: (style) => rankOfStyle(session, style.id),
     // 확정한 뒤에도 창이 남아 있으므로 페이즈만으로는 손을 닫지 못한다 (#243 결정 1).
     accepting: () => match.phase === PHASE.WINDOW && !match.locked,
+    // 확정 구간은 창 밖이 아니라 「낸 것을 무르지 못한다」이므로 화면이 그것을 갈라 말한다 (#243 결정 1).
+    committed: () => match.locked,
     // 봇이 화면과 같은 근거로 고르도록 **공개된** 상대만 건넨다 — 감춘 초는 봇도 모르고, 그
     // 대신 도전자의 초식 목록이 판단의 재료다 (REQ-605 · REQ-894).
     foe: () => ({

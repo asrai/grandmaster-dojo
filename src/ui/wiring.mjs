@@ -40,7 +40,8 @@ export function trainWiring(session, { styleId, input }) {
     /** 창 길이는 열 때마다 다시 잰다 — 무대 밖에서 바꾼 접근성 설정이 다음 시도부터 반영된다. */
     onArm() {
       input.arm();
-      return responseWindowMs(style.seq.length, { accessibility: session.accessibility });
+      // 수련에는 감출 상대가 없어 길이 무관의 근거가 없다 — 실전 토글을 상속하지 않는다 (#243).
+      return responseWindowMs(style.seq.length, { accessibility: session.accessibility, blind: false });
     },
     onFire: () => recordEffectiveSuccess(session, style.id, 'train'),
   };
@@ -93,6 +94,7 @@ export function duelWiring(session, { input }) {
     // 초가 바뀔 때 직전 초의 버퍼·후보가 남으면 이미 낸 초식이 아직 걸린 것처럼 읽힌다.
     onExchange: () => input.arm(equippedStyles(session)),
     // 대련 중 자동 장착된 초식이 그 창부터 후보에 든다 — 슬롯 로그와 화면이 갈리지 않는다.
+    // 감추는 초에는 두 시점이 겹쳐 같은 초에 두 번 불리지만, 무장은 멱등이라 결과가 같다.
     onWindow: () => input.arm(equippedStyles(session)),
     onTimeout: () => logTimeout(session, input),
     onVerdict: (view) => recordDuelVerdict(session, view),

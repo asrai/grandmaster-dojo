@@ -189,8 +189,9 @@ export function startDispatch(ctx) {
   /**
    * 지시받은 초에는 제자가 판단하지 않았으므로 이유가 없다 — 그 사실을 문구로 갈라 적는다.
    * 이유 문구의 표는 원장(`theme.mjs`)이 지고 계열 누락은 부팅 단정이 문다 (REQ-853).
-   * @param {boolean} reasoned 이유를 함께 적을 것인가 — 「우세를 골랐다」와 낸 초식의 속성은
-   *   합치면 감춘 상대의 속성이 되므로, 창 안에서는 고른 사실까지만 말한다 (#243 결정 2)
+   * @param {boolean} reasoned 이유를 함께 적을 것인가 — 「우세를 골랐다」는 상대를 지목하는
+   *   문장이라 공개 뒤로 미룬다. 고른 초식 자체는 관전의 콘텐츠라 남기고, 그것으로 상대 속성을
+   *   역산할 수 있는 것은 확정 뒤라 지시가 이미 닫힌 구간이다 (#243 결정 2 · REQ-852)
    */
   function showJudgement(judged, reasoned) {
     const text = reasoned

@@ -135,7 +135,7 @@ export function createMatch({
   }
 
   function enterWindow() {
-    // 상대 초식을 모르는 초는 어떤 길이가 올지 모르므로 가장 긴 시퀀스 기준으로 연다.
+    // 상대가 초식을 내지 않는 초의 기준 길이 — 예고 모드에서만 창에 실린다 (#243).
     const len = s.foeStyle ? s.foeStyle.len : openLen();
     s.windowMs = responseWindowMs(len, { selfOpen: s.selfOpen, accessibility: accessibility(), blind });
     s.phase = PHASE.WINDOW;
