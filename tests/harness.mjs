@@ -2592,6 +2592,8 @@ suite('계측 배선 공유 (#11)', () => {
   // 수련 창 == 실전 창 (#247) — 실전 쪽 기대값을 같은 산식으로 재계산하면 두 호출부가 함께
   // 틀려도 green 이라, 실물 `createMatch` 가 그 초에 실제로 연 창을 대조 상대로 쓴다.
   const styleIdByLen = new Map(STYLES.map((s) => [s.seq.length, s.id]));
+  // 대조 상대가 상대 초식 길이라, 그 길이를 낼 사부 초식이 없으면 대조 자체가 성립하지 않는다.
+  ok(FOE_STYLES.every((f) => styleIdByLen.has(f.len)), '상대 초식 길이가 전부 수련 가능한 길이다');
   const trainWindow = (len, blind) =>
     trainWiring(session, { styleId: styleIdByLen.get(len), input, blind }).onArm();
   // 상대가 초식을 내지 않는 초의 기준 길이 — 한 자리에서만 정해야 대조 쌍이 갈리지 않는다.
@@ -2602,7 +2604,8 @@ suite('계측 배선 공유 (#11)', () => {
     const seen = [];
     const match = createMatch({
       challenger: challengerById('A-4'),
-      selfHpMax: BALANCE.hp.user,
+      // 이 대조는 창 길이만 읽으므로 판이 끝나지만 않으면 된다 — 원장 HP 에 묶으면 밸런스 튜닝이 대조를 죽인다.
+      selfHpMax: 100000,
       rankOf: () => 5,
       openLen: () => OPEN_LEN,
       accessibility: () => false,
@@ -2632,22 +2635,24 @@ suite('계측 배선 공유 (#11)', () => {
     return seen;
   };
 
-  // 수용 기준 1 — 감춘 갈래에서는 길이가 창에 들어갈 자리가 없고, 그 값이 실전과 같다.
+  // 감춘 갈래에서는 길이가 창에 들어갈 자리가 없고, 그 값이 실전과 같다 (REQ-715).
   deepEq([3, 4, 5].map((len) => trainWindow(len)),
     [3, 4, 5].map(() => BALANCE.windowBaseMs), '수련 창은 초식 길이와 무관한 고정값이다');
   for (const [len, ms] of pairsOf()) eq(trainWindow(len), ms, `길이 ${len} 의 수련 창이 실전 창과 같다`);
 
-  // 수용 기준 2·4 — 토글을 되돌리면 수련도 함께 길이 비례로 돌아간다. 한쪽만 바꾸면 여기가 red 다.
+  // 토글을 되돌리면 수련도 함께 길이 비례로 돌아간다 — 한쪽만 바꾸면 여기가 red 다 (#247).
   deepEq([3, 4, 5].map((len) => trainWindow(len, false)), [2600, 3100, 3600],
     '예고 갈래에서 수련 창이 가변 창으로 동반 복원된다');
   for (const [len, ms] of pairsOf(false)) {
     eq(trainWindow(len, false), ms, `예고 갈래에서도 길이 ${len} 의 두 창이 같다`);
   }
 
-  // 수용 기준 3 — 완화는 길이 축이 아니라 난이도 축(접근성 배율)에 걸린다.
+  // 완화는 길이 축이 아니라 난이도 축(접근성 배율)에 걸린다. 감춘 갈래는 원장에서 끌고 예고 갈래만
+  // 리터럴인 것은, 후자가 복원값을 못 박는 자리이기 때문이다 (`telegraphMode` 시드 핀과 같은 용법).
   session.accessibility = true;
-  deepEq([trainWindow(5), trainWindow(5, false)], [3900, 4680],
-    '접근성 배율이 두 갈래 모두에 곱해진다 — 3000·3600 각각의 ×1.3');
+  deepEq([trainWindow(5), trainWindow(5, false)],
+    [Math.round(BALANCE.windowBaseMs * BALANCE.accessibilityWindowMult), 4680],
+    '접근성 배율이 두 갈래 모두에 곱해진다');
   session.accessibility = false;
 
   // 화면·헤드리스가 같은 이름으로 자기 hook 을 얹어도 계측이 덮이지 않는다 — 배선 1벌의 강제 지점.
