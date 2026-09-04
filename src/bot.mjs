@@ -6,8 +6,8 @@
 
 import { BALANCE, STYLES } from './balance.mjs';
 import {
-  canEquipRank, canLearn, discipleStyleRank, discipleStyles, discipleTrainMsPerRank,
-  selectDiscipleStyle, styleById,
+  canEquipRank, canLearn, discipleAccuracy, discipleMinRank, discipleStyleRank, discipleStyles,
+  discipleTrainMsPerRank, selectDiscipleStyle, styleById,
 } from './core.mjs';
 import { createMatch, createVirtualTimer, pumpToEnd } from './ui/match.mjs';
 import { createSequenceInput } from './ui/sequence-input.mjs';
@@ -23,6 +23,8 @@ import {
 } from './ui/wiring.mjs';
 
 const DIRS = ['U', 'D', 'L', 'R'];
+/** 상대가 아예 없는 창 (수련) — 빈틈도 감춤도 아니라 완파가 성립할 자리 자체가 없다. */
+const NO_FOE = { style: null, open: false, pool: [] };
 const between = (random, [min, max]) => min + random() * (max - min);
 
 /** 재현 가능한 난수 (LCG) — 봇 회귀가 시드마다 같은 사이클을 다시 그리게 한다. */
@@ -49,8 +51,16 @@ export function createPace(random = Math.random, seed = BALANCE.bot) {
  * 이 창에 낼 초식 — 화면이 상시 병기하는 「이기는 색」을 그대로 따르는 선택이다 (REQ-206).
  * 사람의 손을 흉내내는 자리라 선택 이유는 버린다 — 그것을 읽는 것은 관전 화면뿐이다 (REQ-852).
  */
-const chooseStyle = (input, foeStyle, rankOf) =>
-  selectDiscipleStyle({ styles: input.candidates, foeStyle, rankOf })?.style ?? null;
+const chooseStyle = (input, foe, rankOf) =>
+  selectDiscipleStyle({ styles: input.candidates, foeStyle: foe.style, foeOpen: foe.open, rankOf })?.style ?? null;
+
+/**
+ * 그 초에 이 초식으로 완파가 성립할 수 있는가 — 세 국면이 갈린다: 빈틈은 어떤 완주든 완파,
+ * 공개된 상대는 파해 1:1, 감춘 상대는 그 도전자의 초식 목록 안에 파해 대상이 있으면 가능성이다.
+ * 감춘 초를 「모르니 못 민다」로 접으면 계단이 운에만 맡겨져 사이클이 멈춘다 (#243).
+ */
+const canCrush = (style, foe) => (foe.open
+  || (foe.style ? style.counters === foe.style.id : foe.pool.includes(style.counters)));
 
 /**
  * 키우는 손의 우선순위 — 「이기는 색」이 같은 후보가 둘이면 **덜 여문** 초식을 낸다. 적립은 실제로
@@ -72,10 +82,10 @@ const atLadderStep = (rank) =>
  * 초식 하나가 매 창을 독점해 나머지 초식의 적립이 굶는다.
  */
 export function preferLadderPush(session) {
-  return (input, foeStyle) => {
+  return (input, foe) => {
     const pushable = input.candidates
       .map((style) => ({ style, rank: rankOfStyle(session, style.id) }))
-      .filter(({ style, rank }) => atLadderStep(rank) && (!foeStyle || style.counters === foeStyle.id))
+      .filter(({ style, rank }) => atLadderStep(rank) && canCrush(style, foe))
       .sort((a, b) => a.rank - b.rank);
     return pushable[0]?.style ?? null;
   };
@@ -95,7 +105,7 @@ function strayDir(input, random) {
  * @param {() => number} p.now
  * @param {(dir: string) => void} p.press 사람 입력과 같은 경로
  * @param {() => void} p.reset
- * @param {(input: object, foeStyle: ?object) => ?object} [p.prefer] 그 창에서 강제할 초식
+ * @param {(input: object, foe: object) => ?object} [p.prefer] 그 창에서 강제할 초식
  *   (없으면 「이기는 색」 선택) — 제자 손처럼 계단을 밀 이유가 없는 호출부는 주지 않는다
  * @param {(style: object) => number} [p.rankOf] 동률 후보 사이의 우선순위 (큰 값이 먼저)
  *
@@ -111,9 +121,14 @@ export function createHand({
   let strayed = false;
 
   return {
-    /** 창이 열릴 때 한 번 — 낼 초식과 이번에 놓칠 키를 그 자리에서 정한다. */
-    arm(input, foeStyle) {
-      const style = prefer(input, foeStyle) ?? chooseStyle(input, foeStyle, rankOf);
+    /**
+     * 창이 열릴 때 한 번 — 낼 초식과 이번에 놓칠 키를 그 자리에서 정한다.
+     * @param {?{style: ?object, open: boolean, pool: string[]}} [foe] 그 초의 상대 —
+     *   `style` 은 **공개된** 것만이라 감춘 초에는 null 이고, 그때 판단의 재료가 `pool` 이다.
+     */
+    arm(input, foe = null) {
+      const facing = foe ?? NO_FOE;
+      const style = prefer(input, facing) ?? chooseStyle(input, facing, rankOf);
       keys = [];
       at = 0;
       strayed = false;
@@ -155,8 +170,13 @@ export function createHand({
 /**
  * 제자의 손 (REQ-402~404) — 파견 화면과 헤드리스 사이클이 같은 자동 선택·같은 실행 시점을 쓴다.
  * @param {(fired: object) => void} p.fire
+ * @param {() => number} [p.random] 읽기 성패의 난수 주입 — 하네스는 시드로 고정한다 (#243 결정 8)
+ * @param {() => number} [p.accuracy] 그 초에 상대를 읽어낼 확률 — 기본값은 제자 성이 정한다
  */
-export function createDiscipleHand({ session, styles, fire }) {
+export function createDiscipleHand({
+  session, styles, fire, random = Math.random,
+  accuracy = () => discipleAccuracy(discipleMinRank(session.disciple, ART_ID)),
+}) {
   let done = false;
   return {
     arm() { done = false; },
@@ -168,10 +188,14 @@ export function createDiscipleHand({ session, styles, fire }) {
     tick(view, instructed = null) {
       if (done || view.ratio > 1 - BALANCE.discipleFireRatio) return null;
       done = true;
+      // 화면이 아니라 상대를 읽는 자리라 공개 여부와 무관한 값을 본다 — 읽기 성패는 성이 가른다 (#243).
       const judged = instructed ? null : selectDiscipleStyle({
         styles,
-        foeStyle: view.telegraphed,
+        foeStyle: view.foeStyle,
+        foeOpen: view.foeOpen,
         rankOf: (s) => discipleStyleRank(session.disciple, ART_ID, s.id),
+        accuracy: accuracy(),
+        random,
       });
       const style = instructed ?? judged?.style ?? null;
       if (!style) throw new Error('제자가 낼 초식이 없다 — 전수된 무공이 비었다');
@@ -271,7 +295,7 @@ function createCycleDoneProbe(session, from = 0) {
  * @param {object} p
  * @param {object} p.session
  * @param {{phase: Function, params: Function, go: Function, refresh: Function}} p.screen
- * @param {() => (?{input: object, foeStyle: ?object})} p.peek 지금 두드릴 수 있는 창 (없으면 null)
+ * @param {() => (?{input: object, foe: object})} p.peek 지금 두드릴 수 있는 창 (없으면 null)
  * @param {(dir: string) => void} p.press
  * @param {() => void} p.reset
  * @param {{now: Function, schedule: Function, cancel: Function}} p.clock
@@ -345,7 +369,7 @@ export function createBot({
     if (window) {
       if (!inWindow) {
         inWindow = true;
-        hand.arm(window.input, window.foeStyle);
+        hand.arm(window.input, window.foe);
       }
       hand.tick(window.input);
       return;
@@ -470,8 +494,11 @@ function headlessDuel({ session, stage, pace, timer, random }) {
     openLen: () => Math.max(...equippedStyles(session).map((s) => s.seq.length)),
     accessibility: () => session.accessibility,
     timer,
+    random,
     hooks: composeHooks(duelWiring(session, { input }), {
-      onWindow(view) { hand.arm(input, view.telegraphed); },
+      onWindow(view) {
+        hand.arm(input, { style: view.telegraphed, open: view.foeOpen, pool: challenger.styles });
+      },
       onTick() { hand.tick(input); },
       onEnd(view) { ended = view; },
     }),
@@ -487,7 +514,7 @@ function headlessDispatch({ session, timer, random = Math.random }) {
   let ended = null;
   let match = null;
 
-  const disciple = createDiscipleHand({ session, styles, fire: (fired) => match.fire(fired) });
+  const disciple = createDiscipleHand({ session, styles, random, fire: (fired) => match.fire(fired) });
   match = createMatch({
     challenger: mission.challenger,
     foeRank: mission.foeRank,
@@ -496,6 +523,7 @@ function headlessDispatch({ session, timer, random = Math.random }) {
     openLen: () => Math.max(...styles.map((s) => s.seq.length)),
     accessibility: () => session.accessibility,
     timer,
+    random,
     // 파견 무지시 — 배선에 지시 콜백을 주지 않는 것이 REQ-605 의 관전 조건이다.
     hooks: composeHooks(dispatchWiring(session, { disciple }), {
       onEnd(view) {

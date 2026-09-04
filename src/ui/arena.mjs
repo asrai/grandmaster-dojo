@@ -44,13 +44,15 @@ const SCENERY = `
 </svg>`;
 
 /**
- * 상대 예고 (REQ-822) — 아레나 최상단 가로 스트립이다. 중앙은 판정 오버레이의 자리라 예고가
+ * 상대 초식 스트립 (REQ-822) — 아레나 최상단 가로 스트립이다. 중앙은 판정 오버레이의 자리라
  * 점유하지 않고, 「이기는 색」이 그 옆에 붙어 판단이 한 눈에 닫힌다 (REQ-206).
  * @param {string} openText 빈틈 문면 — 그 자리에 서는 사람이 누구냐로 갈리는 유일한 축이다
  */
-function telegraphView(view, openText) {
+function foeView(view, openText) {
   if (view.foeOpen) return el('div', { class: 'tele open', text: openText });
   const foe = view.telegraphed;
+  // 자리를 비우면 공개 순간에 조판이 튀고, 감췄다는 사실 자체가 화면에서 사라진다 (#243 결정 2).
+  if (!foe) return el('div', { class: 'tele veiled', text: '상대가 수를 감췄다' });
   const win = winAttrOf(foe.attr);
   return el('div', { class: 'tele', style: `--attr:${attrTone(foe.attr)}` }, [
     el('div', { class: 'tele-attr' }, [
@@ -99,10 +101,10 @@ function wear({ glow }, pose) {
  * @param {?{id: string, pose: string}} [p.watcher] 아레나 **밖** 앞 구석에서 지켜보는 사람
  *   (REQ-854) — 서는 사람이 아니라 관객이라 역광 없이 앞에서 잘린다.
  * @param {?{far: string, near: string}} [p.bout] 이 무대에서 실전이 벌어지면 그 세간(기력 2 ·
- *   예고 슬롯 · 응수 창)이 같은 좌표로 함께 선다 (REQ-850·822·823). 값은 기력 두 줄의 라벨이다.
+ *   상대 슬롯 · 응수 창)이 같은 좌표로 함께 선다 (REQ-850·822·823). 값은 기력 두 줄의 라벨이다.
  *   주지 않은 화면에는 `setVital`·`teleSlot`·`setWindow` 자체가 없다.
  * @returns {{node: HTMLElement, setFigure: Function, setVital?: Function,
- *   showTelegraph?: Function, setWindow?: (ratio: number) => void}}
+ *   showFoe?: Function, setWindow?: (ratio: number) => void}}
  */
 export function createArena({ height = null, figures = [], watcher = null, bout = null } = {}) {
   const scenery = el('div', { class: 'scenery', 'aria-hidden': 'true' });
@@ -156,9 +158,9 @@ export function createArena({ height = null, figures = [], watcher = null, bout 
     if (!bar) throw new Error(`기력이 없는 자리: ${spot}`);
     bar.set(hp, max);
   };
-  /** @param {string} openText 빈틈 문면 — 그 초의 예고를 스트립에 갈아 끼운다 (REQ-822). */
-  api.showTelegraph = (view, openText) => {
-    clear(teleSlot).appendChild(telegraphView(view, openText));
+  /** @param {string} openText 빈틈 문면 — 그 초의 상대를 스트립에 갈아 끼운다 (REQ-822). */
+  api.showFoe = (view, openText) => {
+    clear(teleSlot).appendChild(foeView(view, openText));
   };
   /** 시간 압박은 아레나에 속한 정보라 실루엣을 보는 동안 주변시로 읽힌다 — 숫자 초는 없다 (REQ-823). */
   api.setWindow = (ratio) => { windowFill.style.width = `${Math.max(0, Math.min(1, ratio)) * 100}%`; };

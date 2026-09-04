@@ -175,6 +175,7 @@ export function startDispatch(ctx) {
 
   let instructed = null;
   let fired = false;
+  let judged = null;
   let shown = null;
   let prevText = '';
   const disciple = createDiscipleHand({ session, styles, fire: (shot) => match.fire(shot) });
@@ -188,9 +189,14 @@ export function startDispatch(ctx) {
   /**
    * 지시받은 초에는 제자가 판단하지 않았으므로 이유가 없다 — 그 사실을 문구로 갈라 적는다.
    * 이유 문구의 표는 원장(`theme.mjs`)이 지고 계열 누락은 부팅 단정이 문다 (REQ-853).
+   * @param {boolean} reasoned 이유를 함께 적을 것인가 — 「우세를 골랐다」는 상대를 지목하는
+   *   문장이라 공개 뒤로 미룬다. 고른 초식 자체는 관전의 콘텐츠라 남기고, 그것으로 상대 속성을
+   *   역산할 수 있는 것은 확정 뒤라 지시가 이미 닫힌 구간이다 (#243 결정 2 · REQ-852)
    */
-  function showJudgement(judged) {
-    const text = judged.byUser ? '지시를 따랐다' : REASON_VIEW[judged.reason];
+  function showJudgement(judged, reasoned) {
+    const text = reasoned
+      ? (judged.byUser ? '지시를 따랐다' : REASON_VIEW[judged.reason])
+      : (judged.byUser ? '지시를 따랐다' : '골랐다');
     clear(judgeNow).append(
       el('span', { text: `${text} — ` }),
       el('b', { text: judged.style.name }),
@@ -198,12 +204,14 @@ export function startDispatch(ctx) {
     );
     // 관전의 콘텐츠가 판단 그 자체라, 시각 층에만 두면 비시각 사용자에게는 관전이 통째로 빈다.
     verdict.announce(`${text} — ${judged.style.name}`);
+    if (!reasoned) return;
     judgePrev.textContent = prevText ? `지난 초 · ${prevText}` : '';
     prevText = text;
   }
 
   function renderTablets(view) {
-    // 그 초 예고의 파해를 제자가 보유하면 그 죽간만 금색으로 맥동해 지시를 유도한다 (강제 아님).
+    // 공개된 상대의 파해를 제자가 보유하면 그 죽간만 금색으로 맥동해 지시를 유도한다 (강제 아님).
+    // 감추는 초에는 상대가 판정 프레임에야 드러나므로 유도가 그 자리에서만 선다 (REQ-855 · #243).
     const hintId = view.telegraphed
       ? styles.find((s) => s.counters === view.telegraphed.id)?.id ?? null
       : null;
@@ -241,15 +249,16 @@ export function startDispatch(ctx) {
     openLen: () => Math.max(...styles.map((s) => s.seq.length)),
     accessibility: () => session.accessibility,
     hooks: composeHooks(dispatchWiring(session, { disciple, instructed: () => instructed }), {
-      onTelegraph(view) {
+      onExchange(view) {
         instructed = null;
         fired = false;
+        judged = null;
         shown = view;
         verdict.hide();
         arena.setWindow(1);
         paintColor(null);
         judgeNow.textContent = '고르는 중';
-        arena.showTelegraph(view, '빈틈! — 제자가 연환을 잇는다');
+        arena.showFoe(view, '빈틈! — 제자가 연환을 잇는다');
         renderHp(view);
         renderTablets(view);
         exchanges = view.exchange;
@@ -259,12 +268,18 @@ export function startDispatch(ctx) {
         arena.setWindow(view.ratio);
         if (!executed || fired) return;
         fired = true;
-        showJudgement(executed);
+        judged = executed;
+        showJudgement(executed, false);
         paintColor(executed.style);
         renderTablets(shown ?? view);
       },
       onVerdict(view, ranked) {
         renderHp(view);
+        // 감췄던 상대가 판정과 같은 프레임에 드러난다 — 대련과 같은 계약이다 (#243 결정 2).
+        arena.showFoe(view, '빈틈! — 제자가 연환을 잇는다');
+        // 판단의 근거는 상대가 드러난 뒤라야 말할 수 있다 — 그 전에 말하면 이유가 곧 상대다.
+        if (judged) showJudgement(judged, true);
+        renderTablets(view);
         // 소리를 `onShow` 에 싣는 것이 대련과 같은 계약이다 — 지금은 이 화면에 확정 연출 대기가
         // 없어 즉시 호출과 동치이지만, 대기가 생기는 순간 관전만 소리가 판정보다 앞선다.
         verdict.showGrade(view.verdict.grade, { onShow: () => playVerdict(view.verdict.grade) });

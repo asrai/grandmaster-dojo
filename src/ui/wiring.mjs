@@ -40,7 +40,8 @@ export function trainWiring(session, { styleId, input }) {
     /** 창 길이는 열 때마다 다시 잰다 — 무대 밖에서 바꾼 접근성 설정이 다음 시도부터 반영된다. */
     onArm() {
       input.arm();
-      return responseWindowMs(style.seq.length, { accessibility: session.accessibility });
+      // 수련에는 감출 상대가 없어 길이 무관의 근거가 없다 — 실전 토글을 상속하지 않는다 (#243).
+      return responseWindowMs(style.seq.length, { accessibility: session.accessibility, blind: false });
     },
     onFire: () => recordEffectiveSuccess(session, style.id, 'train'),
   };
@@ -90,9 +91,10 @@ export const logDuelStart = (session, challenger) => beginDuel(session, challeng
 /** 대련 배선 (REQ-201·206~211) — 유저의 손이 치는 창의 계측. */
 export function duelWiring(session, { input }) {
   return {
-    // 예고 구간에 직전 초의 버퍼·후보가 남으면 이미 낸 초식이 아직 걸린 것처럼 읽힌다.
-    onTelegraph: () => input.arm(equippedStyles(session)),
+    // 초가 바뀔 때 직전 초의 버퍼·후보가 남으면 이미 낸 초식이 아직 걸린 것처럼 읽힌다.
+    onExchange: () => input.arm(equippedStyles(session)),
     // 대련 중 자동 장착된 초식이 그 창부터 후보에 든다 — 슬롯 로그와 화면이 갈리지 않는다.
+    // 감추는 초에는 두 시점이 겹쳐 같은 초에 두 번 불리지만, 무장은 멱등이라 결과가 같다.
     onWindow: () => input.arm(equippedStyles(session)),
     onTimeout: () => logTimeout(session, input),
     onVerdict: (view) => recordDuelVerdict(session, view),
@@ -103,7 +105,7 @@ export function duelWiring(session, { input }) {
  * 파견 배선 (REQ-403~407) — 손을 놓고 보는 창이라 계측이 곧 제자의 실행 시점이다.
  * @param {object} p.disciple `createDiscipleHand` 의 손
  * @param {() => ?object} [p.instructed] 그 초의 지시 초식 — 관전만 하는 호출부는 주지 않는다.
- *   그 초 한정이라 호출부가 `onTelegraph` 에서 비워야 한다 (안 비우면 직전 초의 지시가 이어진다).
+ *   그 초 한정이라 호출부가 `onExchange` 에서 비워야 한다 (안 비우면 직전 초의 지시가 이어진다).
  */
 export function dispatchWiring(session, { disciple, instructed = () => null }) {
   // 파견의 판은 여기서 열린다 — 임무는 차수가 같은 동안 재사용되므로 그 확정 시점은 판이 아니다.
@@ -112,7 +114,7 @@ export function dispatchWiring(session, { disciple, instructed = () => null }) {
   // 「어느 조합을 어느 성으로 이겼는가」가 실제와 맞는다 (REQ-744).
   if (session.mission) session.mission.ranks = discipleRanks(session);
   return {
-    onTelegraph: () => disciple.arm(),
+    onExchange: () => disciple.arm(),
     // 지시는 그 초 한정이라 매 프레임 현재 값을 다시 읽는다.
     onTick: (view) => disciple.tick(view, instructed()),
     onVerdict: (view) => recordDispatchVerdict(session, view),

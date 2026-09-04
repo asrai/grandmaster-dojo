@@ -10,7 +10,7 @@ import { styleById } from '../../core.mjs';
 import { SCREEN } from '../theme.mjs';
 import { SPOT, createArena } from '../arena.mjs';
 import { stageBand } from '../band.mjs';
-import { PHASE, createMatch } from '../match.mjs';
+import { createMatch } from '../match.mjs';
 import { createSequenceInput } from '../sequence-input.mjs';
 import {
   challengerOfStage, equippedStyles, logEvent, rankOfStyle,
@@ -91,8 +91,8 @@ export function startDuel(ctx) {
     openLen: () => Math.max(...equippedStyles(session).map((s) => s.seq.length)),
     accessibility: () => session.accessibility,
     hooks: composeHooks(duelWiring(session, { input }), {
-      onTelegraph(view) {
-        arena.showTelegraph(view, '빈틈! — 아무 초식이나 완주하면 완파');
+      onExchange(view) {
+        arena.showFoe(view, '빈틈! — 아무 초식이나 완주하면 완파');
         verdict.hide();
         // 성장 고지는 그 초 한정이다 — 남기면 다음 초의 판정 위에 계속 떠 있는다.
         banner.className = 'toast';
@@ -112,6 +112,8 @@ export function startDuel(ctx) {
       onVerdict(view, changes) {
         const { verdict: resolved } = view;
         renderHp(view);
+        // 감췄던 상대가 판정과 같은 프레임에 드러난다 — 「보」에 해당하는 자리다 (#243 결정 2).
+        arena.showFoe(view, '빈틈! — 아무 초식이나 완주하면 완파');
         // 소리는 흔들림·글자와 한 덩어리로 읽혀야 해서 판정이 실제로 뜨는 순간에 맡긴다 —
         // 확정 연출을 기다리는 초에는 그만큼 함께 늦는다 (REQ-826).
         // 죽간이 다시 그려지기 전에 예약한다 — 대기 시간은 지금 화면에 뜬 금테를 기준으로 잰다.
@@ -140,9 +142,17 @@ export function startDuel(ctx) {
   ctx.pad.attach({
     input,
     rankOf: (style) => rankOfStyle(session, style.id),
-    accepting: () => match.phase === PHASE.WINDOW,
-    // 봇이 「이기는 색」을 화면과 같은 근거로 고를 수 있게 그 초의 예고를 함께 건넨다 (REQ-605).
-    foeStyle: () => match.view().telegraphed,
+    // 확정한 뒤에도 창이 남아 있으므로 페이즈만으로는 손을 닫지 못한다 (#243 결정 1).
+    accepting: () => match.open && !match.locked,
+    // 확정 구간은 창 밖이 아니라 「낸 것을 무르지 못한다」이므로 화면이 그것을 갈라 말한다 (#243 결정 1).
+    committed: () => match.locked,
+    // 봇이 화면과 같은 근거로 고르도록 **공개된** 상대만 건넨다 — 감춘 초는 봇도 모르고, 그
+    // 대신 도전자의 초식 목록이 판단의 재료다 (REQ-605 · REQ-894).
+    foe: () => ({
+      style: match.view().telegraphed,
+      open: match.view().foeOpen,
+      pool: challenger.styles,
+    }),
     onFire: (fired) => { play(CUE.FIRE); match.fire(fired); },
   });
   match.start();

@@ -96,7 +96,7 @@ const CONTENT_SOURCE = 'src/balance.mjs';
  * 토큰은 `NUM_RULES` 의 키(스칼라) · `map:<규칙>`(값이 전부 그 규칙인 map) · 전용 검사기 이름이다.
  */
 const SHAPE = {
-  telegraphMs: 'int+', windowBaseMs: 'int1+', windowStepMs: 'int+', windowBaseLen: 'int1+',
+  blindExchange: 'bool', windowBaseMs: 'int1+', telegraphMode: 'telegraphMode',
   openingWindowPenalty: 'ratio<1', accessibilityWindowMult: 'pos', accessibilityWindow: 'bool',
   resolveMs: 'int+', maxExchanges: 'int1+',
   damageByLen: 'map:int1+', powerBase: 'pos', powerPerRank: 'nonneg',
@@ -106,6 +106,7 @@ const SHAPE = {
   hintDelayMs: 'map:int+', ignoreHighlightAt: 'int1+',
   rankLadder: 'rankLadder', rankGate: 'map:int1+', rankMax: 'int1+', slots: 'int1+',
   discipleStartRank: 'int1+', discipleRankMax: 'int1+', discipleFireRatio: 'ratio',
+  discipleAccuracy: 'map:ratio',
   discipleTrain: 'map:int1+', mission: 'map:int+', killReadout: 'map:int1+',
   winColorHintExchanges: 'int1+', simEfficiency: 'pos', simTrainSeconds: 'int1+', buttonHitPx: 'int1+',
   parallaxMinFps: 'int1+',
@@ -162,6 +163,12 @@ const REQUIRED_MAP_KEYS = {
   discipleTrain: ['secondsPerRank'],
   mission: ['unlockRank', 'rankStep'],
   killReadout: ['minManualWindows'],
+  discipleAccuracy: ['atStartRank', 'atMaxRank'],
+};
+
+/** 예고 모드(`blindExchange` OFF)만 읽는 창 원장 — 어느 갈래가 읽는지를 이름이 지므로 사문화가 아니다. */
+const TELEGRAPH_MODE_SHAPE = {
+  telegraphMs: 'int+', windowBaseMs: 'int1+', windowStepMs: 'int+', windowBaseLen: 'int1+',
 };
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
@@ -232,6 +239,18 @@ function checkGrades(value, bad) {
   const expected = GRADE_IDS.map((_, i) => i);
   if (orders.length === GRADE_IDS.length && !setEq(orders.slice().sort((a, b) => a - b), expected)) {
     bad('grades.*.order', `서열 ${show(orders.slice().sort((a, b) => a - b))} 가 ${show(expected)} 의 순열이 아니다`);
+  }
+  return undefined;
+}
+
+function checkTelegraphMode(value, bad) {
+  if (!isPlain(value)) return bad('telegraphMode', `${show(value)} 는 map 이 아니다`);
+  for (const [key, rule] of Object.entries(TELEGRAPH_MODE_SHAPE)) {
+    if (!(key in value)) bad(`telegraphMode.${key}`, '필드 누락');
+    else checkNum(`telegraphMode.${key}`, value[key], rule, bad);
+  }
+  for (const k of Object.keys(value)) {
+    if (!(k in TELEGRAPH_MODE_SHAPE)) bad(`telegraphMode.${k}`, '예고 모드 스키마에 없는 필드');
   }
   return undefined;
 }
@@ -333,6 +352,11 @@ function checkRankOrder(values, bad) {
     ? Object.values(values.challengerRank).reduce((m, v) => Math.max(m, isNum(v) ? v : 0), 0) : 0;
   if (isNum(cap) && isNum(values.rankMax) && topFoe + cap > values.rankMax) {
     bad('rematch.rankCap', `최고 도전자 성 ${topFoe} 에 ${cap} 를 더하면 성 상한 ${values.rankMax} 를 넘는다`);
+  }
+  // 정답률이 성에 단조 증가하지 않으면 「제자가 지기도 해야 성을 올릴 동기가 생긴다」가 뒤집힌다 (#243).
+  const acc = values.discipleAccuracy;
+  if (isPlain(acc) && isNum(acc.atStartRank) && isNum(acc.atMaxRank) && acc.atStartRank > acc.atMaxRank) {
+    bad('discipleAccuracy.atMaxRank', `${acc.atMaxRank} 가 시작 성 정답률 ${acc.atStartRank} 보다 낮다`);
   }
   checkMission(values, bad);
 }
@@ -468,6 +492,7 @@ export function validateBalance(raw) {
     else if (kind === 'grades') checkGrades(v, bad);
     else if (kind === 'audio') checkAudio(v, bad);
     else if (kind === 'bot') checkBot(v, bad);
+    else if (kind === 'telegraphMode') checkTelegraphMode(v, bad);
     else if (kind === 'rankLadder') checkLadder(v, bad);
     else if (kind === 'reversalDecay') checkReversalDecay(v, bad);
     else if (kind.startsWith('map:')) checkNumMap(key, v, kind.slice(4), bad);

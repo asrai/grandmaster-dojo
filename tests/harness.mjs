@@ -13,7 +13,7 @@ import {
   createDiscipleHand, createSeededRandom, nextDojoAction, nextDuelStage, runHeadlessCycle,
   runHeadlessMissions,
 } from '../src/bot.mjs';
-import { createMatch, createVirtualTimer, pumpToEnd } from '../src/ui/match.mjs';
+import { PHASE, createMatch, createVirtualTimer, pumpToEnd } from '../src/ui/match.mjs';
 import { createSequenceInput } from '../src/ui/sequence-input.mjs';
 import { CUE } from '../src/ui/audio.mjs';
 import { createFrameBudget } from '../src/ui/frame-budget.mjs';
@@ -45,7 +45,7 @@ import {
   artById, artStyles, assertAttrCoverage, assertChallengerStyles, assertCounterIntegrity,
   assertGugyeol, assertPrefixFree,
   canEquipRank, canLearn, canTransmit,
-  challengerById, createDisciple, createProgress, createRankState, discipleMinRank,
+  challengerById, createDisciple, createProgress, createRankState, discipleAccuracy, discipleMinRank,
   discipleStyleRank, discipleStyles, discipleTrainMsPerRank, discipleTrainSteps, finisherOf,
   finisherRevealTier, foePowerOf, foeRankOf, foeStyleById, initiativeOf, isEffectiveSuccess,
   isFirstEncounter,
@@ -359,11 +359,14 @@ suite('통합 로그 스키마 (REQ-601)', () => {
 // ------------------------------------------ 3. 응수 창 · 파생 수식 (REQ-201·203·204·210)
 
 suite('응수 창 · 파생 수식 (REQ-201·203·204·210)', () => {
-  eq(responseWindowMs(3), 2600, '3길이 창');
-  eq(responseWindowMs(4), 3100, '4길이 창');
-  eq(responseWindowMs(5), 3600, '5길이 창');
-  eq(responseWindowMs(3, { selfOpen: true }), 1560, '나 빈틈 창 −40%');
-  eq(responseWindowMs(3, { accessibility: true }), 3380, '접근성 창 ×1.3');
+  // 창 길이가 상대 초식에 의존하면 게이지 하나로 감춘 초식이 새므로, 길이 무관은 숨김의 전제다 (#243).
+  eq(responseWindowMs(3), 3000, '3길이 창');
+  eq(responseWindowMs(4), 3000, '4길이 창');
+  eq(responseWindowMs(5), 3000, '5길이 창');
+  deepEq([...new Set(FOE_STYLES.map((f) => responseWindowMs(f.len)))], [BALANCE.windowBaseMs],
+    '도전자 초식 전량이 같은 창을 연다 — 길이가 창으로 새지 않는다');
+  eq(responseWindowMs(3, { selfOpen: true }), 1800, '나 빈틈 창 −40%');
+  eq(responseWindowMs(3, { accessibility: true }), 3900, '접근성 창 ×1.3');
   eq(BALANCE.accessibilityWindow, false, '접근성 옵션 기본 off');
 
   eq(powerOf(1), 1.05, '1성 내공');
@@ -1098,8 +1101,10 @@ suite('제자 자동 선택 (REQ-403·853)', () => {
   eq(selectDiscipleStyle({ styles: [styleById('yuun-bo')], foeStyle: foeStyleById('beta') }).style.id,
     'yuun-bo', '우세·상쇄가 모두 없으면 잔여');
 
-  // 상대 빈틈에는 예고가 없어 위력만 남고, 역파 위험도 없다.
-  eq(pick({ foeStyle: null }).style.id, 'haeng-un', '상대 빈틈에는 최대 위력 초식');
+  // 상대 빈틈에는 낼 상대가 없어 위력만 남고, 역파 위험도 없다.
+  eq(pick({ foeStyle: null, foeOpen: true }).style.id, 'haeng-un', '상대 빈틈에는 최대 위력 초식');
+  // 빈틈과 「아직 모른다」가 같은 null 로 접히면 감춘 초가 완파 취급이 된다 (#243).
+  eq(pick({ foeStyle: null }).reason, SELECT_REASON.GUESS, '빈틈이 아닌데 상대를 모르면 감으로 낸 것이다');
 
   // 동률은 성으로, 성도 동률이면 슬롯 순으로 결정된다.
   const twoFast = [styleById('yuun-bo'), { ...styleById('pa-un'), attr: 'fast' }];
@@ -1115,7 +1120,7 @@ suite('제자 자동 선택 (REQ-403·853)', () => {
 
   // 이유 3계열 — 화면 문구가 이 값에 매핑되므로 각 계열이 실제로 발화하는 입력이 있어야 한다 (REQ-853).
   eq(pick({ foeStyle: foeStyleById('alpha') }).reason, SELECT_REASON.ADVANTAGE, '우세 후보를 냈으면 우세 계열');
-  eq(pick({ foeStyle: null }).reason, SELECT_REASON.ADVANTAGE, '빈틈은 어떤 완주든 완파라 우세 계열');
+  eq(pick({ foeStyle: null, foeOpen: true }).reason, SELECT_REASON.ADVANTAGE, '빈틈은 어떤 완주든 완파라 우세 계열');
   eq(selectDiscipleStyle({ styles: [styleById('haeng-un')], foeStyle: foeStyleById('beta') }).reason,
     SELECT_REASON.CLASH, '우세가 없어 같은 속성으로 맞섰으면 상쇄 계열');
   eq(pick({ foeStyle: fakeFinisher }).reason, SELECT_REASON.AVOID_REVERSAL,
@@ -1135,7 +1140,7 @@ suite('제자 자동 선택 (REQ-403·853)', () => {
   eq(behind.style.id, 'hard-front', '배제분이 뒤 슬롯이면 앞 슬롯이 그대로 뽑힌다');
   eq(behind.reason, SELECT_REASON.ADVANTAGE, '선택이 바뀌지 않았으므로 회피가 아니다');
 
-  deepEq([...new Set(Object.values(SELECT_REASON))].length, 3, '이유 계열은 3종이고 값이 겹치지 않는다');
+  deepEq([...new Set(Object.values(SELECT_REASON))].length, 4, '이유 계열은 4종이고 값이 겹치지 않는다');
   // 화면 문구가 계열마다 있어야 한다 — 없으면 그 초의 판단이 빈칸으로 뜬다 (theme.mjs 부팅 단정의 짝).
   for (const reason of Object.values(SELECT_REASON)) {
     ok(typeof REASON_VIEW[reason] === 'string' && REASON_VIEW[reason].length > 0,
@@ -1147,12 +1152,19 @@ suite('제자 자동 선택 (REQ-403·853)', () => {
   handSession.disciple = transmit(masteredProgress, createDisciple(), ART_ID);
   const handStyles = discipleStyles(handSession.disciple, ART_ID);
   const shots = [];
-  const hand = createDiscipleHand({ session: handSession, styles: handStyles, fire: (f) => shots.push(f) });
-  const atFire = { ratio: 1 - BALANCE.discipleFireRatio - 0.01, telegraphed: foeStyleById('alpha') };
+  const hand = createDiscipleHand({
+    session: handSession, styles: handStyles, fire: (f) => shots.push(f),
+    // 읽기 성패는 성이 가르는 확률이라, 이 단정이 보려는 판단 갈래를 밟으려면 읽기를 고정해야 한다.
+    accuracy: () => 1, random: createSeededRandom(243),
+  });
+  // 손이 읽는 것은 화면 채널이 아니라 실제 상대다 — `telegraphed` 를 물리면 감춘 초로 접혀
+  // 이 단정이 읽기 갈래를 영영 못 밟고, 주입 없는 `Math.random` 이 하네스 안으로 들어온다 (#243).
+  const atFire = { ratio: 1 - BALANCE.discipleFireRatio - 0.01, foeStyle: foeStyleById('alpha'), foeOpen: false };
   hand.arm();
   const auto = hand.tick(atFire);
   eq(auto.byUser, false, '지시가 없으면 제자가 판단한다');
-  ok(Object.values(SELECT_REASON).includes(auto.reason), '자동 선택에는 이유 계열이 실린다');
+  eq(auto.reason, SELECT_REASON.ADVANTAGE, '상대를 읽어낸 초에는 판단 계열이 실린다');
+  eq(auto.style.id, 'yuun-bo', 'α(강) 을 읽어냈으므로 쾌로 우세를 골랐다');
   hand.arm();
   const told = hand.tick(atFire, styleById('haeng-un'));
   eq(told.style.id, 'haeng-un', '지시는 그 초의 선택을 대체한다');
@@ -1161,10 +1173,152 @@ suite('제자 자동 선택 (REQ-403·853)', () => {
   eq(shots.length, 2, '두 초 모두 실제로 발동했다');
 });
 
+// ----------- 8-a. 확정 ↔ 발동 분리 (#243) — 창을 감춘 채 여는 구조의 수용 기준
+
+suite('확정 ↔ 발동 분리 — 감춘 창의 구조 (#243)', () => {
+  const challenger = challengerById('A-4');
+  const run = ({ fireAt = null, seed = 243, maxExchanges = 1, blind = undefined } = {}) => {
+    const timer = createVirtualTimer();
+    const seen = { telegraphedInWindow: [], phases: [], foes: [], settledAt: null };
+    let fired = false;
+    const match = createMatch({
+      challenger,
+      selfHpMax: BALANCE.hp.user,
+      rankOf: () => 5,
+      openLen: () => 5,
+      accessibility: () => false,
+      timer,
+      random: createSeededRandom(seed),
+      ...(blind === undefined ? {} : { blind }),
+      hooks: {
+        onExchange: (v) => { seen.phases.push(v.phase); seen.foes.push(v.foeStyle?.id ?? null); },
+        onTick: (v) => {
+          seen.telegraphedInWindow.push(v.telegraphed);
+          if (fireAt !== null && !fired && v.ratio <= fireAt) {
+            fired = true;
+            match.fire({ style: styleById('yuun-bo'), oneTap: false, r: v.ratio });
+            seen.firedAtMs = timer.now();
+          }
+        },
+        onVerdict: (v) => { seen.settledAt ??= timer.now(); seen.revealedAtVerdict = v.telegraphed; },
+      },
+    });
+    match.start();
+    while (match.view().exchange < maxExchanges) timer.tick();
+    match.stop();
+    return seen;
+  };
+
+  // 수용 기준 5 — 예고 페이즈가 사라져 초와 초 사이에 빈 정적 구간이 없다.
+  eq(BALANCE.blindExchange, true, '감춘 창이 기본값이다');
+  deepEq([...new Set(run().phases)], [PHASE.WINDOW], '초의 시작이 곧 창이다 — 예고 페이즈가 서지 않는다');
+
+  // 수용 기준 2 — 창이 열려 있는 동안 상대 초식이 화면 채널에 드러나지 않는다.
+  const hidden = run();
+  ok(hidden.telegraphedInWindow.length > 0, '창이 실제로 열려 프레임이 돌았다');
+  deepEq([...new Set(hidden.telegraphedInWindow)], [null], '창 동안 화면 채널의 상대 초식은 null 이다');
+  ok(hidden.revealedAtVerdict !== null, '판정과 같은 프레임에 상대가 드러난다');
+
+  // 수용 기준 1 — 확정은 판정을 일으키지 않고 창 만료까지 기다린다.
+  const held = run({ fireAt: 0.9 });
+  ok(held.firedAtMs !== undefined, '창 안에서 확정이 걸렸다');
+  ok(held.settledAt - held.firedAtMs >= BALANCE.windowBaseMs * 0.8,
+    `확정 뒤에도 창이 남는다 — 확정 ${held.firedAtMs}ms · 판정 ${held.settledAt}ms`);
+
+  // 수용 기준 4 — 상대 초식은 매 초 추첨이라 같은 초 번호가 시드마다 갈린다.
+  const drawn = [243, 244, 245, 246, 247, 248].map((seed) => run({ seed, maxExchanges: 3 }).foes.join('-'));
+  ok(new Set(drawn).size > 1, `같은 도전자·같은 초 번호가 재현되지 않는다 — ${JSON.stringify(drawn)}`);
+
+  // 마감이 입력보다 먼저다 — 프레임이 밀려 만료 뒤에 도착하면 그때의 확정은 미완주를 뒤집지
+  // 못한다 (백그라운드 탭 복귀·긴 프레임의 경합, L5d 지적).
+  {
+    // 한 틱이 창을 통째로 건너뛴다 — 실브라우저의 백그라운드 복귀·긴 프레임이 내는 모양이라,
+    // 16ms 씩 도는 시계로는 이 경합이 재현되지 않는다.
+    const timer = createVirtualTimer({ stepMs: BALANCE.windowBaseMs + 500 });
+    const seen = { timeout: 0, grades: [], accepted: [] };
+    let match = null;
+    match = createMatch({
+      challenger,
+      selfHpMax: BALANCE.hp.user,
+      rankOf: () => 5,
+      openLen: () => 5,
+      accessibility: () => false,
+      timer,
+      random: createSeededRandom(243),
+      hooks: {
+        // 제자의 손과 같은 자리 — 밀린 프레임의 `onTick` 에서 뒤늦게 확정하는 형태다.
+        onTick: () => { seen.accepted.push(match.fire({ style: styleById('yuun-bo'), oneTap: false, r: 0 })); },
+        onTimeout: () => { seen.timeout += 1; },
+        onVerdict: (v) => { seen.grades.push(v.verdict.grade); },
+      },
+    });
+    match.start();
+    timer.tick();
+    eq(match.open, false, '만료된 창은 더 이상 손을 받지 않는다');
+    deepEq(seen.accepted, [], '마감 뒤 프레임에서는 확정 자체가 시도되지 않는다');
+    eq(seen.timeout, 1, '마감 뒤 입력이 있어도 미완주가 그대로 기록된다');
+    deepEq(seen.grades, ['struck'], '뒤늦은 확정이 정상 발동으로 승격되지 않는다');
+    eq(match.fire({ style: styleById('yuun-bo'), oneTap: false, r: 0 }), false, '마감 뒤 확정은 거부된다');
+    match.stop();
+  }
+
+  // 수용 기준 8 — 토글 한 값으로 예고 표시 · 고정 순환 · 가변 창이 함께 되돌아온다. 값이 아니라
+  // 갈래를 주입으로 열어 둔 것이 이 단정의 존재 조건이다 (원장은 deep-freeze 라 못 뒤집는다).
+  deepEq([3, 4, 5].map((len) => responseWindowMs(len, { blind: false })), [2600, 3100, 3600],
+    'OFF 갈래는 가변 창으로 돌아간다');
+  eq(responseWindowMs(3, { blind: false, selfOpen: true }), 1560, 'OFF 갈래의 내 빈틈 배율도 그대로다');
+  const off = run({ blind: false, maxExchanges: 3 });
+  deepEq([...new Set(off.phases)], [PHASE.TELEGRAPH], 'OFF 갈래는 예고 페이즈로 초를 연다');
+  ok(off.telegraphedInWindow.some((v) => v !== null), 'OFF 갈래는 창 동안 상대를 보여 준다');
+  const pool = challenger.styles;
+  deepEq(off.foes, off.foes.map((id, i) => (id === null ? null : pool[i % pool.length])),
+    'OFF 갈래는 고정 순환으로 상대를 고른다 — 빈틈 초는 상대가 그 초를 잃는다');
+  const settledOff = run({ blind: false, fireAt: 0.9 });
+  ok(settledOff.settledAt - settledOff.firedAtMs <= 32,
+    `OFF 갈래는 확정이 곧 발동이다 — 확정 ${settledOff.firedAtMs}ms · 판정 ${settledOff.settledAt}ms`);
+});
+
+// ----------- 8-b. 제자 정답률은 성에 비례한다 (#243 결정 8)
+
+suite('제자 정답률은 성에 비례한다 (#243 결정 8)', () => {
+  eq(discipleAccuracy(BALANCE.discipleStartRank), BALANCE.discipleAccuracy.atStartRank, '시작 성은 곡선의 아래 끝');
+  eq(discipleAccuracy(BALANCE.discipleRankMax), BALANCE.discipleAccuracy.atMaxRank, '상한 성은 곡선의 위 끝');
+  // 성이 없는 손은 제자가 아니라 상계 모델이라 읽기 실패를 모델하지 않는다.
+  eq(discipleAccuracy(null), 1, '성이 없는 손은 읽기에 실패하지 않는다');
+  const curve = [1, 4, 7, 10].map(discipleAccuracy);
+  ok(curve.every((v, i) => i === 0 || v > curve[i - 1]), `곡선이 성에 단조 증가한다 — ${JSON.stringify(curve)}`);
+
+  // 표본 핀 — 곡선이 아니라 **실제로 낸 초식의 판정**이 성을 따라 오르는지 본다. 시드를 고정하지
+  // 않으면 이 단정이 판마다 다른 답을 내므로 난수가 주입이다.
+  const styles = artStyles(ART_ID);
+  const foes = challengerById('A-4').styles.map(foeStyleById);
+  const lossRate = (rank) => {
+    const random = createSeededRandom(153);
+    const rounds = 2000;
+    let losses = 0;
+    for (let i = 0; i < rounds; i += 1) {
+      const foeStyle = foes[Math.floor(random() * foes.length)];
+      const { style } = selectDiscipleStyle({
+        styles, foeStyle, accuracy: discipleAccuracy(rank), random, rankOf: () => rank,
+      });
+      const { grade } = judge({ selfStyle: style, foeStyle, selfRank: rank, foeRank: foeRankOf('A-4') });
+      if (!isEffectiveSuccess(grade)) losses += 1;
+    }
+    return losses / rounds;
+  };
+  const rates = [1, 4, 7, 10].map(lossRate);
+  ok(rates.every((v, i) => i === 0 || v < rates[i - 1]),
+    `지는 초의 비율이 성을 따라 준다 — ${JSON.stringify(rates.map((v) => Number(v.toFixed(3))))}`);
+  // 읽어낸 초에는 무공이 세 속성을 덮으므로 우세나 상쇄가 반드시 있다 — 상한 성의 하한은 0 이다.
+  ok(rates.at(-1) < 0.05, `성 10 은 대부분 이긴다 — ${rates.at(-1).toFixed(3)}`);
+  // 인위적 승리 보정을 넣지 않는다는 것이 이 하한의 뜻이다 — 성 1 은 감으로 낸 것과 같아야 한다.
+  ok(rates[0] > 0.15, `성 1 은 자주 진다 — ${rates[0].toFixed(3)}`);
+});
+
 // ----------------------- 9. 케이스 8 — B 밸런스 게이트 시뮬 (REQ-402·403·506)
 
 // 사본이 아니라 실루프다 — `createMatch` 를 가상 시계로 돌려 파견 화면과 같은 코드를 검증한다.
-function simulateDispatch({ challengerId, disciple, setId }) {
+function simulateDispatch({ challengerId, disciple, setId, seed = 243 }) {
   const challenger = challengerById(challengerId);
   const session = createSession();
   session.disciple = disciple;
@@ -1174,7 +1328,9 @@ function simulateDispatch({ challengerId, disciple, setId }) {
   let ended = null;
   let match = null;
 
-  const hand = createDiscipleHand({ session, styles, fire: (fired) => match.fire(fired) });
+  // 상대 추첨과 제자의 읽기 성패가 난수라, 시드를 고정하지 않으면 이 게이트가 판마다 다른 답을 낸다 (#243).
+  const random = createSeededRandom(seed);
+  const hand = createDiscipleHand({ session, styles, random, fire: (fired) => match.fire(fired) });
   match = createMatch({
     challenger,
     selfHpMax: BALANCE.hp.disciple,
@@ -1182,8 +1338,9 @@ function simulateDispatch({ challengerId, disciple, setId }) {
     openLen: () => Math.max(...styles.map((s) => s.seq.length)),
     accessibility: () => false,
     timer,
+    random,
     hooks: {
-      onTelegraph() { hand.arm(); },
+      onExchange() { hand.arm(); },
       onTick(view) { hand.tick(view); },
       onVerdict(view) {
         trace.push({
@@ -1790,14 +1947,15 @@ const unlockSlots = (() => {
  * 사본이 아니라 실루프다 — 제자의 손을 유저 자리에 세워 「창을 놓치지 않는 손」을 모델한다.
  * 그래서 이 게이트는 상계이고, 실수하는 손의 회귀는 사이클 시뮬의 `wins` 단정이 진다.
  */
-function simulateDuelA({ challengerId, styles, rank, foeRank = undefined }) {
+function simulateDuelA({ challengerId, styles, rank, foeRank = undefined, seed = 243 }) {
   const session = createSession();
   const timer = createVirtualTimer();
   const trace = [];
   let ended = null;
   let match = null;
 
-  const hand = createDiscipleHand({ session, styles, fire: (fired) => match.fire(fired) });
+  // 이 게이트는 상계라 읽기는 실패시키지 않는다 — 흔들리는 축은 상대 추첨 하나뿐이고 그것을 시드가 문다.
+  const hand = createDiscipleHand({ session, styles, accuracy: () => 1, fire: (fired) => match.fire(fired) });
   match = createMatch({
     challenger: challengerById(challengerId),
     foeRank: foeRank ?? foeRankOf(challengerId),
@@ -1806,8 +1964,9 @@ function simulateDuelA({ challengerId, styles, rank, foeRank = undefined }) {
     openLen: () => Math.max(...styles.map((st) => st.seq.length)),
     accessibility: () => false,
     timer,
+    random: createSeededRandom(seed),
     hooks: {
-      onTelegraph() { hand.arm(); },
+      onExchange() { hand.arm(); },
       onTick(view) { hand.tick(view); },
       onVerdict(view) { trace.push(view.verdict.grade); },
       onEnd(view) { ended = view; },
@@ -2420,9 +2579,9 @@ suite('계측 배선 공유 (#11)', () => {
   deepEq(Object.keys(trainWiring(session, { styleId: style.id, input })).sort(),
     ['onArm', 'onFire'], '수련 배선이 내는 hook 이름 집합');
   deepEq(Object.keys(duelWiring(session, { input })).sort(),
-    ['onTelegraph', 'onTimeout', 'onVerdict', 'onWindow'], '대련 배선이 내는 hook 이름 집합');
+    ['onExchange', 'onTimeout', 'onVerdict', 'onWindow'], '대련 배선이 내는 hook 이름 집합');
   deepEq(Object.keys(dispatchWiring(session, { disciple })).sort(),
-    ['onTelegraph', 'onTick', 'onVerdict'], '파견 배선이 내는 hook 이름 집합');
+    ['onExchange', 'onTick', 'onVerdict'], '파견 배선이 내는 hook 이름 집합');
 
   // 이름만 맞고 속이 빈 배선은 위 집합 단정을 통과하므로, hook 이 실제로 계측하는지 함께 본다.
   const before = session.log.entries.length;
@@ -2430,9 +2589,11 @@ suite('계측 배선 공유 (#11)', () => {
   eq(session.log.entries.length, before + 1, '대련 배선의 onTimeout 이 항목을 하나 남긴다');
   eq(session.log.entries.at(-1).event, 'timeout', '그 항목이 창 초과 기록이다');
 
+  // 기대값을 같은 호출로 계산하면 동어반복이라, 수련이 실전 토글을 상속해도 red 가 되지 않는다.
+  const tele = BALANCE.telegraphMode;
   const armed = trainWiring(session, { styleId: style.id, input }).onArm();
-  eq(armed, responseWindowMs(style.seq.length, { accessibility: session.accessibility }),
-    '수련 배선의 onArm 이 그 시도의 창 길이를 돌려준다');
+  eq(armed, tele.windowBaseMs + tele.windowStepMs * (style.seq.length - tele.windowBaseLen),
+    '수련 배선의 onArm 이 자기 초식 길이에 비례한 창을 돌려준다 — 감출 상대가 없어 길이가 그대로 창이다');
 
   // 화면·헤드리스가 같은 이름으로 자기 hook 을 얹어도 계측이 덮이지 않는다 — 배선 1벌의 강제 지점.
   const calls = [];
@@ -2664,11 +2825,11 @@ suite('실루엣 규칙은 background 단축을 쓰지 않는다 (#137)', () => 
   // 실패하면 자세·파츠가 늘거나 줄었다는 뜻이니, 아래 목록을 실제 납품분으로 맞춰라.
   deepEq(rules.filter(([, body]) => /background-image:/.test(body)).map(([sel]) => sel).sort(), [
     '.fig.sil_challenger_prone', '.fig.sil_challenger_stance', '.fig.sil_disciple_dojo',
-    '.fig.sil_disciple_stance', '.fig.sil_master_dojo', '.fig.sil_master_prone',
-    '.fig.sil_master_stance', '.fig.sil_master_watch',
+    '.fig.sil_disciple_prone', '.fig.sil_disciple_stance', '.fig.sil_master_dojo',
+    '.fig.sil_master_prone', '.fig.sil_master_stance', '.fig.sil_master_watch',
     '.part.sil_disciple_follow_arm', '.part.sil_disciple_follow_body',
     '.part.sil_master_demo_arm', '.part.sil_master_demo_body',
-  ], '납품된 자세 8 · 파츠 4 의 background-image 선언이 실재한다');
+  ], '납품된 자세 9 · 파츠 4 의 background-image 선언이 실재한다');
 
   // 부재 단정 — 단축은 명시 안 한 하위 속성을 initial 로 되돌리므로, 이미지 선언 규칙을 특이도나
   // 순서로 이기는 순간 그 이미지가 none 이 된다. 경계 인식이 없으면 `background-image:` 를 물어 공허해진다.
@@ -3460,7 +3621,7 @@ suite('전수도 진입 1회 (#70 과 같은 축 · REQ-761)', () => {
 suite('BALANCE 파라미터 census (REQ-606)', () => {
   // spec § 데이터 구조 파라미터 표의 시드값 — 값이 바뀌면 밸런스 로그 회차가 필요하다.
   const SEEDS = {
-    telegraphMs: 1000, windowBaseMs: 2600, windowStepMs: 500, windowBaseLen: 3,
+    blindExchange: true, windowBaseMs: 3000,
     openingWindowPenalty: 0.4, accessibilityWindowMult: 1.3, accessibilityWindow: false,
     resolveMs: 500, maxExchanges: 12, powerBase: 1, powerPerRank: 0.05,
     initiativeBase: 1, initiativePerRatio: 0.3, clashK: 0.5, effectiveSuccessMaxOrder: 2,
@@ -3470,6 +3631,10 @@ suite('BALANCE 파라미터 census (REQ-606)', () => {
     buttonHitPx: 56,
   };
   for (const [key, value] of Object.entries(SEEDS)) eq(BALANCE[key], value, `BALANCE.${key}`);
+  // 예고 모드의 창 원장은 토글 OFF 갈래가 읽는 값이라 시드가 함께 고정된다 (#243 결정 9).
+  deepEq(BALANCE.telegraphMode, { telegraphMs: 1000, windowBaseMs: 2600, windowStepMs: 500, windowBaseLen: 3 },
+    'BALANCE.telegraphMode');
+  deepEq(BALANCE.discipleAccuracy, { atStartRank: 0, atMaxRank: 1 }, 'BALANCE.discipleAccuracy');
   deepEq(BALANCE.damageByLen, { 3: 10, 4: 14, 5: 20 }, 'BALANCE.damageByLen');
   deepEq(BALANCE.hintDelayMs, { duel: 500, train: 0 }, 'BALANCE.hintDelayMs');
   deepEq(BALANCE.rankGate, { equip: 2, unlock: 5, oneTap: 7 }, 'BALANCE.rankGate (REQ-711·713 계단)');
@@ -3557,7 +3722,13 @@ suite('밸런스 데이터 스키마 (#45)', () => {
   };
 
   throwsWith((r) => { delete r.rankMax; }, 'rankMax: 필드 누락', '필드 누락');
-  throwsWith((r) => { r.telegraphMs = '1000'; }, 'telegraphMs: "1000" 는 0 이상의 정수가 아니다', '타입 불일치');
+  throwsWith((r) => { r.windowBaseMs = '3000'; }, 'windowBaseMs: "3000" 는 1 이상의 정수가 아니다', '타입 불일치');
+  throwsWith((r) => { r.telegraphMode.telegraphMs = '1000'; },
+    'telegraphMode.telegraphMs: "1000" 는 0 이상의 정수가 아니다', '예고 모드 원장 타입 불일치');
+  throwsWith((r) => { r.telegraphMode.windowStepM = 500; },
+    'telegraphMode.windowStepM: 예고 모드 스키마에 없는 필드', '예고 모드 원장 안의 오타 키');
+  throwsWith((r) => { r.discipleAccuracy.atStartRank = 1; r.discipleAccuracy.atMaxRank = 0; },
+    'discipleAccuracy.atMaxRank: 0 가 시작 성 정답률 1 보다 낮다', '정답률이 성에 단조 증가하지 않음');
   throwsWith((r) => { r.grades.clash.formula = 'pctt'; }, 'grades.clash.formula: "pctt" 는 ["pct","clash"] 밖', 'formula enum 밖');
   throwsWith((r) => { r.grades.struck.order = 4; }, 'grades.*.order', 'order 중복 (0..5 순열 아님)');
   throwsWith((r) => { r.grades.crush.opning = null; }, 'grades.crush.opning: 등급 스키마에 없는 필드', '등급 객체 안의 오타 키 (#54)');
@@ -3665,7 +3836,7 @@ suite('밸런스 데이터 스키마 (#45)', () => {
 
   // rev ↔ 값 결합 (#54) — 값만 고치고 rev 를 그대로 두면 로그 지문이 옛 판본을 달고 나간다.
   const stale = clone();
-  stale.telegraphMs = 900;
+  stale.windowBaseMs = 2900;
   let staleMessage = null;
   try { validateBalance(stale); } catch (err) { staleMessage = err.message; }
   const { rev: _staleRev, ...staleValues } = stale;
