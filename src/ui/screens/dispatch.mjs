@@ -241,6 +241,12 @@ export function startDispatch(ctx) {
     arena.setVital(SPOT.NEAR, view.selfHp, view.selfHpMax);
   };
 
+  // 관전도 같은 계약이다 — 창 자리의 빈틈 문면은 예고 모드에만 선다 (#243 결정 2).
+  const foeTexts = {
+    open: BALANCE.blindExchange ? null : '빈틈! — 제자가 연환을 잇는다',
+    resolved: '빈틈 — 제자가 상대의 허를 찔렀다',
+  };
+
   const match = createMatch({
     challenger,
     foeRank: mission.foeRank,
@@ -258,7 +264,7 @@ export function startDispatch(ctx) {
         arena.setWindow(1);
         paintColor(null);
         judgeNow.textContent = '고르는 중';
-        arena.showFoe(view, '빈틈! — 제자가 연환을 잇는다');
+        arena.showFoe(view, foeTexts);
         renderHp(view);
         renderTablets(view);
         exchanges = view.exchange;
@@ -276,7 +282,7 @@ export function startDispatch(ctx) {
       onVerdict(view, ranked) {
         renderHp(view);
         // 감췄던 상대가 판정과 같은 프레임에 드러난다 — 대련과 같은 계약이다 (#243 결정 2).
-        arena.showFoe(view, '빈틈! — 제자가 연환을 잇는다');
+        arena.showFoe(view, foeTexts);
         // 판단의 근거는 상대가 드러난 뒤라야 말할 수 있다 — 그 전에 말하면 이유가 곧 상대다.
         if (judged) showJudgement(judged, true);
         renderTablets(view);

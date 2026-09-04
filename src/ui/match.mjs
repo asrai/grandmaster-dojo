@@ -80,6 +80,8 @@ export function createMatch({
     foeHp: foeHpMax,
     foeOpen: false,
     selfOpen: false,
+    // 판정이 정하는 빈틈은 다음 초의 것이라, 이번 초 귀속값과 한 칸을 쓰면 판정 view 가 두 초를 섞는다 (#252).
+    openNext: { foe: false, self: false },
     foeStyle: null,
     revealed: false,
     windowMs: 0,
@@ -105,6 +107,7 @@ export function createMatch({
     telegraphed: s.revealed ? s.foeStyle : null,
     // 상대를 읽는 쪽(제자의 손)만 보는 자리 — 화면이 이 값을 그리면 숨김이 통째로 무너진다 (#243).
     foeStyle: s.foeStyle,
+    // 이 두 값은 언제나 **이번 초**를 말한다 — 판정이 정한 다음 초 빈틈은 `openNext` 가 따로 진다 (#252).
     foeOpen: s.foeOpen,
     selfOpen: s.selfOpen,
     windowMs: s.windowMs,
@@ -123,6 +126,10 @@ export function createMatch({
 
   /** 한 초의 시작 — 예고 모드는 여기서 상대를 보여 주고, 감추는 모드는 곧바로 창을 연다. */
   function enterExchange() {
+    // 직전 판정이 예약한 빈틈이 이 초에 귀속되는 유일한 지점 — 소비하지 않으면 예약이 계속 흐른다.
+    s.foeOpen = s.openNext.foe;
+    s.selfOpen = s.openNext.self;
+    s.openNext = { foe: false, self: false };
     // 빈틈 초에도 상대의 순번은 전진한다 — 상대가 그 초를 잃는 것으로 본다.
     s.foeStyle = s.foeOpen ? null : drawFoeStyle();
     s.revealed = !blind;
@@ -161,8 +168,7 @@ export function createMatch({
     s.selfHp -= verdict.dmgIn;
     s.exchange += 1;
     s.verdict = verdict;
-    s.foeOpen = verdict.opening === 'foe';
-    s.selfOpen = verdict.opening === 'self';
+    s.openNext = { foe: verdict.opening === 'foe', self: verdict.opening === 'self' };
     s.phase = PHASE.RESOLVE;
     // 양쪽이 함께 드러나는 지점 — 판정과 공개가 갈리면 화면이 이유 없는 결과를 그린다 (#243 결정 2).
     s.revealed = true;

@@ -4,6 +4,7 @@
 // 좌표·색은 전부 `index.html` 의 원장이 지므로 이 모듈에 수치가 없다.
 
 import { clear, el } from './dom.mjs';
+import { PHASE } from './match.mjs';
 import { attrLabel, winAttrOf } from './theme.mjs';
 import { attrMark, attrTone } from './components/attr-mark.mjs';
 import { hanja } from './components/hanja.mjs';
@@ -43,16 +44,38 @@ const SCENERY = `
   </g>
 </svg>`;
 
+/** 창 자리의 유일한 문면 — 상대는 감춘 것이 아니라 아직 내지 않았다 (#252). */
+const VEIL_TEXT = '상대가 초식을 펼치려고 한다';
+
+/** 상대 스트립이 설 수 있는 상태 — 어느 자리에 무엇이 실렸는지가 이름으로 남는다 (REQ-822). */
+export const FOE_STRIP = { OPEN: 'open', OPENED: 'opened', VEILED: 'veiled', REVEALED: 'revealed' };
+
+/**
+ * 스트립 상태 결정 — 문서를 만지지 않으므로 하네스가 이 판단만 따로 단정할 수 있다 (REQ-822).
+ * @param {object} view `createMatch` 의 view — 모든 필드가 같은 초를 말한다 (#252)
+ * @param {?string} [texts.open] 창 자리 빈틈 문면 — 예고 모드만 넘기고 감춤 모드는 null 이라,
+ *   창에 빈틈이 서는 경로 자체가 없다
+ * @param {?string} [texts.resolved] 판정 자리 빈틈 문면 — 그 자리에 서는 사람이 누구냐로 갈린다
+ * @returns {{state: string, foe?: object, text?: string}}
+ */
+export function foeStripState(view, { open = null, resolved = null } = {}) {
+  // 그 초의 상대가 실려 있으면 그것이 그 초의 사실이다 — 빈틈은 상대가 초식을 내지 않은 초에만 선다.
+  if (view.telegraphed) return { state: FOE_STRIP.REVEALED, foe: view.telegraphed };
+  // 값보다 자리가 먼저다 — 값부터 보면 판정 자리의 빈틈이 창 자리 문면으로 새어 나간다 (#252).
+  if (view.phase === PHASE.RESOLVE) return { state: FOE_STRIP.OPENED, text: resolved };
+  if (view.foeOpen && open) return { state: FOE_STRIP.OPEN, text: open };
+  // 자리를 비우면 공개 순간에 조판이 튀고, 상대가 아직 내지 않았다는 사실이 화면에서 사라진다 (#243 결정 2).
+  return { state: FOE_STRIP.VEILED, text: VEIL_TEXT };
+}
+
 /**
  * 상대 초식 스트립 (REQ-822) — 아레나 최상단 가로 스트립이다. 중앙은 판정 오버레이의 자리라
  * 점유하지 않고, 「이기는 색」이 그 옆에 붙어 판단이 한 눈에 닫힌다 (REQ-206).
- * @param {string} openText 빈틈 문면 — 그 자리에 서는 사람이 누구냐로 갈리는 유일한 축이다
  */
-function foeView(view, openText) {
-  if (view.foeOpen) return el('div', { class: 'tele open', text: openText });
-  const foe = view.telegraphed;
-  // 자리를 비우면 공개 순간에 조판이 튀고, 감췄다는 사실 자체가 화면에서 사라진다 (#243 결정 2).
-  if (!foe) return el('div', { class: 'tele veiled', text: '상대가 수를 감췄다' });
+function foeView(view, texts) {
+  const strip = foeStripState(view, texts);
+  if (strip.state !== FOE_STRIP.REVEALED) return el('div', { class: `tele ${strip.state}`, text: strip.text });
+  const foe = strip.foe;
   const win = winAttrOf(foe.attr);
   return el('div', { class: 'tele', style: `--attr:${attrTone(foe.attr)}` }, [
     el('div', { class: 'tele-attr' }, [
@@ -158,9 +181,9 @@ export function createArena({ height = null, figures = [], watcher = null, bout 
     if (!bar) throw new Error(`기력이 없는 자리: ${spot}`);
     bar.set(hp, max);
   };
-  /** @param {string} openText 빈틈 문면 — 그 초의 상대를 스트립에 갈아 끼운다 (REQ-822). */
-  api.showFoe = (view, openText) => {
-    clear(teleSlot).appendChild(foeView(view, openText));
+  /** @param {object} texts 자리별 빈틈 문면 (`open`·`resolved`) — 그 초의 상대를 갈아 끼운다 (REQ-822). */
+  api.showFoe = (view, texts) => {
+    clear(teleSlot).appendChild(foeView(view, texts));
   };
   /** 시간 압박은 아레나에 속한 정보라 실루엣을 보는 동안 주변시로 읽힌다 — 숫자 초는 없다 (REQ-823). */
   api.setWindow = (ratio) => { windowFill.style.width = `${Math.max(0, Math.min(1, ratio)) * 100}%`; };
