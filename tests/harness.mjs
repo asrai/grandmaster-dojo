@@ -1340,7 +1340,7 @@ suite('상대 스트립이 말하는 초 — 판정 자리 · 창 자리 (#252)'
   eq(atWindow.state, FOE_STRIP.VEILED, '빈틈 초의 창 자리도 감춤 상태 하나뿐이다');
   ok(!atWindow.text.includes('빈틈'), `창 자리 문면에 빈틈이 새지 않는다 — ${atWindow.text}`);
 
-  // 예고 모드 갈래 — 토글을 되돌리면 종전 창 빈틈 문면이 그 자리에 그대로 선다 (#243 결정 9).
+  // 예고 모드 갈래 — 토글을 되돌린 화면에서는 창 자리에 빈틈 문면이 선다 (#243 결정 9).
   const telegraph = runTwoExchanges(false);
   const shown = foeStripState(telegraph.windows[1], { open: OPEN_TEXT, resolved: RESOLVED_TEXT });
   eq(shown.state, FOE_STRIP.OPEN, '예고 모드의 창 자리에는 빈틈이 선다');
