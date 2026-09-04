@@ -11,12 +11,16 @@ on:
 jobs:
   claude:
     # 발화자 게이트 — public repo 에서 임의 사용자의 @claude 가 OAuth 토큰으로 writer 를 돌리는 것을 막는다 (#253).
-    # 세 이벤트 모두 actor = 이슈 작성자/코멘트 작성자라 한 조건으로 덮인다.
+    # actor 는 comment 계열에선 코멘트 작성자, issues.opened 에선 이슈 작성자, issues.assigned 에선 assign 수행자다.
+    # issues 분기는 이슈 작성자까지 소유자로 묶는다 — 외부인이 @claude 를 담아 연 이슈를 소유자가 트리아지 중
+    # assign 만 해도 그 본문이 프롬프트로 실행되는 경로를 닫는다. comment 분기는 소유자가 직접 쓴 @claude 만 통과하고,
+    # 그 코멘트가 달린 이슈/PR 본문은 소유자 판단으로 실행에 넘긴 것으로 본다.
+    # 주의: repository_owner 는 org 이전·소유자 rename 시 값이 바뀌어 이 게이트가 조용히 영원-skip 이 된다 (실패 신호 없음).
     if: |
       github.actor == github.repository_owner && (
         (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
         (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-        (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+        (github.event_name == 'issues' && github.event.issue.user.login == github.repository_owner && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
       )
     runs-on: ubuntu-latest
     permissions:

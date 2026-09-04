@@ -26,7 +26,9 @@ jobs:
     # 마커 literal 의 SoT 는 ISSUE_TEMPLATE/fire-and-forget.yml 의 dropdown label —
     # 그쪽만 바꾸면 이 if 가 조용히 영원-skip 이 된다 (3곳 동시 수정 필수:
     # form label + 이 if + script 의 includes/regex).
-    if: ${{ !github.event.issue.pull_request && contains(github.event.issue.body, '위험도 자가 판정') }}
+    # 이슈 작성자 게이트 (#253): public repo 에서 외부인이 폼 마커를 흉내내 자기 이슈에 auto-merge 라벨을
+    # 스스로 붙이는 경로를 닫는다 — Fire-and-forget 배치 진입 표식은 소유자가 연 이슈에만 붙는다.
+    if: ${{ !github.event.issue.pull_request && github.event.issue.user.login == github.repository_owner && contains(github.event.issue.body, '위험도 자가 판정') }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
