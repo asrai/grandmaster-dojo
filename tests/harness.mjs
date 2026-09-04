@@ -2629,7 +2629,7 @@ suite('계측 배선 공유 (#11)', () => {
     eq(trainWindow(len, false), ms, `예고 갈래에서도 길이 ${len} 의 두 창이 같다`);
   }
 
-  // 수용 기준 3 — 창의 근거가 바뀌어도 완화 축은 종전 자리에 그대로 걸린다.
+  // 수용 기준 3 — 완화는 길이 축이 아니라 난이도 축(접근성 배율)에 걸린다.
   session.accessibility = true;
   deepEq([trainWindow(5), trainWindow(5, false)],
     [Math.round(BALANCE.windowBaseMs * BALANCE.accessibilityWindowMult), 4680],
