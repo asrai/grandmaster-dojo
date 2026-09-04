@@ -77,7 +77,7 @@ term_then_kill() {
   for pid in $rest; do "$verify" "$pid" && kill -9 "$pid" 2>/dev/null || true; done
 }
 
-state_get() { sed -n "s/^$2=//p" "$1" 2>/dev/null | tail -1; }
+state_get() { sed -n "s/^$2=//p" "$1" 2>/dev/null | tail -1 || true; }
 
 # 상태 파일은 크래시 뒤에도 남으므로 pid 만으로는 신원이 아니다 — 재사용된 남의 pid 를
 # 막으려면 기록해 둔 cwd·포트까지 실제 프로세스와 대조해야 한다.
@@ -124,11 +124,13 @@ stop_tag() {
     case " $skip " in *" $pid "*) continue ;; esac
     targets="$targets $pid"
   done
-  [ -f "$state" ] || printf 'l4-serve: [%s] 상태 파일 없음 — 프로필 보유자만 정리\n' "$tag" >&2
-  server=$(state_get "$state" L4_SERVER_PID || true)
-  root=$(state_get "$state" L4_ROOT || true)
-  port=$(state_get "$state" L4_PORT || true)
+  server=$(state_get "$state" L4_SERVER_PID)
+  root=$(state_get "$state" L4_ROOT)
+  port=$(state_get "$state" L4_PORT)
   if [ -z "$server" ]; then server=${SERVER_PID:-}; root=${SERVER_ROOT:-}; port=${SERVER_PORT:-}; fi
+  if [ ! -f "$state" ] && [ -z "$server" ]; then
+    printf 'l4-serve: [%s] 상태 파일 없음 — 프로필 보유자만 정리, 서버는 미확인 (scripts/l4-sweep.sh --kill 로 확인)\n' "$tag" >&2
+  fi
   VERIFY_SERVER=$server VERIFY_ROOT=$root VERIFY_PORT=$port
   if is_our_server "$server" "$root" "$port"; then
     case " $skip " in *" $server "*) : ;; *) targets="$targets $server" ;; esac
