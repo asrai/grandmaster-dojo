@@ -70,8 +70,8 @@ tags:
 
 - **REQ-820** *(Ubiquitous)*: The system shall 대련 화면을 **상단 띠 50 / 아레나 440 / 입력부 362 의 3단 고정**으로 구성한다. 초기값은 시안 실측이며 튜닝 대상이다. *(depends: REQ-802)*
 - **REQ-821** *(Ubiquitous)*: The system shall 아레나를 **레이어 스택**으로 그린다 — 원경 산 · 중경 대나무 · 안개 · 비네트 · 지면, 그 위에 먹 실루엣 2인을 대각 대치로 배치하고 각 실루엣 뒤에 **역광(radial glow)** 을 둔다. 역광 없이는 먹 실루엣이 어두운 배경에서 사라진다. *(depends: REQ-820)*
-- **REQ-822** *(Ubiquitous)*: The system shall 상대 예고를 **아레나 최상단 가로 스트립**에 고정한다 — 중앙은 판정 오버레이가 쓰는 자리이므로 예고가 점유하지 않는다. *(depends: REQ-820)*
-- **REQ-823** *(Ubiquitous)*: The system shall 응수 창을 **아레나 하단 가장자리 전폭 게이지**로 분리한다 — 시간 압박은 아레나에 속한 정보이며, 실루엣을 보는 동안 주변시로 읽혀야 한다. **응수 창을 숫자 초로 표기하지 않는다**(D-5 초(招)↔초(秒) 충돌 회피). *(depends: REQ-820)*
+- **REQ-822** *(Ubiquitous)*: The system shall **상대 초식 스트립**을 **아레나 최상단 가로 스트립**에 고정한다 — 중앙은 판정 오버레이가 쓰는 자리이므로 이 스트립이 점유하지 않는다. 스트립의 내용은 모드가 가른다 (#243): **예고 모드**는 초 시작에 상대 초식을 세우고, **감춤 모드**는 그 자리에 감춤 문면(「상대가 수를 감췄다」)을 세운 뒤 **판정 프레임에 공개**한다. 자리를 비우지 않는 것이 계약이다 — 비우면 공개 순간에 조판이 튀고 「감췄다」는 사실 자체가 화면에서 사라진다. *(depends: REQ-820)*
+- **REQ-823** *(Ubiquitous)*: The system shall 응수 창을 **아레나 하단 가장자리 전폭 게이지**로 분리한다 — 시간 압박은 아레나에 속한 정보이며, 실루엣을 보는 동안 주변시로 읽혀야 한다. **응수 창을 숫자 초로 표기하지 않는다**(D-5 초(招)↔초(秒) 충돌 회피). **감춤 모드에서 이 게이지가 비는 속도는 상대 초식과 무관한 고정값(3.0s)이다** — 창 길이를 상대 초식 길이에 비례시키면 게이지 하나가 감춘 초식을 그대로 흘리므로, 게이지는 은폐의 누출 채널이기도 하다 (REQ-201 · #243). *(depends: REQ-820)*
 - **REQ-824** *(State-driven)*: While 응수 창이 열려 있는 동안, the system shall 남은 후보 수만큼 죽간을 그린다(최대 4매, 중앙 정렬) — 4매 84px → 2매 132 → **1매 172 + 금테 확대**. 개수 감소 자체가 「좁혀진다」의 표현이고, 1매 = 확정이 화면에서 가장 큰 사건이 된다. 근거: `duel_v5_narrow.png`. *(depends: REQ-805, REQ-820)*
 - **REQ-825** *(Event-driven)*: When 후보가 탈락할 때, the system shall 해당 죽간을 **짧게 흐려지며 가라앉는 exit 전이**로 제거한다 — 즉시 삭제하면 필터링 과정이 화면에서 사라진다. 죽간 렌더러는 개수 변화에 대해 **enter/exit 상태를 가진다**(후보가 바뀔 때마다 전량 재생성하지 않는다). *(depends: REQ-824)*
 - **REQ-826** *(Unwanted)*: If 마지막 키가 「후보 1개 도달」과 「시퀀스 완주」를 겸해 확정 연출이 한 프레임도 보이지 않게 되면, then the system shall `.only` 금테 확대를 **최소 표시 시간 동안 유지**하고 그동안 판정 오버레이를 대기시킨다. 최소 시간 값은 밸런스 튜닝 대상이다. *(depends: REQ-824)*
@@ -116,8 +116,8 @@ tags:
 
 - **REQ-850** *(Ubiquitous)*: The system shall 파견 관전 화면이 **S1 아레나를 통째로 상속**하게 한다 — 레이어 스택·역광·비네트·기력 2·상대 예고·응수 창이 전부 같은 좌표이며, 바뀌는 것은 아레나에 서는 사람뿐이다(사부 → 제자). 상속이 곧 서사다. *(depends: REQ-821, REQ-822, REQ-823)*
 - **REQ-851** *(Ubiquitous)*: The system shall **키패드가 있던 자리를 비운다** — S1 에서 손이 있던 하단 362px 의 십자·되돌리기·트레일이 이 화면에는 없다. 그 자리를 다른 조작으로 메우면 「손 놓고 보는 것」(REQ-407)이 사라진다. *(depends: REQ-805, REQ-850)*
-- **REQ-852** *(Ubiquitous)*: The system shall 비운 손자리에 **제자의 판단**을 표시한다 — 「우세를 골랐다 — 유운보 ▲」 + 지난 수 한 줄. 관전의 콘텐츠는 제자의 판단 그 자체다. *(depends: REQ-851, REQ-853)*
-- **REQ-853** *(Ubiquitous)*: The system shall 제자 초식 선택 로직(REQ-403: 우세 → 상쇄 → 역파 회피)이 **선택 결과와 함께 선택 이유를 반환**하게 한다 — 현행 `selectDiscipleStyle` 은 이유를 내보내지 않아 화면에 결과만 나온다. DOM-free 층 변경이므로 harness 회귀를 동반한다.
+- **REQ-852** *(Ubiquitous)*: The system shall 비운 손자리에 **제자의 판단**을 표시한다 — 「우세를 골랐다 / 상쇄를 골랐다 / 역파를 피했다 / 감으로 냈다 — 유운보 ▲」 + 지난 수 한 줄. 관전의 콘텐츠는 제자의 판단 그 자체다. 다만 감춤 모드에서 이유 문구는 **공개 뒤에만** 적고 그 전에는 이유 없이 「골랐다」로 남긴다 — 이유를 말하는 것이 곧 상대를 지목하는 것이기 때문이다 (#243). *(depends: REQ-851, REQ-853)*
+- **REQ-853** *(Ubiquitous)*: The system shall 제자 초식 선택 로직(REQ-403: 우세 → 상쇄 → 역파 회피 → 감)이 **선택 결과와 함께 선택 이유를 반환**하게 한다 — 현행 `selectDiscipleStyle` 은 이유를 내보내지 않아 화면에 결과만 나온다. 이유는 **4계열**이며 네 번째 「감」(`guess`)은 성 비례 읽기(REQ-402)에 실패한 초와 감춤 모드에서 상대를 아직 모르는 초 두 자리에서 선다 (#243). 3계열로 접으면 감으로 낸 초가 「상쇄를 골랐다」로 표시되는 거짓말이 되므로 접을 수 없다. DOM-free 층 변경이므로 harness 회귀를 동반한다.
 - **REQ-854** *(Ubiquitous)*: The system shall 사부를 **아레나 밖 앞 구석**에 잘린 뒷모습으로 둔다 — 사부를 지우면 관객이 사라지고 아레나에 넣으면 파견이 아니게 된다. 앞쪽에서 잘린 뒷모습이 카메라가 곧 사부의 시선임을 말한다. *(depends: REQ-850)*
 - **REQ-855** *(Event-driven)*: When 제자가 해당 수의 파해를 보유해 유도가 뜰 때, the system shall 그 죽간을 **금색 맥동**으로 반짝인다 — 지시는 굳은 금테 + 「지시」 꼬리표, 유도는 금색 맥동 + 「파해」 꼬리표이며, 색이 아니라 **형태(정지/맥동)와 꼬리표**로 갈린다. 금은 이 프로젝트에서 달성·확정의 색이고 유도는 그 예고다. 채택 시안 `dispatch_v1.html` 이 지시·유도를 둘 다 금색으로 그렸고, 원장 9색에 상태용 여분이 없어(남는 자리 = 속성색 C6·C7·C8 · 주사 C5) 지시를 다른 색으로 내리면 죽간이 이미 지는 속성 부호화(REQ-112·819)와 이중 부호화로 충돌한다. *(depends: REQ-810, REQ-811)*
 - **REQ-856** *(Ubiquitous)*: The system shall 제자 죽간에 **성 배지 + 한자 우측열을 S1 죽간과 동일 규약**으로 싣고, 기력 라벨을 `적` / `제자` 로 못박는다 — 색 그라디언트만으로 누가 누구인지 구분하지 않는다. 도장에서 키운 값이 여기서 읽혀야 수련의 보상이 닫힌다. *(depends: REQ-827)*
@@ -157,7 +157,7 @@ tags:
 - **REQ-872** *(Ubiquitous)*: The system shall **판정 분포**를 6열 1행(라벨 위 / 숫자 아래)으로 표시하며 S1 의 색 부호화를 그대로 쓴다 — 6단 판정별 횟수는 로그에 이미 있는 데이터이고, 6단 게임의 결과 화면이 당연히 답해야 할 질문이다. *(depends: REQ-814, REQ-871)*
 - **REQ-873** *(Ubiquitous)*: The system shall **성 변화**를 초식마다 12칸 계단 + `8성 → 9성` 으로 표시하고, **이번 판에 오른 칸만 발광**시킨다(REQ-406). 발광한 칸이 이 판에서 번 것의 전부이자 정확한 양이다. *(depends: REQ-817, REQ-818, REQ-871)*
 - **REQ-874** *(Ubiquitous)*: The system shall **판정 낙인을 104px** 로 조판한다 — 한 초의 결론(판정 오버레이 96px)보다 한 판의 결론이 작으면 위계가 뒤집힌다. 조판 규약은 판정 오버레이와 같다. *(depends: REQ-813, REQ-814)*
-- **REQ-875** *(Ubiquitous)*: The system shall S1 아레나를 360px 로 접어 무대로 쓰고 **승패를 자세로 먼저 말한다** — 선 실루엣 / 엎드린 실루엣. 패배 시 서 있는 쪽이 도전자, 쓰러진 쪽이 사부로 **위치를 맞바꾼다**. 엎드린 자세는 선 자세의 회전이 아니라 별도 자세이며, 역광이 닿지 않는 쪽이라 윤곽선으로 형태를 살린다. *(depends: REQ-821, REQ-870)*
+- **REQ-875** *(Ubiquitous)*: The system shall S1 아레나를 360px 로 접어 무대로 쓰고 **승패를 자세로 먼저 말한다** — 선 실루엣 / 엎드린 실루엣. 패배 시 서 있는 쪽이 도전자, 쓰러진 쪽이 **그 무대의 아군**(사부 대련은 사부, 파견은 제자)으로 **위치를 맞바꾼다**. 엎드린 자세는 선 자세의 회전이 아니라 별도 자세이며, 역광이 닿지 않는 쪽이라 윤곽선으로 형태를 살린다. *(depends: REQ-821, REQ-870)*
 - **REQ-876** *(State-driven)*: While 결과가 패배인 동안, the system shall **성 변화와 판정 분포를 그대로** 표시하고 재화를 「없음」으로, 전리품·해금은 아예 붙이지 않는다 — 적립 단위가 유효 성공(REQ-703)이라 져도 성은 오르며, 그 사실을 숨기면 유저는 패배를 순손실로 학습하고 재도전을 멈춘다. *(depends: REQ-872, REQ-873)*
 - **REQ-877** *(State-driven)*: While 결과가 재대련인 동안, the system shall 재화 줄을 **「재대련은 재화를 주지 않는다」 문장**으로 대체하고 전리품 블록도 붙이지 않는다(REQ-734 + D-6) — 보상이 없다는 사실을 빈칸이 아니라 문장으로 말해야 파밍 차단이 규칙으로 읽힌다. *(depends: REQ-871, REQ-892)*
 - **REQ-878** *(Unwanted)*: If 성이 오른 초식이 많아 정산부가 스테이지 높이를 넘으면, then the system shall 정산부만 세로 스크롤하고 **하단 확정 버튼은 패널 밖 형제로 항상 보이게** 한다 — 유일한 출구가 잘리는 것이 현행 구조의 실패 모드다. 상대 표찰에는 이름·한자·초 수만 싣고 남은 기력은 싣지 않는다. *(depends: REQ-871)*
@@ -257,7 +257,7 @@ tags:
 ### 상태 머신 / 핵심 로직
 
 - **죽간 렌더러** — 후보 수 변화에 대해 enter / hold / exit / only 4상태를 가진다(REQ-824~826). `only` 는 최소 표시 시간을 가지며 그동안 판정 오버레이가 대기한다.
-- **제자 선택 로직** — `selectDiscipleStyle` 이 `{style, reason}` 을 반환한다(REQ-853). `reason` 은 우세 선택 / 상쇄 선택 / 역파 회피의 3 계열이며 S4 의 「제자의 판단」 문구가 이 값을 읽는다. DOM-free 층이므로 harness 회귀를 동반한다.
+- **제자 선택 로직** — `selectDiscipleStyle` 이 `{style, reason}` 을 반환한다(REQ-853). `reason` 은 우세 선택 / 상쇄 선택 / 역파 회피 / 감(`guess`)의 4 계열이며 S4 의 「제자의 판단」 문구가 이 값을 읽는다. 「감」은 성 비례 읽기 실패(REQ-402)와 감춤 모드에서 상대를 아직 모르는 초 두 자리에서 나온다(#243). DOM-free 층이므로 harness 회귀를 동반한다.
 - **화면 크롬 소유권** — 상단 띠·본문·하단부의 소유가 싱글턴에서 화면별 렌더로 이동한다(REQ-801 · REQ-802). 이 전이가 완료되기 전에는 어떤 화면도 이식할 수 없다.
 
 ### UI / UX 명세
@@ -286,7 +286,7 @@ tags:
 |---|---|---|---|
 | S1 | 상단 띠(E1·E1-1~4) | REQ-820 · REQ-893 · REQ-895 · REQ-897 | — |
 | S1 | 아레나·레이어·실루엣·역광(E2~E4) | REQ-821 · REQ-932 | — |
-| S1 | 상대 예고(E5~E5-3) · 기력 2(E6·E7) · 응수 창(E8) | REQ-822 · REQ-823 · REQ-856 | — |
+| S1 | 상대 슬롯(E5~E5-3) · 기력 2(E6·E7) · 응수 창(E8) | REQ-822 · REQ-823 · REQ-856 | — |
 | S1 | 판정 오버레이(E9~E9-2) | REQ-813 · REQ-814 | — |
 | S1 | 진행형 색·죽간·트레일(E10~E12) | REQ-824~828 | — |
 | S1 | 키패드·되돌리기(E13~E14) | REQ-829 · REQ-910 · REQ-931 | — |
@@ -326,7 +326,7 @@ tags:
 ### 기술 의존성
 
 - **엔진 = HTML5 그 자체** — 목업의 CSS 층은 거의 그대로 이식되고, HTML 구조는 렌더 함수로 번역되며, `?state=` 스크립트 JS 층은 전량 폐기된다. **목업의 스타일 결함이 곧 게임의 결함**이라는 것이 이 프로젝트의 특수 조건이다.
-- **DOM-free 경계** — `src/` 루트(`balance.mjs`·`core.mjs`·`log.mjs`·`bot.mjs`)와 harness 가 import 하는 `src/ui/` 4모듈(`sequence-input`·`match`·`session`·`wiring`)은 DOM 을 참조할 수 없다. REQ-853(제자 선택 이유)이 이 층을 건드리므로 harness 회귀가 필수다.
+- **DOM-free 경계** — `src/` 루트(`balance.mjs`·`core.mjs`·`log.mjs`·`bot.mjs`)와 harness 가 import 하는 `src/ui/` 10모듈(`match`·`sequence-input`·`audio`·`frame-budget`·`session`·`wiring`·`theme`·`tablet-state`·`stage-scale`·`gesture-block`)은 DOM 을 참조할 수 없다. **권위 목록은 `grep "src/ui/" tests/harness.mjs` 의 결과**이고 여기 적은 것은 그 사본이다 — 모듈이 늘 때 사본만 두면 이 수치가 또 낡는다. REQ-853(제자 선택 이유)이 이 층을 건드리므로 harness 회귀가 필수다.
 - **스케일 스테이지** — `#stage` 가 `transform: scale(var(--k))` 를 쓰므로 흔들림은 내부 래퍼에 걸어야 하고(REQ-816), `position: fixed` 는 스테이지 안에서 쓰지 않는다.
 - **세로쓰기** — `writing-mode: vertical-rl` + `text-orientation: upright` 는 한글에서도 성립하지만, 컨테이너 높이가 부족하면 조용히 2열로 접힌다. `white-space: nowrap` + 충분한 높이 + `overflow: hidden` 이 3점 세트다.
 - **폰트 로딩** — F1 이 전 표면 주력이 되면서 로딩 비용의 주 변수가 됐다(REQ-803).
@@ -415,7 +415,7 @@ tags:
 | id | class | spec_ref | filename | format | dimensions | alpha | bgm_loop | count | tier | consistency_group | semantic_intent | license_meta | repo_path |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | sil_master | sprite | REQ-932 | sil_master_{pose}.png | png | 512x1024 | true | — | 6 | final | ink_silhouette | 사부의 먹 실루엣 6자세 — 대치(S1·S6 승자 겸용) · 도장 서기(S2) · 잘린 뒷모습 관전(S4) · 시범 몸통과 팔 분리 2파일(S5) · 엎드림(S6 패배). 붓으로 친 단색 실루엣이며 얼굴 이목구비가 없다. | AI 생성(MJ base + NB variant) · 상업 이용 가능 · 생성 이력 `docs/ai-log.md` 기록 | assets/art/silhouettes/ |
-| sil_disciple | sprite | REQ-932 | sil_disciple_{pose}.png | png | 512x1024 | true | — | 4 | final | ink_silhouette | 제자의 먹 실루엣 4자세 — 도장 서기(S2) · 아레나 대치(S4) · 따라 하기 몸통과 팔 분리 2파일(S5). 사부보다 작고 어깨가 좁아 한눈에 갈린다. | AI 생성(MJ base + NB variant) · 상업 이용 가능 · 생성 이력 `docs/ai-log.md` 기록 | assets/art/silhouettes/ |
+| sil_disciple | sprite | REQ-932 | sil_disciple_{pose}.png | png | 512x1024 | true | — | 5 | final | ink_silhouette | 제자의 먹 실루엣 5자세 — 도장 서기(S2) · 아레나 대치(S4) · 따라 하기 몸통과 팔 분리 2파일(S5) · 엎드림(S6 파견 패배 — 사부 대련의 사부 패배와 같은 자리·같은 접지선). 사부보다 작고 어깨가 좁아 한눈에 갈린다. | AI 생성(MJ base + NB variant) · 상업 이용 가능 · 생성 이력 `docs/ai-log.md` 기록 | assets/art/silhouettes/ |
 | sil_challenger | sprite | REQ-932 | sil_challenger_{pose}.png | png | 512x1024 | true | — | 2 | final | ink_silhouette | 도전자의 먹 실루엣 2자세 — 대치(S1·S4·S6 승자 겸용) · 엎드림(S6 승리). 사부와 실루엣만으로 구분되도록 도포 자락과 무기 실루엣이 다르다. | AI 생성(MJ base + NB variant) · 상업 이용 가능 · 생성 이력 `docs/ai-log.md` 기록 | assets/art/silhouettes/ |
 | sfx_key | sfx | REQ-922 | sfx_key.ogg | ogg | — | — | — | 1 | final | dojo_sfx | 방향 키 하나를 칠 때의 짧고 건조한 타격음. 재생 시 피치가 랜덤화되므로 자체는 무색·무잔향이어야 한다. | Suno Sounds 생성 · 상업 이용 가능 · 생성 이력 `docs/ai-log.md` 기록 | assets/audio/ |
 | sfx_lock | sfx | REQ-923 | sfx_lock.ogg | ogg | — | — | — | 1 | final | dojo_sfx | 후보가 1개로 확정되는 순간의 잠김음. 금테 확대와 같은 순간이라 「맞물렸다」로 읽혀야 한다. | Suno Sounds 생성 · 상업 이용 가능 · 생성 이력 `docs/ai-log.md` 기록 | assets/audio/ |
@@ -506,7 +506,7 @@ Output filename: as specified below.
 - consistency_group: `ink_silhouette` — `sil_disciple` · `sil_challenger` 와 동시 비교 대상
 - 메모: 결정 로그가 「먹 실루엣 노선이 성립한다는 사실을 확정한 것이지 현행 형상을 확정한 것이 아니다」라고 명시 부인했다. 현행 인라인 SVG 는 이 산출물로 대체된다.
 
-### [sil_disciple] 제자 먹 실루엣 4자세
+### [sil_disciple] 제자 먹 실루엣 5자세
 
 **[A-base] MJ base 생성 프롬프트**
 
@@ -523,7 +523,7 @@ Avoid (negative prompt): facial features, interior detail, cel shading, gradient
 
 MJ V1-V4 중 사부와의 체격 대비가 가장 뚜렷한 1장 선택 → `assets/art/silhouettes/sil_disciple_base_raw.png` 임시 저장.
 
-**[A-variant] NB variant edit 프롬프트** (총 4 pass)
+**[A-variant] NB variant edit 프롬프트** (총 5 pass)
 
 Pass 0 — `dojo` 완성:
 
@@ -533,7 +533,7 @@ Remove the white background completely — output transparent PNG with a clean a
 Output filename: sil_disciple_dojo.png
 ```
 
-Pass 1 ~ 3 — derived 자세 변형:
+Pass 1 ~ 4 — derived 자세 변형:
 
 ```
 Take the attached ink silhouette (young disciple, standing at rest, plain white background).
@@ -551,17 +551,18 @@ Output filename: as specified below.
 | 1 | ready combat stance facing three-quarter left, weight low and centered, one foot forward, arms slightly away from the body — mirroring a master's fighting stance but with the smaller apprentice proportions | `sil_disciple_stance.png` |
 | 2 | copying a demonstrated technique, body only — both arms REMOVED from the shape entirely (arms are supplied as a separate layer), torso turned three-quarter left with weight on the front foot | `sil_disciple_follow_body.png` |
 | 3 | a single pair of arms only, no torso, raised forward in an imitating gesture but at a slightly awkward angle as if not yet matching the teacher, drawn to attach at the shoulder joints of the previous body image, pivot point at the shoulder | `sil_disciple_follow_arm.png` |
+| 4 | fallen and face down on the ground, prone, one arm folded under the body and the other reaching forward along the ground, the short robe hem and loose trousers spread out around the hips and legs, head toward the RIGHT edge of the canvas with the body extending to the LEFT, resting on the bottom edge of the canvas and occupying only the lower third — readable as a person and not as a black blob, so keep the head, small hair knot, shoulder, hip and robe hem separations distinct | `sil_disciple_prone.png` |
 
 **[A-ko] 한글 외주 명세**
 
 ```
-주제: 무협 제자 1인의 전신 먹 실루엣 4자세 (일괄 납품)
+주제: 무협 제자 1인의 전신 먹 실루엣 5자세 (일괄 납품)
 캐릭터 외형: 십대~청년 견습생 · 사부보다 눈에 띄게 작고 어깨가 좁다 · 허벅지 중간까지 오는 짧은 수련복 + 헐렁한 바지 · 천 허리띠 · 관 없이 작게 묶은 상투 · 이목구비 전혀 없음 · 무기 없음 · 실루엣은 짧은 옷자락·바지 낙차·머리 묶음의 윤곽으로 읽힌다
-표정 / 포즈 / 동작: ① 편히 선 자세(발 모음, 손 자연스럽게 내림, 우 3/4) ② 대치 준비 자세(좌 3/4, 무게 낮게, 한 발 앞 — 사부의 자세를 작은 체격으로 옮긴 것) ③ 따라 하기 몸통만 — 팔을 형태에서 완전히 제외(팔은 별도 파일) ④ 팔만 — 몸통 없이, 흉내 내듯 앞으로 들어 올렸으되 아직 사부와 어긋난 각도, ③ 의 어깨에 맞물리게(회전 축은 어깨)
+표정 / 포즈 / 동작: ① 편히 선 자세(발 모음, 손 자연스럽게 내림, 우 3/4) ② 대치 준비 자세(좌 3/4, 무게 낮게, 한 발 앞 — 사부의 자세를 작은 체격으로 옮긴 것) ③ 따라 하기 몸통만 — 팔을 형태에서 완전히 제외(팔은 별도 파일) ④ 팔만 — 몸통 없이, 흉내 내듯 앞으로 들어 올렸으되 아직 사부와 어긋난 각도, ③ 의 어깨에 맞물리게(회전 축은 어깨) ⑤ 엎어져 쓰러진 자세 — 한 팔은 몸 아래로 접히고 다른 팔은 바닥을 따라 앞으로, 짧은 수련복 자락과 바지가 엉덩이·다리 둘레로 펼쳐짐, 머리는 캔버스 오른쪽 몸은 왼쪽, 캔버스 아래 1/3만 차지, 검은 덩어리가 아니라 사람으로 읽히도록 머리·머리 묶음·어깨·엉덩이·옷자락의 경계를 살릴 것
 구도: 전신 중앙 정렬 · 세로 방향
 화풍: 단색 먹 실루엣 · 붓으로 친 가장자리 · 내부 음영·그라디언트·내부 선 일절 없음
 팔레트 / 톤: 순수 검정 도형 · 다른 색 없음
-포맷: 투명 PNG · 512x1024 · 4파일 일괄
+포맷: 투명 PNG · 512x1024 · 5파일 일괄
 회피 (negative): 이목구비 · 내부 디테일 · 셀 셰이딩 · 그라디언트 · 외곽선 · 워터마크 · 글자 · 무기 · 배경 · 성인 체형 · 긴 도포
 ```
 
@@ -571,6 +572,7 @@ Output filename: as specified below.
 - Pass 2·3(따라 하기 몸통 / 팔)의 어깨 관절은 `sil_master` Pass 3·4 와 **같은 회전 축 규약**을 쓴다 — 두 인물이 같은 진폭의 왕복 손짓을 반 박자 차로 치는 것이 전수 연출이다(REQ-861). 회전 원점은 두 자산의 어깨가 각자 다른 자리에 있어 짝으로 갈린다.
 - `sil_disciple_base_raw.png` 는 manifest 미등록 · 빌드 복사 제외.
 - **override — S2 도장 정경(REQ-833)에 한해 `sil_disciple_dojo.png` 를 화면에서 좌우 반전해 쓴다** (CSS `scaleX(-1)`, 자산 무변경). 계약 기본방향은 `facing three-quarter right` 그대로이고 파생 자세의 방향 앵커도 그대로다 — 제자가 사부 오른쪽에 서는 배치라 그 화면에서만 좌향으로 읽혀야 한다. 계약↔납품 대조 스윕은 이 자산을 **우향으로** 판정해야 하며, 화면이 좌향이라는 이유로 파일을 뒤집으면 이중 반전이 된다 (#213).
+- 엎드림(Pass 4)은 `sil_master_prone.png` 를 두 번째 참조로 첨부해 **머리 방향(오른쪽)과 접지선을 맞춘다** — 패배 시 두 자산이 같은 `SPOT.FAR` 슬롯에 번갈아 들어가므로 방향이 어긋나면 화면이 튄다. 생성본은 폭·접지선만 기하 보정하고 픽셀은 손대지 않는다 (#243 · PR #244).
 
 **[C] 내부 참조**
 
@@ -818,7 +820,7 @@ drums, drum kit, percussion loop, vocals, choir, brass, orchestral swell, key ch
 - [ ] 케이스 4 *(REQ-826)*: 마지막 키가 후보 확정과 시퀀스 완주를 겸하는 초식 발동 → 금테 확대가 최소 표시 시간 동안 보인 뒤 판정 오버레이가 뜬다
 - [ ] 케이스 5 *(REQ-830, REQ-831, REQ-817)*: 8성 초식·12성 초식·잠긴 초식이 섞인 도장 진입 → 8성 행은 7↔8 사이 주사색 벽과 다음 계단 안내를 보이고, 12성·잠김 행은 게이지가 접히고 배지만 남는다
 - [ ] 케이스 6 *(REQ-818)*: 8성 벽을 넘는 판을 끝냄 → 결과 화면에서 벽 칸의 발광이 살아 있다
-- [ ] 케이스 7 *(REQ-852, REQ-853)*: 파견 관전 진행 → 매 초 「우세를 골랐다 / 상쇄를 골랐다 / 역파를 피했다」 중 실제 선택 이유가 표시된다
+- [ ] 케이스 7 *(REQ-852, REQ-853)*: 파견 관전 진행 → 매 초 「우세를 골랐다 / 상쇄를 골랐다 / 역파를 피했다 / 감으로 냈다」 중 실제 선택 이유가 **공개 뒤에** 표시되고, 공개 전에는 이유 없이 「골랐다」로만 적힌다
 - [ ] 케이스 8 *(REQ-855)*: 제자가 파해를 보유한 초 → 해당 죽간만 금색으로 맥동하며 「파해」 꼬리표가 붙고(`.slip.beckon`), 그 초를 지시한 죽간의 굳은 금테 + 「지시」 꼬리표(`.slip.picked`)와 형태·꼬리표로 구분된다
 - [ ] 케이스 9 *(REQ-861, REQ-865, REQ-867)*: 전수 화면 진입 → 목록 0행 + 「전수하기」, 두 사람이 마주 봄. 그 버튼을 누름 → 사부 팔이 1초 주기로 내려갔다 올라오기를 초식 수만큼 반복하고 제자가 0.5초 지연으로 같은 동작을 하며, 행이 `0.5 + (n-1)`초에 하나씩 도착하고 바닥은 「건너뛰기」. 총 길이에 4행 완비 + 「도장으로」 + `CUE.TRANSMIT` 1회, 제자 팔만 0.5초 더 흐르다 대기 자세로 정지. 연출 중 「건너뛰기」를 누르면 즉시 전 행 + 두 팔 정지 + 「도장으로」. `prefers-reduced-motion` 과 `.flat` 강등에서는 손짓 반복도 행 등장 전이도 없다
 - [ ] 케이스 10 *(REQ-871, REQ-876, REQ-877)*: 대련 승리 / 대련 패배 / 재대련 승리 / 파견 완수 4상태의 결과 화면 → 고정 3블록의 자리·순서가 4상태 모두 동일하고, 패배에도 성 변화·판정 분포가 있으며, 재대련은 재화 문장 + 전리품 없음이다
@@ -844,7 +846,7 @@ drums, drum kit, percussion loop, vocals, choir, brass, orchestral swell, key ch
 
 - [ ] `gradeOf` (6단 판정·파해·속성 삼각)와 성장 로직의 **수치 거동 무변경** — 본 spec 은 표시 층이며 REQ-853(선택 이유 반환)만이 DOM-free 층을 건드린다
 - [ ] `selectDiscipleStyle` 이 반환 형태를 바꾼 뒤에도 harness 의 봇 사이클 assertion 이 전부 통과한다 *(REQ-853)*
-- [ ] `src/` 루트와 harness 가 import 하는 `src/ui/` 4모듈에 `document` 참조가 들어가지 않았다
+- [ ] `src/` 루트와 harness 가 import 하는 `src/ui/` 모듈(권위 목록 = `grep "src/ui/" tests/harness.mjs`, 현행 10개)에 `document` 참조가 들어가지 않았다
 - [ ] 「수」 → 「초」 교체가 **시퀀스 길이 표기(`3수 초식`)와 영문 식별자를 건드리지 않았다** *(REQ-893)*
 - [ ] 기존 로그 이벤트의 필드 이름·의미가 바뀌지 않았다 *(§ 통합 로그 스키마)*
 
