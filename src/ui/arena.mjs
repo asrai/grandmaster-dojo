@@ -48,7 +48,7 @@ const SCENERY = `
 const VEIL_TEXT = '상대가 초식을 펼치려고 한다';
 
 /** 상대 스트립이 설 수 있는 상태 — 어느 자리에 무엇이 실렸는지가 이름으로 남는다 (REQ-822). */
-export const FOE_STRIP = { OPEN: 'open', OPENED: 'opened', VEILED: 'veiled', REVEALED: 'revealed' };
+export const FOE_STRIP = { OPEN: 'open', OPENED: 'opened', MISSED: 'missed', VEILED: 'veiled', REVEALED: 'revealed' };
 
 /**
  * 스트립 상태 결정 — 문서를 만지지 않으므로 하네스가 이 판단만 따로 단정할 수 있다 (REQ-822).
@@ -57,8 +57,8 @@ export const FOE_STRIP = { OPEN: 'open', OPENED: 'opened', VEILED: 'veiled', REV
  * @param {?string} [texts.open] 창 자리 빈틈 문면 — 예고 모드만 넘기고 감춤 모드는 null 이라,
  *   창에 빈틈이 서는 경로 자체가 없다
  * @param {?string} [texts.resolved] 판정 자리 빈틈 문면 — 그 자리에 서는 사람이 누구냐로 갈린다
- * @param {?string} [texts.missed] 그 빈틈을 흘린 갈래의 판정 자리 문면. 미전달이면 `resolved` 로
- *   접히므로, 흘림이 성립하지 않는 화면(파견)은 넘기지 않는 것이 곧 그 화면의 선언이다 (#255)
+ * @param {?string} [texts.missed] 그 빈틈을 흘린 갈래의 판정 자리 문면. 미전달이면 문면도 상태도
+ *   `resolved` 갈래로 접히므로, 흘림이 성립하지 않는 화면(파견)은 넘기지 않는 것이 곧 그 화면의 선언이다 (#255)
  * @returns {{state: string, foe?: object, text?: string}}
  */
 export function foeStripState(view, { open = null, resolved = null, missed = null } = {}) {
@@ -68,7 +68,9 @@ export function foeStripState(view, { open = null, resolved = null, missed = nul
   if (view.phase === PHASE.RESOLVE && view.foeOpen) {
     // 등급을 여기서만 읽는 것이 계약이다 — 창 자리 view 의 `verdict` 는 직전 초의 것이라 남의 초를 말한다 (#255).
     const taken = view.verdict?.grade === 'crush';
-    return { state: FOE_STRIP.OPENED, text: !taken && missed != null ? missed : resolved };
+    // 문면과 배색이 한 술어에서 나와야 한다 — 등급만으로 가르면 `missed` 를 넘기지 않는 화면까지 흘림 배색이 된다 (#263).
+    const slipped = !taken && missed != null;
+    return { state: slipped ? FOE_STRIP.MISSED : FOE_STRIP.OPENED, text: slipped ? missed : resolved };
   }
   if (view.foeOpen && open) return { state: FOE_STRIP.OPEN, text: open };
   // 자리를 비우면 공개 순간에 조판이 튀고, 상대가 아직 내지 않았다는 사실이 화면에서 사라진다 (#243 결정 2).

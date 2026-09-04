@@ -1340,7 +1340,7 @@ suite('상대 스트립이 말하는 초 — 판정 자리 · 창 자리 (#252)'
   // (b) 증상 B — 진짜 빈틈 초의 판정 view 는 그 초가 빈틈이었다고 말한다.
   eq(blind.verdicts[1].foeOpen, true, '빈틈 초의 판정 view 는 그 초가 빈틈이었음을 싣는다');
   const opened = foeStripState(blind.verdicts[1], TEXTS_BLIND);
-  eq(opened.state, FOE_STRIP.OPENED, '빈틈 초의 판정 자리는 「빈틈이었다」 상태다');
+  eq(opened.state, FOE_STRIP.MISSED, '흘린 갈래는 자기 상태를 쓴다 — 상태가 곧 배색 채널이라 문면만 갈리면 금색이 남는다 (#263)');
   eq(opened.text, MISSED_TEXT, '흘린 갈래의 판정 자리는 기회를 놓쳤다고 말한다 — 「허를 찔렀다」가 아니다');
 
   // 스트립은 중앙 판정과 같은 프레임에 서므로, 그 초를 잡았는지로 문면이 갈린다 (#255).
@@ -1348,13 +1348,16 @@ suite('상대 스트립이 말하는 초 — 판정 자리 · 창 자리 (#252)'
   const taken = runTwoExchanges(true, { fireSecond: true });
   eq(taken.verdicts[1].verdict.grade, 'crush', '빈틈 초에 아무 초식이나 완주하면 완파다');
   const takenStrip = foeStripState(taken.verdicts[1], TEXTS_BLIND);
-  eq(takenStrip.state, FOE_STRIP.OPENED, '잡은 빈틈 초의 판정 자리도 「빈틈이었다」 상태다');
+  eq(takenStrip.state, FOE_STRIP.OPENED, '잡은 빈틈 초의 판정 자리는 종전 「빈틈이었다」 상태 그대로다 — 금색을 유지하는 갈래다');
+  ok(opened.state !== takenStrip.state, `두 갈래가 서로 다른 상태를 쓴다 — ${opened.state} / ${takenStrip.state}`);
   eq(takenStrip.text, RESOLVED_TEXT, '잡은 갈래의 판정 문면은 종전 그대로다');
   ok(opened.text !== takenStrip.text, `두 갈래가 서로 다른 판정 문면을 쓴다 — ${opened.text} / ${takenStrip.text}`);
 
   // 흘림이 성립하지 않는 화면은 `missed` 를 넘기지 않는다 — 그 갈래를 빈 자리가 아니라 종전 문면으로 접는다.
-  eq(foeStripState(blind.verdicts[1], { open: null, resolved: RESOLVED_TEXT }).text, RESOLVED_TEXT,
-    'missed 를 넘기지 않은 화면의 흘린 갈래는 종전 판정 문면을 쓴다');
+  // 문면과 상태를 함께 무는 것이 계약이다 — 상태만 등급으로 갈리면 파견 스트립이 먹색이 되는 회귀가 이 단정을 통과한다 (#263).
+  const folded = foeStripState(blind.verdicts[1], { open: null, resolved: RESOLVED_TEXT });
+  eq(folded.text, RESOLVED_TEXT, 'missed 를 넘기지 않은 화면의 흘린 갈래는 종전 판정 문면을 쓴다');
+  eq(folded.state, FOE_STRIP.OPENED, 'missed 를 넘기지 않은 화면의 흘린 갈래는 상태도 함께 접혀 종전 배색을 유지한다');
 
   // (c) 누설 핀 — 감춤 모드의 창 자리는 직전 초 완파 뒤에도 빈틈을 말하지 않는다 (#243 결정 2).
   const atWindow = foeStripState(blind.windows[1], TEXTS_BLIND);
