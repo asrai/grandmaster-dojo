@@ -51,6 +51,13 @@ const KEY_PITCH = [0.88, 1.14];
 /** 마스터 게인 전환 길이 — 계단 대입은 파형이 끊겨 그 자리가 팝으로 들린다 (#163). */
 const GAIN_RAMP_MS = 30;
 
+/**
+ * 이 표지가 붙은 요소를 향한 활성화 입력은 REQ-921 의 「최초 입력」이 아니다 — 그 재개는
+ * `toggleMute` 가 직접 진다. 표지를 붙이는 쪽(`dom.mjs`)과 거르는 쪽(`app.mjs`)이 같은 이름을
+ * 이 한 자리에서 받아야, 오디오 컨트롤이 하나 더 생길 때 표지 누락이 조용히 지나가지 않는다.
+ */
+export const AUDIO_CONTROL_ATTR = 'data-audio-control';
+
 const state = {
   ctx: null,
   master: null,
@@ -141,10 +148,21 @@ function startBgm() {
   state.bgm = playBuffer(ac, BALANCE.audio.bgm, { loop: true });
 }
 
-/** @param {number} at 정지 시각 (오디오 시계) — 기본값 0 은 「지금 즉시」다 */
+/**
+ * BGM 정지 — 정지가 미래면 그때까지 소스는 아직 살아 있으므로 참조를 붙들고 있는다: 미리
+ * 버리면 그 창 안에 온 해제가 두 번째 소스를 겹쳐 걸어 같은 루프 두 벌이 위상이 어긋난 채
+ * 함께 울린다. 실제로 끝난 자리에서 지금의 음소거 상태를 다시 본다 (#163).
+ * @param {number} at 정지 시각 (오디오 시계) — 지금 이전이면 즉시다
+ */
 function stopBgm(at = 0) {
-  state.bgm?.stop(at);
-  state.bgm = null;
+  const source = state.bgm;
+  if (!source) return;
+  const pending = at > state.ctx.currentTime;
+  state.bgm = pending ? source : null;
+  if (pending) {
+    source.onended = () => { if (state.bgm === source) { state.bgm = null; applyMute(); } };
+  }
+  source.stop(at);
 }
 
 /**
@@ -209,9 +227,10 @@ function logState() {
  * 다음 입력이 같은 자리로 다시 온다.
  */
 export function resumeAudio() {
-  if (state.resumed) return;
   const ac = context();
-  if (!ac) return;
+  // 뚫린 적 있다는 사실만으로 걸러 내면, 인터럽트로 다시 정지한 컨텍스트가 그 세션 내내 무음이
+  // 된다 — 음소거 버튼은 이제 전역 재개 리스너 밖이라 그 우연한 복구 경로도 여기 하나뿐이다.
+  if (!ac || (state.resumed && ac.state === 'running')) return;
   const settle = () => {
     state.resumed = ac.state === 'running';
     if (!state.resumed) return;
