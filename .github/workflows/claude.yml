@@ -10,10 +10,14 @@ on:
 
 jobs:
   claude:
+    # 발화자 게이트 — public repo 에서 임의 사용자의 @claude 가 OAuth 토큰으로 writer 를 돌리는 것을 막는다 (#253).
+    # 세 이벤트 모두 actor = 이슈 작성자/코멘트 작성자라 한 조건으로 덮인다.
     if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+      github.actor == github.repository_owner && (
+        (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+        (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+        (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: write
