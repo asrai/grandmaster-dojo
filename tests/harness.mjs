@@ -1287,10 +1287,11 @@ suite('상대 스트립이 말하는 초 — 판정 자리 · 창 자리 (#252)'
   const challenger = challengerById('A-4');
 
   // 완파 1회로 빈틈을 연 뒤 그 다음 초까지 돌린다 — 어긋남은 두 초에 걸쳐야만 드러난다.
-  const runTwoExchanges = (blind) => {
+  const runTwoExchanges = (blind, { fireSecond = false } = {}) => {
     const timer = createVirtualTimer();
     const seen = { windows: [], verdicts: [] };
-    let fired = false;
+    let firedFirst = false;
+    let firedSecond = false;
     let match = null;
     match = createMatch({
       challenger,
@@ -1304,10 +1305,16 @@ suite('상대 스트립이 말하는 초 — 판정 자리 · 창 자리 (#252)'
       blind,
       hooks: {
         onWindow: (v) => seen.windows.push(v),
-        // 파해 초식을 그 초의 실제 상대에서 뽑는다 — 시드가 무엇을 뽑든 첫 초의 완파가 결정적이다.
         onTick: (v) => {
-          if (fired || v.exchange > 0 || !v.foeStyle) return;
-          fired = match.fire({ style: STYLES.find((s) => s.counters === v.foeStyle.id), oneTap: false, r: v.ratio });
+          // 파해 초식을 그 초의 실제 상대에서 뽑는다 — 시드가 무엇을 뽑든 첫 초의 완파가 결정적이다.
+          if (v.exchange === 0) {
+            if (firedFirst || !v.foeStyle) return;
+            firedFirst = match.fire({ style: STYLES.find((s) => s.counters === v.foeStyle.id), oneTap: false, r: v.ratio });
+            return;
+          }
+          // 빈틈 초에는 아무 초식이나 완주하면 완파라, 그 초를 잡는 갈래와 흘리는 갈래가 손 하나로 갈린다.
+          if (!fireSecond || firedSecond) return;
+          firedSecond = match.fire({ style: STYLES[0], oneTap: false, r: v.ratio });
         },
         onVerdict: (v) => seen.verdicts.push(v),
       },
@@ -1334,6 +1341,14 @@ suite('상대 스트립이 말하는 초 — 판정 자리 · 창 자리 (#252)'
   const opened = foeStripState(blind.verdicts[1], TEXTS_BLIND);
   eq(opened.state, FOE_STRIP.OPENED, '빈틈 초의 판정 자리는 「빈틈이었다」 상태다');
   eq(opened.text, RESOLVED_TEXT, '판정 자리에는 판정 문면이 선다 — 감춤 문면이 아니다');
+
+  // 스트립은 상대의 상태를 말하는 자리라, 그 초를 잡았는지로 갈리는 판정 등급과 독립이다.
+  eq(blind.verdicts[1].verdict.grade, 'struck', '빈틈 초를 흘린 갈래의 등급은 피격이다');
+  const taken = runTwoExchanges(true, { fireSecond: true });
+  eq(taken.verdicts[1].verdict.grade, 'crush', '빈틈 초에 아무 초식이나 완주하면 완파다');
+  const takenStrip = foeStripState(taken.verdicts[1], TEXTS_BLIND);
+  eq(takenStrip.state, FOE_STRIP.OPENED, '잡은 빈틈 초의 판정 자리도 「빈틈이었다」 상태다');
+  eq(takenStrip.text, RESOLVED_TEXT, '두 갈래가 같은 판정 문면을 쓴다');
 
   // (c) 누설 핀 — 감춤 모드의 창 자리는 직전 초 완파 뒤에도 빈틈을 말하지 않는다 (#243 결정 2).
   const atWindow = foeStripState(blind.windows[1], TEXTS_BLIND);

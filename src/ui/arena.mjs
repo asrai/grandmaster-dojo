@@ -53,6 +53,7 @@ export const FOE_STRIP = { OPEN: 'open', OPENED: 'opened', VEILED: 'veiled', REV
 /**
  * 스트립 상태 결정 — 문서를 만지지 않으므로 하네스가 이 판단만 따로 단정할 수 있다 (REQ-822).
  * @param {object} view `createMatch` 의 view — 모든 필드가 같은 초를 말한다 (#252)
+ * @param {object} [texts] 자리별 빈틈 문면
  * @param {?string} [texts.open] 창 자리 빈틈 문면 — 예고 모드만 넘기고 감춤 모드는 null 이라,
  *   창에 빈틈이 서는 경로 자체가 없다
  * @param {?string} [texts.resolved] 판정 자리 빈틈 문면 — 그 자리에 서는 사람이 누구냐로 갈린다
@@ -62,7 +63,7 @@ export function foeStripState(view, { open = null, resolved = null } = {}) {
   // 그 초의 상대가 실려 있으면 그것이 그 초의 사실이다 — 빈틈은 상대가 초식을 내지 않은 초에만 선다.
   if (view.telegraphed) return { state: FOE_STRIP.REVEALED, foe: view.telegraphed };
   // 값보다 자리가 먼저다 — 값부터 보면 판정 자리의 빈틈이 창 자리 문면으로 새어 나간다 (#252).
-  if (view.phase === PHASE.RESOLVE) return { state: FOE_STRIP.OPENED, text: resolved };
+  if (view.phase === PHASE.RESOLVE && view.foeOpen) return { state: FOE_STRIP.OPENED, text: resolved };
   if (view.foeOpen && open) return { state: FOE_STRIP.OPEN, text: open };
   // 자리를 비우면 공개 순간에 조판이 튀고, 상대가 아직 내지 않았다는 사실이 화면에서 사라진다 (#243 결정 2).
   return { state: FOE_STRIP.VEILED, text: VEIL_TEXT };
