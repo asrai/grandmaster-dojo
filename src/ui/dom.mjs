@@ -2,7 +2,7 @@
 // 전부 src/ui/ 아래에만 산다.
 
 import { ARROW } from '../balance.mjs';
-import { isMuted, toggleMute } from './audio.mjs';
+import { AUDIO_CONTROL_ATTR, isMuted, toggleMute } from './audio.mjs';
 
 export const $ = (id) => document.getElementById(id);
 
@@ -115,7 +115,7 @@ export function topBand(session, artName, { label, onLeave = null }) {
 
   // 음소거는 디버그 컨트롤이 아니라 플레이어 기능이라 스테이지 안에 남는다 (REQ-926) — 실전
   // 3단 좌표를 건드리지 않는 이 띠가 그 자리다. 시안에 자리가 지정된 컨트롤은 아니다.
-  const mute = el('button', { class: 'mute' });
+  const mute = el('button', { class: 'mute', [AUDIO_CONTROL_ATTR]: true });
   const paintMute = () => {
     const off = isMuted();
     mute.textContent = off ? '소리 꺼짐' : '소리 켜짐';
