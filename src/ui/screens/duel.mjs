@@ -88,6 +88,8 @@ export function startDuel(ctx) {
   const foeTexts = {
     open: BALANCE.blindExchange ? null : '빈틈! — 아무 초식이나 완주하면 완파',
     resolved: '빈틈 — 상대의 허를 찔렀다',
+    // 흘린 갈래는 판정이 「피격」이라, 같은 프레임의 스트립이 이겼다고 말하면 화면이 스스로를 부정한다 (#255).
+    missed: '빈틈이었는데 아까운 기회를 놓쳤다',
   };
 
   const match = createMatch({

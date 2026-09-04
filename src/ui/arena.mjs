@@ -57,13 +57,19 @@ export const FOE_STRIP = { OPEN: 'open', OPENED: 'opened', VEILED: 'veiled', REV
  * @param {?string} [texts.open] 창 자리 빈틈 문면 — 예고 모드만 넘기고 감춤 모드는 null 이라,
  *   창에 빈틈이 서는 경로 자체가 없다
  * @param {?string} [texts.resolved] 판정 자리 빈틈 문면 — 그 자리에 서는 사람이 누구냐로 갈린다
+ * @param {?string} [texts.missed] 그 빈틈을 흘린 갈래의 판정 자리 문면. 미전달이면 `resolved` 로
+ *   접히므로, 흘림이 성립하지 않는 화면(파견)은 넘기지 않는 것이 곧 그 화면의 선언이다 (#255)
  * @returns {{state: string, foe?: object, text?: string}}
  */
-export function foeStripState(view, { open = null, resolved = null } = {}) {
+export function foeStripState(view, { open = null, resolved = null, missed = null } = {}) {
   // 그 초의 상대가 실려 있으면 그것이 그 초의 사실이다 — 빈틈은 상대가 초식을 내지 않은 초에만 선다.
   if (view.telegraphed) return { state: FOE_STRIP.REVEALED, foe: view.telegraphed };
   // 값보다 자리가 먼저다 — 값부터 보면 판정 자리의 빈틈이 창 자리 문면으로 새어 나간다 (#252).
-  if (view.phase === PHASE.RESOLVE && view.foeOpen) return { state: FOE_STRIP.OPENED, text: resolved };
+  if (view.phase === PHASE.RESOLVE && view.foeOpen) {
+    // 등급을 여기서만 읽는 것이 계약이다 — 창 자리 view 의 `verdict` 는 직전 초의 것이라 남의 초를 말한다 (#255).
+    const taken = view.verdict?.grade === 'crush';
+    return { state: FOE_STRIP.OPENED, text: !taken && missed != null ? missed : resolved };
+  }
   if (view.foeOpen && open) return { state: FOE_STRIP.OPEN, text: open };
   // 자리를 비우면 공개 순간에 조판이 튀고, 상대가 아직 내지 않았다는 사실이 화면에서 사라진다 (#243 결정 2).
   return { state: FOE_STRIP.VEILED, text: VEIL_TEXT };
@@ -182,7 +188,7 @@ export function createArena({ height = null, figures = [], watcher = null, bout 
     if (!bar) throw new Error(`기력이 없는 자리: ${spot}`);
     bar.set(hp, max);
   };
-  /** @param {object} texts 자리별 빈틈 문면 (`open`·`resolved`) — 그 초의 상대를 갈아 끼운다 (REQ-822). */
+  /** @param {object} texts 자리별 빈틈 문면 — 갈래는 `foeStripState` 가 정한다 (REQ-822). */
   api.showFoe = (view, texts) => {
     clear(teleSlot).appendChild(foeView(view, texts));
   };
