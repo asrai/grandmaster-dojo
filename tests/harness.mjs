@@ -3689,7 +3689,7 @@ suite('BALANCE 파라미터 census (REQ-606)', () => {
   const SEEDS = {
     blindExchange: true, windowBaseMs: 3000,
     openingWindowPenalty: 0.4, accessibilityWindowMult: 1.3, accessibilityWindow: false,
-    resolveMs: 500, maxExchanges: 12, powerBase: 1, powerPerRank: 0.05,
+    resolveMs: 1000, maxExchanges: 12, powerBase: 1, powerPerRank: 0.05,
     initiativeBase: 1, initiativePerRatio: 0.3, clashK: 0.5, effectiveSuccessMaxOrder: 2,
     trainGraduateHits: 2, ignoreHighlightAt: 3, rankMax: 12, slots: 3,
     discipleStartRank: 1, discipleRankMax: 10, discipleFireRatio: 0.6,
