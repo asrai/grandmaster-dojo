@@ -405,8 +405,8 @@ tags:
 
 ## 아트 계약
 
-> /gamedev-art 가 이 표를 결정론 conformance 대조. 코드는 항상 `id` 참조(filename 아님).
-> 의미 적합 2층: 구조=결정론·authoritative / 의미=사람-attested(/gamedev-art 기록만).
+> /gamedev-artcheck 가 이 표를 결정론 conformance 대조. 코드는 항상 `id` 참조(filename 아님).
+> 의미 적합 2층: 구조=결정론·authoritative / 의미=사람-attested(/gamedev-artcheck 기록만).
 > AI 생성에 바로 쓸 프롬프트 등급 묘사는 아래 `## 아트 생성 브리프` 의 `[{id}]` 블록 참조 (이 표의 `semantic_intent` 는 1~2문장 앵커일 뿐).
 > **스캔 루트는 `assets/`** — 이 프로젝트는 Unity 가 아니라 HTML5(빌드 스텝 없음)이므로 `repo_path` 는 repo 루트 상대 경로다.
 > **실루엣 캔버스는 512×1024 로 통일**한다 — 자세마다 실제 점유 영역이 달라도(엎드림·잘린 뒷모습) 같은 캔버스를 쓰면 conformance 대조와 배치 좌표가 함께 단순해진다.
@@ -427,7 +427,7 @@ tags:
 
 ## 아트 생성 브리프
 
-> /gamedev-art conformance 와 **무관** — 외부 생성(nano-banana / Midjourney / Suno / 외주 / 사람 작화) 입력. `## 아트 계약` 표의 `{id}` 와 1:1.
+> /gamedev-artcheck conformance 와 **무관** — 외부 생성(nano-banana / Midjourney / Suno / 외주 / 사람 작화) 입력. `## 아트 계약` 표의 `{id}` 와 1:1.
 > 헬퍼(`art_conformance.py`)는 이 섹션을 파싱하지 않으므로 14컬럼 라운드트립 계약과 무관 — 블록 필드는 게임/도구 특성에 맞게 자유 조정 가능(스키마 동결 아님).
 > 각 블록 = 3슬롯 자급자족: [A] 생성 프롬프트 본문(외부 AI 복붙, 내부 참조 0건) / [B] 추가 지침(첨부·도구 옵션) / [C] 내부 참조(REQ 매핑·트리거, AI 비전달). 이미지 블록은 [A] 뒤에 [A-ko] 한글 외주 명세 추가.
 
